@@ -49,7 +49,8 @@ flowchart LR
   - `ScheduleException` resolution (cancel, reschedule, room change).
   - Non-blocking conflict detection algorithm.
   - Unified `TimelineItem` projection generator.
-- **Deliverables**: Standalone, portable domain engine module with 100% automated test coverage.
+- **Deliverables**: Portable domain engine `packages/core-engine` (Swift 6 strict concurrency, Apple Silicon native) with 100% automated test coverage (27 unit tests).
+- **Status**: **COMPLETED (Phase 2)**.
 - **Dependencies**: Phase 1.
 
 ### Phase 3: macOS Native Client

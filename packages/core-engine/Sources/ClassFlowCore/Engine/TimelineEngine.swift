@@ -1,0 +1,155 @@
+import Foundation
+
+/// Primary calculation engine that projects courses, recurring schedules, and exceptions
+/// into a unified occurrence stream (TimelineItem) for timetable and agenda views.
+public struct TimelineEngine: Sendable {
+    public let weekCalculator: WeekCalculator
+    public let conflictDetector: ConflictDetector
+
+    public init(timeZoneId: String = "Asia/Shanghai") {
+        self.weekCalculator = WeekCalculator(timeZoneId: timeZoneId)
+        self.conflictDetector = ConflictDetector()
+    }
+
+    /// Generates all TimelineItem occurrences for a given teaching week.
+    public func generateOccurrences(
+        semester: Semester,
+        courses: [Course],
+        exceptions: [ScheduleException],
+        forWeek weekNumber: Int,
+        activeWeek: Int? = nil
+    ) -> [TimelineItem] {
+        guard weekNumber >= 1 && weekNumber <= semester.totalWeeks else { return [] }
+
+        var items: [TimelineItem] = []
+        let currentWeekRef = activeWeek ?? weekNumber
+
+        // Exception lookups
+        let exceptionByOrigDateAndSchedule = Dictionary(
+            grouping: exceptions,
+            by: { "\($0.scheduleId)_\($0.originalDate)" }
+        )
+        let exceptionByTargetDate = Dictionary(
+            grouping: exceptions,
+            by: { $0.targetDate ?? "" }
+        )
+
+        // 1. Process regular schedules
+        for course in courses {
+            for schedule in course.schedules {
+                let isActive = schedule.weekPattern.isActive(
+                    inWeek: weekNumber,
+                    totalWeeks: semester.totalWeeks
+                )
+                guard isActive else { continue }
+
+                let dateStr = weekCalculator.dateString(
+                    forWeek: weekNumber,
+                    dayOfWeek: schedule.dayOfWeek,
+                    semesterStartDate: semester.startDate
+                )
+
+                let startTime = semester.sectionTime(for: schedule.startSection)?.startTime
+                let endTime = semester.sectionTime(for: schedule.endSection)?.endTime
+
+                var item = TimelineItem(
+                    id: "course_occ_\(schedule.id)_\(dateStr)",
+                    sourceType: .course,
+                    courseId: course.id,
+                    scheduleId: schedule.id,
+                    title: course.name,
+                    location: schedule.classroom,
+                    date: dateStr,
+                    dayOfWeek: schedule.dayOfWeek,
+                    startSection: schedule.startSection,
+                    endSection: schedule.endSection,
+                    startTime: startTime,
+                    endTime: endTime,
+                    weekNumber: weekNumber,
+                    isCurrentWeek: (weekNumber == currentWeekRef),
+                    status: .normal,
+                    color: course.color,
+                    teacher: course.teacher,
+                    notes: course.notes
+                )
+
+                // Apply exceptions matching this original occurrence
+                let lookupKey = "\(schedule.id)_\(dateStr)"
+                if let exList = exceptionByOrigDateAndSchedule[lookupKey], let ex = exList.first {
+                    switch ex.exceptionType {
+                    case .cancel:
+                        item.status = .cancelled
+                    case .reschedule:
+                        // Original slot is marked cancelled / rescheduled away
+                        item.status = .cancelled
+                        if let reason = ex.reason {
+                            item.notes = (item.notes.map { "\($0) (\(reason))" }) ?? reason
+                        }
+                    case .room_change:
+                        if let newRoom = ex.targetClassroom {
+                            item.location = newRoom
+                        }
+                    case .makeup:
+                        break
+                    }
+                }
+
+                items.append(item)
+            }
+        }
+
+        // 2. Process rescheduled arrivals & makeup sessions targeting dates in this week
+        let datesInWeek = Set(weekCalculator.dateStringsInWeek(weekNumber: weekNumber, semesterStartDate: semester.startDate))
+        let scheduleMap: [UUID: (Course, CourseSchedule)] = courses.reduce(into: [:]) { result, course in
+            for s in course.schedules {
+                result[s.id] = (course, s)
+            }
+        }
+
+        for (targetDate, exList) in exceptionByTargetDate where datesInWeek.contains(targetDate) {
+            for ex in exList {
+                guard let (course, schedule) = scheduleMap[ex.scheduleId] else { continue }
+                guard let targetDayOfWeek = ex.targetDayOfWeek,
+                      let targetStart = ex.targetStartSection,
+                      let targetEnd = ex.targetEndSection else { continue }
+
+                let startTime = semester.sectionTime(for: targetStart)?.startTime
+                let endTime = semester.sectionTime(for: targetEnd)?.endTime
+
+                let targetItem = TimelineItem(
+                    id: "course_occ_\(ex.id)_\(targetDate)",
+                    sourceType: .course,
+                    courseId: course.id,
+                    scheduleId: schedule.id,
+                    title: course.name,
+                    location: ex.targetClassroom ?? schedule.classroom,
+                    date: targetDate,
+                    dayOfWeek: targetDayOfWeek,
+                    startSection: targetStart,
+                    endSection: targetEnd,
+                    startTime: startTime,
+                    endTime: endTime,
+                    weekNumber: weekNumber,
+                    isCurrentWeek: (weekNumber == currentWeekRef),
+                    status: ex.exceptionType == .makeup ? .makeup : .rescheduled,
+                    color: course.color,
+                    teacher: course.teacher,
+                    notes: ex.reason ?? course.notes
+                )
+                items.append(targetItem)
+            }
+        }
+
+        // 3. Annotate pairwise conflicts
+        conflictDetector.annotateConflicts(in: &items)
+
+        // 4. Stable sort: by date, startSection, then title
+        items.sort {
+            if $0.date != $1.date { return $0.date < $1.date }
+            if $0.startSection != $1.startSection { return $0.startSection < $1.startSection }
+            return $0.title < $1.title
+        }
+
+        return items
+    }
+}
