@@ -61,7 +61,8 @@ flowchart LR
   - Non-modal popover course inspection card.
   - Native macOS Settings window (General, Appearance, Timetable).
   - Menu Bar extra companion.
-- **Deliverables**: Working native macOS application bundle running on macOS 15.8+.
+- **Deliverables**: Native macOS client `apps/macos` (SwiftUI 6 + AppKit, Apple Silicon arm64 native) with full timetable grid, popover, edit sheet, add sheet, settings window, menu bar companion, and automated view model tests.
+- **Status**: **COMPLETED (Phase 3)**.
 - **Dependencies**: Phase 2.
 
 ### Phase 4: Android / HyperOS Native Client
