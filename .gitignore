@@ -47,3 +47,9 @@ venv/
 .env
 .env.*
 !.env.example
+
+# Distribution & Packaging Outputs
+dist/
+*.dmg
+*.zip
+
