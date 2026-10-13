@@ -1,0 +1,45 @@
+name: ClassFlow CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  foundation-schemas:
+    name: Foundation Schemas & Fixtures
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run Foundation Test Suite
+        run: python3 scripts/test_foundation.py
+
+  swift-macos-tests:
+    name: Swift Core Engine & macOS Client
+    runs-on: macos-15
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Test Core Engine
+        run: |
+          cd packages/core-engine
+          swift test
+
+      - name: Test macOS Client
+        run: |
+          cd apps/macos
+          swift test
+
+      - name: Build macOS Executable
+        run: |
+          cd apps/macos
+          swift build -c release

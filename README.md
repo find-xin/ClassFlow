@@ -3,9 +3,9 @@
 > **Native First, Local First, Bring Your Own Cloud.**  
 > A high-performance, open-source native cross-platform timetable and calendar application built for university students and professionals.
 
-[![License: Pending Evaluation](https://img.shields.io/badge/License-Pending%20Evaluation-blue.svg)](#license-evaluation)
-[![macOS 15.8+](https://img.shields.io/badge/macOS-15.8%2B-black?logo=apple)](#target-platforms)
-[![Android 16+](https://img.shields.io/badge/Android%20%2F%20HyperOS-3%2F4-green?logo=android)](#target-platforms)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
+[![macOS 15.0+](https://img.shields.io/badge/macOS-15.0%2B%20%28Apple%20Silicon%29-black?logo=apple)](#target-platforms)
+[![Android API 26+](https://img.shields.io/badge/Android-API%2026%2B%20%2F%20HyperOS-green?logo=android)](#target-platforms)
 
 ---
 

@@ -1,0 +1,113 @@
+package org.classflow.data.model
+
+import java.util.UUID
+
+enum class WeekPatternType {
+    ALL,
+    ODD,
+    EVEN,
+    CUSTOM
+}
+
+data class SectionTime(
+    val section: Int,
+    val startTime: String,
+    val endTime: String
+)
+
+data class Semester(
+    val id: String = UUID.randomUUID().toString(),
+    val name: String,
+    val startDate: String,
+    val endDate: String,
+    val totalWeeks: Int,
+    val isCurrent: Boolean = false,
+    val timeZone: String = "Asia/Shanghai",
+    val sections: List<SectionTime> = emptyList()
+)
+
+data class CourseSchedule(
+    val id: String = UUID.randomUUID().toString(),
+    val dayOfWeek: Int, // 1 (Mon) - 7 (Sun)
+    val startSection: Int,
+    val endSection: Int,
+    val classroom: String? = null,
+    val weekPattern: WeekPatternType = WeekPatternType.ALL,
+    val customWeeks: List<Int> = emptyList()
+)
+
+data class Course(
+    val id: String = UUID.randomUUID().toString(),
+    val semesterId: String,
+    val name: String,
+    val teacher: String? = null,
+    val color: String = "#4F46E5",
+    val notes: String? = null,
+    val schedules: List<CourseSchedule> = emptyList()
+)
+
+enum class ExceptionType {
+    CANCEL,
+    RESCHEDULE,
+    ROOM_CHANGE
+}
+
+data class ScheduleException(
+    val id: String = UUID.randomUUID().toString(),
+    val scheduleId: String,
+    val originalDate: String,
+    val type: ExceptionType,
+    val targetDate: String? = null,
+    val targetDayOfWeek: Int? = null,
+    val targetStartSection: Int? = null,
+    val targetEndSection: Int? = null,
+    val targetClassroom: String? = null,
+    val reason: String? = null
+)
+
+enum class OccurrenceStatus {
+    NORMAL,
+    CANCELLED,
+    RESCHEDULED,
+    MAKEUP
+}
+
+data class TimelineItem(
+    val id: String,
+    val courseId: String,
+    val scheduleId: String,
+    val title: String,
+    val location: String?,
+    val date: String,
+    val dayOfWeek: Int,
+    val startSection: Int,
+    val endSection: Int,
+    val startTime: String,
+    val endTime: String,
+    val weekNumber: Int,
+    val isCurrentWeek: Boolean = true,
+    val status: OccurrenceStatus = OccurrenceStatus.NORMAL,
+    val color: String = "#4F46E5",
+    val teacher: String? = null,
+    val notes: String? = null,
+    val hasConflict: Boolean = false
+)
+
+enum class EditingScope {
+    THIS_ONLY,
+    THIS_AND_FUTURE,
+    ALL
+}
+
+data class CalendarMapping(
+    val id: String = UUID.randomUUID().toString(),
+    val semesterId: String,
+    val courseId: String,
+    val scheduleId: String,
+    val occurrenceDate: String,
+    val startSection: Int,
+    val endSection: Int,
+    val externalEventId: String,
+    val contentHash: String,
+    val lastSyncedAt: String
+)
