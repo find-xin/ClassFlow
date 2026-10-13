@@ -88,7 +88,7 @@ struct SyncEngineTests {
         let engineB = SyncEngine(deviceId: "dev_droid_02", deviceName: "Phone")
 
         let sharedCourseId = UUID()
-        var courseA = Course(id: sharedCourseId, semesterId: UUID(), name: "软件工程", teacher: "原教师", color: "#111111")
+        let courseA = Course(id: sharedCourseId, semesterId: UUID(), name: "软件工程", teacher: "原教师", color: "#111111")
         var courseB = courseA
 
         var coursesA = [courseA]

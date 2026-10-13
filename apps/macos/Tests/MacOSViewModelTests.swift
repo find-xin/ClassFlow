@@ -10,7 +10,7 @@ struct MacOSViewModelTests {
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         let dbURL = tempDir.appendingPathComponent("test_db.json")
         let db = LocalDatabase(customURL: dbURL)
-        return AppState(database: db)
+        return AppState(database: db, notificationService: MockNotificationService())
     }
 
     @Test("AppState bootstraps default semester and courses")
@@ -147,4 +147,46 @@ struct MacOSViewModelTests {
             #expect(afterDelete == nil)
         }
     }
+
+    @Test("Widget data generation produces valid timeline payload")
+    @MainActor
+    func testWidgetDataGeneration() {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let dbURL = tempDir.appendingPathComponent("test_db.json")
+        let widgetURL = tempDir.appendingPathComponent("test_widget.json")
+        let db = LocalDatabase(customURL: dbURL)
+        let widgetStore = WidgetDataStore(customURL: widgetURL)
+        let state = AppState(database: db, notificationService: MockNotificationService(), widgetDataStore: widgetStore)
+
+        state.updateWidgetData()
+
+        let payload = widgetStore.load()
+        #expect(!payload.semesterName.isEmpty)
+        #expect(payload.weekSchedule.count == 7)
+        #expect(payload.currentWeek >= 1)
+    }
+
+    @Test("Calendar sync planning across semester occurrences")
+    @MainActor
+    func testCalendarSyncPlanGeneration() {
+        let state = makeIsolatedAppState()
+        guard let sem = state.currentSemester else {
+            Issue.record("Missing current semester")
+            return
+        }
+
+        let occurrences = state.allSemesterOccurrences(for: sem)
+        #expect(!occurrences.isEmpty)
+
+        let plan = state.calendarPlanner.generatePlan(
+            occurrences: occurrences,
+            semester: sem,
+            existingMappings: []
+        )
+
+        #expect(plan.toCreate.count == occurrences.filter { $0.status != .cancelled }.count)
+        #expect(plan.toUpdate.isEmpty)
+        #expect(plan.toDelete.isEmpty)
+    }
 }
+

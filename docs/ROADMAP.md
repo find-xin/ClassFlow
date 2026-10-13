@@ -103,17 +103,19 @@ flowchart LR
   - Android: `CalendarContract` integration.
   - `CalendarMapping` tracking table preventing duplicate events.
   - Re-sync and automatic cleanup upon course schedule modification.
-- **Deliverables**: Seamless projection of timetable occurrences into macOS Calendar and Android Calendar.
+- **Deliverables**: Complete EventKit calendar synchronization engine (`EventKitCalendarService`, `CalendarSyncPlanner`, `CalendarMapping`), surgical diffing, reminder alarm injection, orphan pruning, and native macOS settings interface (`CalendarSettingsTab`).
+- **Status**: **COMPLETED (Phase 7 - macOS & Core Engine)**.
 - **Dependencies**: Phase 3, Phase 4.
 
 ### Phase 8: Notifications & Desktop Widgets
 - **Objectives**: Timetable awareness outside the main window:
-  - macOS `UserNotifications`: Configurable pre-class alerts (e.g. 15 min / 5 min before start), classroom change alerts.
+  - macOS `UserNotifications`: Configurable pre-class alerts (e.g. 15 min / 5 min before start), classroom change alerts, daily morning briefings.
   - Android Notifications: Public notification channels, standard ongoing notifications during class.
   - Desktop Widgets:
-    - macOS WidgetKit: Small (Next Class), Medium (Today), Large (Week Overview).
+    - macOS WidgetKit: Small (Next Class countdown), Medium (Today's classes), Large (Week Overview timetable).
     - Android Glance / AppWidget: 2×2, 4×2, 4×4 widgets.
-- **Deliverables**: Widget extensions and automated background reminder dispatchers.
+- **Deliverables**: Native macOS `NotificationService` (scheduling alerts and briefings with unbundled CLI safety), `WidgetDataStore` container synchronization, and WidgetKit extensions (`NextClassWidget`, `TodayClassesWidget`, `WeekOverviewWidget`, `ClassFlowWidgetBundle`).
+- **Status**: **COMPLETED (Phase 8 - macOS & Core Engine)**.
 - **Dependencies**: Phase 7.
 
 ### Phase 9: Xiaomi Super Island & HyperOS Adaptation

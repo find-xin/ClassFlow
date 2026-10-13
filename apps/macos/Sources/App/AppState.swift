@@ -10,6 +10,7 @@ public final class AppState {
     public var courses: [Course] = []
     public var exceptions: [ScheduleException] = []
     public var settings: AppSettings = AppSettings()
+    public var calendarMappings: [CalendarMapping] = []
 
     public var currentSemesterId: UUID?
     public var selectedWeek: Int = 1
@@ -25,19 +26,34 @@ public final class AppState {
     public var importErrorMessage: String? = nil
 
     private let database: LocalDatabase
-    private let timelineEngine: TimelineEngine
+    public let timelineEngine: TimelineEngine
     private let mutationCoordinator: ScheduleMutationCoordinator
     public let backupService: ClassFlowBackupService
     public let icsExporter: ICSExporter
     public let icsImporter: ICSImporter
 
-    public init(database: LocalDatabase = LocalDatabase()) {
+    // Calendar, Notifications & Widgets Services
+    public let calendarService: EventKitCalendarService
+    public let calendarPlanner: CalendarSyncPlanner
+    public let notificationService: any NotificationServiceProtocol
+    public let widgetDataStore: WidgetDataStore
+
+    public init(
+        database: LocalDatabase = LocalDatabase(),
+        calendarService: EventKitCalendarService = EventKitCalendarService(),
+        notificationService: any NotificationServiceProtocol = NotificationService(),
+        widgetDataStore: WidgetDataStore = WidgetDataStore()
+    ) {
         self.database = database
         self.timelineEngine = TimelineEngine()
         self.mutationCoordinator = ScheduleMutationCoordinator()
         self.backupService = ClassFlowBackupService()
         self.icsExporter = ICSExporter()
         self.icsImporter = ICSImporter()
+        self.calendarService = calendarService
+        self.calendarPlanner = CalendarSyncPlanner()
+        self.notificationService = notificationService
+        self.widgetDataStore = widgetDataStore
         load()
     }
 
@@ -47,11 +63,13 @@ public final class AppState {
         self.courses = payload.courses
         self.exceptions = payload.exceptions
         self.settings = payload.settings
+        self.calendarMappings = payload.calendarMappings
 
         if let current = semesters.first(where: { $0.isCurrent }) ?? semesters.first {
             self.currentSemesterId = current.id
             self.selectedWeek = calculateCurrentWeek(for: current)
         }
+        updateWidgetData()
     }
 
     public func save() {
@@ -59,12 +77,17 @@ public final class AppState {
             semesters: semesters,
             courses: courses,
             exceptions: exceptions,
-            settings: settings
+            settings: settings,
+            calendarMappings: calendarMappings
         )
         do {
             try database.save(payload)
         } catch {
             print("[AppState] Error saving database: \(error)")
+        }
+        updateWidgetData()
+        Task {
+            await scheduleNotifications()
         }
     }
 
@@ -147,7 +170,6 @@ public final class AppState {
 
     public func deleteCourse(id: UUID) {
         courses.removeAll(where: { $0.id == id })
-        // Clear related exceptions
         save()
     }
 
@@ -203,6 +225,204 @@ public final class AppState {
         updateCourse(result.updatedCourse)
         exceptions.append(contentsOf: result.newExceptions)
         save()
+    }
+
+    // MARK: - Calendar Synchronization (EventKit)
+
+    public func allSemesterOccurrences(for semester: Semester) -> [TimelineItem] {
+        let semesterCourses = courses.filter { $0.semesterId == semester.id }
+        var allItems: [TimelineItem] = []
+        let currentWeek = calculatedCurrentWeek
+        for week in 1...semester.totalWeeks {
+            let weekItems = timelineEngine.generateOccurrences(
+                semester: semester,
+                courses: semesterCourses,
+                exceptions: exceptions,
+                forWeek: week,
+                activeWeek: currentWeek
+            )
+            allItems.append(contentsOf: weekItems)
+        }
+        return allItems
+    }
+
+    public func syncToSystemCalendar() async throws -> CalendarSyncExecutionResult {
+        guard let current = currentSemester else {
+            throw NSError(domain: "ClassFlow", code: 400, userInfo: [NSLocalizedDescriptionKey: "未选择当前学期"])
+        }
+
+        let allOccurrences = allSemesterOccurrences(for: current)
+        let options = CalendarSyncOptions(
+            calendarName: settings.calendarName,
+            reminderMinutes: settings.calendarReminderMinutes,
+            includeTeacherAndNotes: settings.calendarIncludeNotes
+        )
+
+        let plan = calendarPlanner.generatePlan(
+            occurrences: allOccurrences,
+            semester: current,
+            existingMappings: calendarMappings,
+            options: options
+        )
+
+        let result = try await calendarService.executePlan(plan, inCalendarNamed: settings.calendarName)
+
+        // Prune deleted mappings
+        let deletedKeys = Set(plan.toDelete.map { $0.logicalKey })
+        calendarMappings.removeAll(where: { deletedKeys.contains($0.logicalKey) })
+
+        // Apply new/updated mappings
+        let updatedDict = Dictionary(uniqueKeysWithValues: result.newMappings.map { ($0.logicalKey, $0) })
+        for i in 0..<calendarMappings.count {
+            if let updated = updatedDict[calendarMappings[i].logicalKey] {
+                calendarMappings[i] = updated
+            }
+        }
+        for newMapping in result.newMappings {
+            if !calendarMappings.contains(where: { $0.logicalKey == newMapping.logicalKey }) {
+                calendarMappings.append(newMapping)
+            }
+        }
+
+        settings.lastCalendarSyncTime = ISO8601DateFormatter().string(from: Date())
+        save()
+        return result
+    }
+
+    public func clearSystemCalendar() async throws -> Int {
+        let count = try calendarService.clearCalendar(named: settings.calendarName)
+        calendarMappings.removeAll()
+        settings.lastCalendarSyncTime = nil
+        save()
+        return count
+    }
+
+    // MARK: - Notifications
+
+    public func scheduleNotifications() async {
+        guard let current = currentSemester else { return }
+        let currentWeek = calculatedCurrentWeek
+        let weekOccurrences = timelineEngine.generateOccurrences(
+            semester: current,
+            courses: courses.filter { $0.semesterId == current.id },
+            exceptions: exceptions,
+            forWeek: currentWeek,
+            activeWeek: currentWeek
+        )
+
+        if settings.enableClassAlerts {
+            await notificationService.schedulePreClassAlerts(
+                occurrences: weekOccurrences,
+                offsetMinutes: settings.classAlertMinutes
+            )
+        } else {
+            await notificationService.cancelClassAlerts()
+        }
+
+        let todayStr = timelineEngine.weekCalculator.formatDate(Date())
+        let todayItems = weekOccurrences.filter { $0.date == todayStr }
+        if settings.enableDailyBriefing {
+            await notificationService.scheduleDailyBriefing(
+                todayOccurrences: todayItems,
+                hour: settings.dailyBriefingHour,
+                minute: settings.dailyBriefingMinute
+            )
+        }
+    }
+
+    // MARK: - Desktop Widgets
+
+    public func updateWidgetData() {
+        guard let current = currentSemester else { return }
+        let now = Date()
+        let todayStr = timelineEngine.weekCalculator.formatDate(now)
+        let weekNum = calculatedCurrentWeek
+
+        let weekOccurrences = timelineEngine.generateOccurrences(
+            semester: current,
+            courses: courses.filter { $0.semesterId == current.id },
+            exceptions: exceptions,
+            forWeek: weekNum,
+            activeWeek: weekNum
+        )
+
+        let dfTime = DateFormatter()
+        dfTime.dateFormat = "HH:mm"
+        dfTime.timeZone = TimeZone.current
+        let currentTimeStr = dfTime.string(from: now)
+
+        let todayItems = weekOccurrences.filter { $0.date == todayStr && $0.status != .cancelled }.sorted {
+            ($0.startTime ?? "00:00") < ($1.startTime ?? "00:00")
+        }
+
+        let todayWidgetItems: [WidgetCourseItem] = todayItems.map { item in
+            let start = item.startTime ?? "00:00"
+            let end = item.endTime ?? "23:59"
+            let isOngoing = currentTimeStr >= start && currentTimeStr <= end
+
+            var minutesUntil: Int? = nil
+            let dfFull = DateFormatter()
+            dfFull.dateFormat = "yyyy-MM-dd HH:mm"
+            if let startDate = dfFull.date(from: "\(todayStr) \(start)") {
+                let diff = startDate.timeIntervalSince(now) / 60.0
+                if diff > 0 {
+                    minutesUntil = Int(diff)
+                }
+            }
+
+            return WidgetCourseItem(
+                id: item.id,
+                title: item.title,
+                location: item.location,
+                teacher: item.teacher,
+                startTime: start,
+                endTime: end,
+                startSection: item.startSection,
+                endSection: item.endSection,
+                colorHex: item.color,
+                isOngoing: isOngoing,
+                minutesUntilStart: minutesUntil
+            )
+        }
+
+        let nextItem = todayWidgetItems.first(where: { $0.isOngoing || ($0.minutesUntilStart != nil && $0.minutesUntilStart! >= 0) })
+
+        let dayNames = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+        var weekSchedules: [WidgetDaySchedule] = []
+        for dayIdx in 1...7 {
+            let dayCourses = weekOccurrences.filter { $0.dayOfWeek == dayIdx && $0.status != .cancelled }.map { item in
+                WidgetCourseItem(
+                    id: item.id,
+                    title: item.title,
+                    location: item.location,
+                    teacher: item.teacher,
+                    startTime: item.startTime ?? "",
+                    endTime: item.endTime ?? "",
+                    startSection: item.startSection,
+                    endSection: item.endSection,
+                    colorHex: item.color
+                )
+            }
+            weekSchedules.append(
+                WidgetDaySchedule(
+                    id: dayIdx,
+                    dayName: dayNames[dayIdx - 1],
+                    dateString: "",
+                    courses: dayCourses
+                )
+            )
+        }
+
+        let payload = WidgetTimelinePayload(
+            semesterName: current.name,
+            currentWeek: weekNum,
+            todayDateString: todayStr,
+            nextClass: nextItem,
+            todayClasses: todayWidgetItems,
+            weekSchedule: weekSchedules
+        )
+
+        try? widgetDataStore.save(payload)
     }
 
     // MARK: - Import & Export Operations

@@ -8,17 +8,29 @@ public struct LocalDatabase: Sendable {
         public var courses: [Course]
         public var exceptions: [ScheduleException]
         public var settings: AppSettings
+        public var calendarMappings: [CalendarMapping]
 
         public init(
             semesters: [Semester] = [],
             courses: [Course] = [],
             exceptions: [ScheduleException] = [],
-            settings: AppSettings = AppSettings()
+            settings: AppSettings = AppSettings(),
+            calendarMappings: [CalendarMapping] = []
         ) {
             self.semesters = semesters
             self.courses = courses
             self.exceptions = exceptions
             self.settings = settings
+            self.calendarMappings = calendarMappings
+        }
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            self.semesters = try container.decodeIfPresent([Semester].self, forKey: .semesters) ?? []
+            self.courses = try container.decodeIfPresent([Course].self, forKey: .courses) ?? []
+            self.exceptions = try container.decodeIfPresent([ScheduleException].self, forKey: .exceptions) ?? []
+            self.settings = try container.decodeIfPresent(AppSettings.self, forKey: .settings) ?? AppSettings()
+            self.calendarMappings = try container.decodeIfPresent([CalendarMapping].self, forKey: .calendarMappings) ?? []
         }
     }
 

@@ -26,6 +26,16 @@ public struct SettingsView: View {
                     Label("学期管理", systemImage: "books.vertical")
                 }
 
+            CalendarSettingsTab(appState: appState)
+                .tabItem {
+                    Label("日历", systemImage: "calendar.badge.clock")
+                }
+
+            NotificationSettingsTab(appState: appState)
+                .tabItem {
+                    Label("通知", systemImage: "bell.badge")
+                }
+
             SyncSettingsTab(appState: appState)
                 .tabItem {
                     Label("云同步", systemImage: "icloud.and.arrow.up")
@@ -36,7 +46,7 @@ public struct SettingsView: View {
                     Label("关于", systemImage: "info.circle")
                 }
         }
-        .frame(width: 480, height: 340)
+        .frame(width: 520, height: 400)
         .padding()
     }
 
