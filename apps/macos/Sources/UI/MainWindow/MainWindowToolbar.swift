@@ -1,7 +1,8 @@
 import SwiftUI
+import AppKit
 import ClassFlowCore
 
-/// Native top toolbar containing semester switcher, week navigator, and action shortcuts.
+/// Native top toolbar containing semester switcher, week navigator, import/export, and action shortcuts.
 public struct MainWindowToolbar: View {
     @Bindable public var appState: AppState
 
@@ -94,8 +95,25 @@ public struct MainWindowToolbar: View {
 
             Spacer()
 
-            // 3. Actions: Add Course [+] and More Options [...]
+            // 3. Actions: Import/Export, Add Course [+], More Options [...]
             HStack(spacing: 8) {
+                Menu {
+                    Button("导入课表文件 (.classflow / .ics)...") {
+                        openImportDialog()
+                    }
+                    Divider()
+                    Button("导出当前学期为日历 (.ics)...") {
+                        exportICSDialog()
+                    }
+                    Button("导出完整备份包 (.classflow)...") {
+                        exportBackupDialog()
+                    }
+                } label: {
+                    Label("导入/导出", systemImage: "arrow.up.arrow.down")
+                        .font(.system(size: 12))
+                }
+                .menuStyle(.borderlessButton)
+
                 Button(action: { appState.isAddingCourse = true }) {
                     Label("添加课程", systemImage: "plus")
                         .font(.system(size: 12, weight: .medium))
@@ -120,5 +138,44 @@ public struct MainWindowToolbar: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(.bar)
+    }
+
+    @MainActor
+    private func openImportDialog() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        if panel.runModal() == .OK, let url = panel.url {
+            if url.pathExtension.lowercased() == "classflow" {
+                if let data = try? Data(contentsOf: url) {
+                    appState.stageClassFlowImport(from: data)
+                }
+            } else if url.pathExtension.lowercased() == "ics" {
+                if let content = try? String(contentsOf: url, encoding: .utf8) {
+                    appState.importICS(content: content)
+                }
+            }
+        }
+    }
+
+    @MainActor
+    private func exportICSDialog() {
+        guard let icsText = appState.exportCurrentSemesterICS() else { return }
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "\(appState.currentSemester?.name ?? "ClassFlow").ics"
+        if panel.runModal() == .OK, let url = panel.url {
+            try? icsText.write(to: url, atomically: true, encoding: .utf8)
+        }
+    }
+
+    @MainActor
+    private func exportBackupDialog() {
+        guard let data = try? appState.exportClassFlowBackup() else { return }
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "ClassFlow_Backup.classflow"
+        if panel.runModal() == .OK, let url = panel.url {
+            try? data.write(to: url, options: .atomic)
+        }
     }
 }

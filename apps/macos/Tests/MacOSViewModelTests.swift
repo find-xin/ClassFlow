@@ -92,4 +92,42 @@ struct MacOSViewModelTests {
         #expect(ex.targetDayOfWeek == 2)
         #expect(ex.targetClassroom == "新教室 A101")
     }
+
+    @Test("Export and import .classflow backup via AppState")
+    @MainActor
+    func testExportAndImportBackupInAppState() throws {
+        let state1 = makeIsolatedAppState()
+        let backupData = try state1.exportClassFlowBackup()
+        #expect(backupData.count > 0)
+
+        // New isolated instance
+        let state2 = makeIsolatedAppState()
+        state2.courses.removeAll() // Clear courses
+        #expect(state2.courses.isEmpty)
+
+        state2.stageClassFlowImport(from: backupData)
+        #expect(state2.isShowingImportPreview == true)
+        #expect(state2.stagedImportPreview != nil)
+
+        state2.commitClassFlowImport(mode: .merge)
+        #expect(!state2.courses.isEmpty)
+        #expect(state2.isShowingImportPreview == false)
+    }
+
+    @Test("Export and import ICS calendar via AppState")
+    @MainActor
+    func testExportAndImportICSInAppState() {
+        let state = makeIsolatedAppState()
+        guard let icsText = state.exportCurrentSemesterICS() else {
+            Issue.record("Failed to export ICS")
+            return
+        }
+
+        #expect(icsText.contains("BEGIN:VCALENDAR"))
+        #expect(icsText.contains("高等数学"))
+
+        let countBefore = state.courses.count
+        state.importICS(content: icsText)
+        #expect(state.courses.count >= countBefore)
+    }
 }

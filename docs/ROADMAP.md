@@ -81,8 +81,9 @@ flowchart LR
   - `.ics` export: RFC 5545 iCalendar generator with VEVENT instances for academic schedules.
   - `.ics` import: Parsing generic iCalendar files and projecting them into timetable or calendar occurrences.
   - Verification with real sample files (e.g. university export or WakeUp format).
-- **Deliverables**: Complete import/export engine with preview and merge validation.
-- **Dependencies**: Phase 3, Phase 4.
+- **Deliverables**: Complete import/export engine supporting `.classflow` PKZip archives (with SHA-256 integrity, manifest versioning, merge/replace strategy) and RFC 5545 `.ics` export/import, wired to desktop macOS UI with native panels and pre-import preview modal.
+- **Status**: **COMPLETED (Phase 5)**.
+- **Dependencies**: Phase 2, Phase 3.
 
 ### Phase 6: Bring Your Own Cloud (BYOC) Cloud Sync
 - **Objectives**: Implement decentralized cloud sync:

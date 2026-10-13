@@ -135,6 +135,30 @@ public struct MainWindowView: View {
                 SettingsView(appState: appState)
             }
         }
+        // Import Preview Sheet
+        .sheet(isPresented: $appState.isShowingImportPreview) {
+            if let preview = appState.stagedImportPreview {
+                ImportPreviewSheet(
+                    preview: preview,
+                    onConfirm: { mode in
+                        appState.commitClassFlowImport(mode: mode)
+                    },
+                    onDismiss: {
+                        appState.isShowingImportPreview = false
+                        appState.stagedImportPackage = nil
+                        appState.stagedImportPreview = nil
+                    }
+                )
+            }
+        }
+        .alert("导入失败", isPresented: .init(
+            get: { appState.importErrorMessage != nil },
+            set: { if !$0 { appState.importErrorMessage = nil } }
+        )) {
+            Button("好", role: .cancel) { appState.importErrorMessage = nil }
+        } message: {
+            Text(appState.importErrorMessage ?? "")
+        }
     }
 
     private var emptySemesterPlaceholder: some View {

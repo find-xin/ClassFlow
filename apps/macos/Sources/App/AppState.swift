@@ -19,15 +19,25 @@ public final class AppState {
     public var isAddingCourse: Bool = false
     public var isEditingOccurrence: Bool = false
     public var isShowingSettings: Bool = false
+    public var isShowingImportPreview: Bool = false
+    public var stagedImportPackage: ClassFlowPackage? = nil
+    public var stagedImportPreview: ImportPreview? = nil
+    public var importErrorMessage: String? = nil
 
     private let database: LocalDatabase
     private let timelineEngine: TimelineEngine
     private let mutationCoordinator: ScheduleMutationCoordinator
+    public let backupService: ClassFlowBackupService
+    public let icsExporter: ICSExporter
+    public let icsImporter: ICSImporter
 
     public init(database: LocalDatabase = LocalDatabase()) {
         self.database = database
         self.timelineEngine = TimelineEngine()
         self.mutationCoordinator = ScheduleMutationCoordinator()
+        self.backupService = ClassFlowBackupService()
+        self.icsExporter = ICSExporter()
+        self.icsImporter = ICSImporter()
         load()
     }
 
@@ -193,5 +203,83 @@ public final class AppState {
         updateCourse(result.updatedCourse)
         exceptions.append(contentsOf: result.newExceptions)
         save()
+    }
+
+    // MARK: - Import & Export Operations
+
+    public func exportClassFlowBackup() throws -> Data {
+        try backupService.exportBackup(
+            semesters: semesters,
+            courses: courses,
+            exceptions: exceptions,
+            settings: [
+                "showWeekends": String(settings.showWeekends),
+                "themeMode": settings.themeMode
+            ]
+        )
+    }
+
+    public func exportCurrentSemesterICS() -> String? {
+        guard let current = currentSemester else { return nil }
+        let currentCourses = courses.filter { $0.semesterId == current.id }
+        return icsExporter.exportToICS(
+            semester: current,
+            courses: currentCourses,
+            exceptions: exceptions
+        )
+    }
+
+    public func stageClassFlowImport(from data: Data) {
+        do {
+            let package = try backupService.importBackup(from: data)
+            let preview = backupService.generateImportPreview(package: package, existingCourses: courses)
+            self.stagedImportPackage = package
+            self.stagedImportPreview = preview
+            self.isShowingImportPreview = true
+        } catch {
+            self.importErrorMessage = error.localizedDescription
+        }
+    }
+
+    public func commitClassFlowImport(mode: ImportPreviewSheet.ImportMode) {
+        guard let package = stagedImportPackage else { return }
+
+        switch mode {
+        case .merge:
+            for s in package.semesters {
+                if !semesters.contains(where: { $0.id == s.id }) {
+                    semesters.append(s)
+                }
+            }
+            for c in package.courses {
+                if !courses.contains(where: { $0.id == c.id }) {
+                    courses.append(c)
+                }
+            }
+            exceptions.append(contentsOf: package.exceptions)
+
+        case .replace:
+            self.semesters = package.semesters
+            self.courses = package.courses
+            self.exceptions = package.exceptions
+            if let firstSem = semesters.first {
+                self.currentSemesterId = firstSem.id
+                self.selectedWeek = calculateCurrentWeek(for: firstSem)
+            }
+        }
+
+        save()
+        self.stagedImportPackage = nil
+        self.stagedImportPreview = nil
+        self.isShowingImportPreview = false
+    }
+
+    public func importICS(content: String) {
+        guard let current = currentSemester else { return }
+        let events = icsImporter.parseICS(content: content)
+        let candidateCourses = icsImporter.convertToCourses(events: events, semester: current)
+        for c in candidateCourses {
+            addCourse(c)
+        }
     }
 }
