@@ -1,0 +1,70 @@
+{
+  "manifest": {
+    "formatVersion": 1,
+    "appVersion": "1.0.0",
+    "exportedAt": "2026-10-14T08:00:00Z",
+    "checksum": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "semesters": [
+    {
+      "id": "e6740bfa-8935-4cb2-8e14-d035f2990a41",
+      "name": "2026-2027 秋季学期",
+      "startDate": "2026-09-07",
+      "endDate": "2027-01-24",
+      "totalWeeks": 20,
+      "isCurrent": true,
+      "timeZone": "Asia/Shanghai",
+      "sections": [
+        { "section": 1, "startTime": "08:00", "endTime": "08:45" },
+        { "section": 2, "startTime": "08:50", "endTime": "09:35" },
+        { "section": 3, "startTime": "10:05", "endTime": "10:50" },
+        { "section": 4, "startTime": "10:55", "endTime": "11:40" },
+        { "section": 5, "startTime": "14:00", "endTime": "14:45" },
+        { "section": 6, "startTime": "14:50", "endTime": "15:35" }
+      ]
+    }
+  ],
+  "courses": [
+    {
+      "id": "9fa8733b-8761-4fa3-9f50-ff3e107bb4c1",
+      "semesterId": "e6740bfa-8935-4cb2-8e14-d035f2990a41",
+      "name": "高等数学 (上)",
+      "teacher": "张楚楚",
+      "color": "#4F46E5",
+      "notes": "期末闭卷考试",
+      "schedules": [
+        {
+          "id": "c4b92b60-449e-4a6b-9ee7-25e1a1795db2",
+          "dayOfWeek": 1,
+          "startSection": 1,
+          "endSection": 2,
+          "classroom": "东九楼 D102",
+          "weekPattern": {
+            "type": "all",
+            "customWeeks": null
+          }
+        }
+      ]
+    }
+  ],
+  "exceptions": [
+    {
+      "id": "769a68a2-3f8d-4ba6-86f1-ec4fa57209f8",
+      "scheduleId": "c4b92b60-449e-4a6b-9ee7-25e1a1795db2",
+      "originalDate": "2026-10-19",
+      "exceptionType": "reschedule",
+      "targetDate": "2026-10-24",
+      "targetDayOfWeek": 6,
+      "targetStartSection": 5,
+      "targetEndSection": 6,
+      "targetClassroom": "东九楼 D108",
+      "reason": "学术会议调课"
+    }
+  ],
+  "settings": {
+    "showNonCurrentWeekCourses": true,
+    "dimNonCurrentWeekCourses": true,
+    "showWeekends": true,
+    "themeMode": "system"
+  }
+}

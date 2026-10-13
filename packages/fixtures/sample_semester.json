@@ -1,0 +1,23 @@
+{
+  "id": "e6740bfa-8935-4cb2-8e14-d035f2990a41",
+  "name": "2026-2027 秋季学期",
+  "startDate": "2026-09-07",
+  "endDate": "2027-01-24",
+  "totalWeeks": 20,
+  "isCurrent": true,
+  "timeZone": "Asia/Shanghai",
+  "sections": [
+    { "section": 1, "startTime": "08:00", "endTime": "08:45" },
+    { "section": 2, "startTime": "08:50", "endTime": "09:35" },
+    { "section": 3, "startTime": "10:05", "endTime": "10:50" },
+    { "section": 4, "startTime": "10:55", "endTime": "11:40" },
+    { "section": 5, "startTime": "14:00", "endTime": "14:45" },
+    { "section": 6, "startTime": "14:50", "endTime": "15:35" },
+    { "section": 7, "startTime": "15:55", "endTime": "16:40" },
+    { "section": 8, "startTime": "16:45", "endTime": "17:30" },
+    { "section": 9, "startTime": "18:30", "endTime": "19:15" },
+    { "section": 10, "startTime": "19:20", "endTime": "20:05" },
+    { "section": 11, "startTime": "20:10", "endTime": "20:55" },
+    { "section": 12, "startTime": "21:00", "endTime": "21:45" }
+  ]
+}

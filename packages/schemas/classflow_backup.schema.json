@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://classflow.org/schemas/classflow_backup.schema.json",
+  "title": "ClassFlowBackupPackage",
+  "type": "object",
+  "required": [
+    "manifest",
+    "semesters",
+    "courses",
+    "exceptions"
+  ],
+  "properties": {
+    "manifest": {
+      "type": "object",
+      "required": [
+        "formatVersion",
+        "appVersion",
+        "exportedAt",
+        "checksum"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "appVersion": {
+          "type": "string"
+        },
+        "exportedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "checksum": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "semesters": {
+      "type": "array",
+      "items": {
+        "$ref": "semester.schema.json"
+      }
+    },
+    "courses": {
+      "type": "array",
+      "items": {
+        "$ref": "course.schema.json"
+      }
+    },
+    "exceptions": {
+      "type": "array",
+      "items": {
+        "$ref": "schedule_exception.schema.json"
+      }
+    },
+    "settings": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": false
+}

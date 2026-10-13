@@ -1,0 +1,32 @@
+{
+  "id": "9fa8733b-8761-4fa3-9f50-ff3e107bb4c1",
+  "semesterId": "e6740bfa-8935-4cb2-8e14-d035f2990a41",
+  "name": "高等数学 (上)",
+  "teacher": "张楚楚",
+  "color": "#4F46E5",
+  "notes": "期末闭卷考试，占总成绩 60%",
+  "schedules": [
+    {
+      "id": "c4b92b60-449e-4a6b-9ee7-25e1a1795db2",
+      "dayOfWeek": 1,
+      "startSection": 1,
+      "endSection": 2,
+      "classroom": "东九楼 D102",
+      "weekPattern": {
+        "type": "all",
+        "customWeeks": null
+      }
+    },
+    {
+      "id": "e81d7f12-9c1a-4299-8cf0-21a47dfb2190",
+      "dayOfWeek": 3,
+      "startSection": 3,
+      "endSection": 4,
+      "classroom": "东九楼 D102",
+      "weekPattern": {
+        "type": "all",
+        "customWeeks": null
+      }
+    }
+  ]
+}

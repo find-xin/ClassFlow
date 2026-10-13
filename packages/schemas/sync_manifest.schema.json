@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://classflow.org/schemas/sync_manifest.schema.json",
+  "title": "DeviceSyncManifest",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "deviceId",
+    "deviceName",
+    "clientVersion",
+    "lastUpdated",
+    "latestSequence",
+    "latestRevisionFile"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "deviceId": {
+      "type": "string"
+    },
+    "deviceName": {
+      "type": "string"
+    },
+    "clientVersion": {
+      "type": "string"
+    },
+    "lastUpdated": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "latestSequence": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "latestRevisionFile": {
+      "type": "string"
+    },
+    "snapshotFile": {
+      "type": ["string", "null"]
+    }
+  },
+  "additionalProperties": false
+}

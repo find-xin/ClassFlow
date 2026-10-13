@@ -1,0 +1,12 @@
+{
+  "id": "769a68a2-3f8d-4ba6-86f1-ec4fa57209f8",
+  "scheduleId": "c4b92b60-449e-4a6b-9ee7-25e1a1795db2",
+  "originalDate": "2026-10-19",
+  "exceptionType": "reschedule",
+  "targetDate": "2026-10-24",
+  "targetDayOfWeek": 6,
+  "targetStartSection": 5,
+  "targetEndSection": 6,
+  "targetClassroom": "东九楼 D108",
+  "reason": "10月19日教师学术会议调课至周六下午"
+}

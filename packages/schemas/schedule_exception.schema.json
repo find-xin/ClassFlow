@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://classflow.org/schemas/schedule_exception.schema.json",
+  "title": "ScheduleException",
+  "type": "object",
+  "required": [
+    "id",
+    "scheduleId",
+    "originalDate",
+    "exceptionType"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "scheduleId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "originalDate": {
+      "type": "string",
+      "format": "date"
+    },
+    "exceptionType": {
+      "type": "string",
+      "enum": ["cancel", "reschedule", "makeup", "room_change"]
+    },
+    "targetDate": {
+      "type": ["string", "null"],
+      "format": "date"
+    },
+    "targetDayOfWeek": {
+      "type": ["integer", "null"],
+      "minimum": 1,
+      "maximum": 7
+    },
+    "targetStartSection": {
+      "type": ["integer", "null"],
+      "minimum": 1
+    },
+    "targetEndSection": {
+      "type": ["integer", "null"],
+      "minimum": 1
+    },
+    "targetClassroom": {
+      "type": ["string", "null"],
+      "maxLength": 60
+    },
+    "reason": {
+      "type": ["string", "null"],
+      "maxLength": 200
+    }
+  },
+  "additionalProperties": false
+}
