@@ -93,7 +93,8 @@ flowchart LR
   - Deterministic 3-way merge conflict resolution.
   - Secure credential storage in macOS Keychain and Android KeyStore.
   - Sync status indicator and conflict review UI.
-- **Deliverables**: Operational multi-device synchronization engine tested across Mac and Android.
+- **Deliverables**: Operational multi-device synchronization engine with S3 SigV4 provider (Qiniu Kodo / generic S3), device-isolated revision logs, 3-way merge reconciliation, macOS Keychain credential storage, and native Settings UI.
+- **Status**: **COMPLETED (Phase 6)**.
 - **Dependencies**: Phase 5.
 
 ### Phase 7: System Calendar Integration

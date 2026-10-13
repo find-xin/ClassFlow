@@ -130,4 +130,21 @@ struct MacOSViewModelTests {
         state.importICS(content: icsText)
         #expect(state.courses.count >= countBefore)
     }
+
+    @Test("KeychainService save, read, and delete operations")
+    func testKeychainService() {
+        let keychain = KeychainService(serviceName: "org.classflow.test.\(UUID().uuidString)")
+        let account = "test_key"
+        let secret = "SuperSecretKey_12345"
+
+        let saved = keychain.saveSecret(account: account, secret: secret)
+        if saved {
+            let readValue = keychain.readSecret(account: account)
+            #expect(readValue == secret)
+
+            keychain.deleteSecret(account: account)
+            let afterDelete = keychain.readSecret(account: account)
+            #expect(afterDelete == nil)
+        }
+    }
 }

@@ -26,6 +26,11 @@ public struct SettingsView: View {
                     Label("学期管理", systemImage: "books.vertical")
                 }
 
+            SyncSettingsTab(appState: appState)
+                .tabItem {
+                    Label("云同步", systemImage: "icloud.and.arrow.up")
+                }
+
             aboutTab
                 .tabItem {
                     Label("关于", systemImage: "info.circle")
