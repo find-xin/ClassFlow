@@ -36,6 +36,11 @@ public struct SettingsView: View {
                     Label("通知", systemImage: "bell.badge")
                 }
 
+            WidgetSettingsTab(appState: appState)
+                .tabItem {
+                    Label("小组件", systemImage: "rectangle.3.group")
+                }
+
             SyncSettingsTab(appState: appState)
                 .tabItem {
                     Label("云同步", systemImage: "icloud.and.arrow.up")
@@ -46,7 +51,7 @@ public struct SettingsView: View {
                     Label("关于", systemImage: "info.circle")
                 }
         }
-        .frame(width: 520, height: 400)
+        .frame(width: 560, height: 460)
         .padding()
     }
 

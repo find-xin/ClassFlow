@@ -11,10 +11,11 @@ DMG_NAME="${APP_NAME}-1.0.0-macOS-arm64.dmg"
 
 echo "============================================================"
 echo " Packaging ClassFlow for macOS (Apple Silicon arm64)"
+echo " Including Native WidgetKit Extension (.appex)"
 echo "============================================================"
 
 # 1. Compile Release Binary
-echo "[1/5] Building release binary..."
+echo "[1/6] Building release binary..."
 cd "${MACOS_DIR}"
 swift build -c release
 
@@ -25,16 +26,17 @@ if [[ ! -f "${RELEASE_BIN}" ]]; then
 fi
 
 # 2. Prepare .app Bundle Structure
-echo "[2/5] Constructing ${APP_NAME}.app bundle..."
+echo "[2/6] Constructing ${APP_NAME}.app bundle..."
 rm -rf "${DIST_DIR}"
 mkdir -p "${BUNDLE_DIR}/Contents/MacOS"
 mkdir -p "${BUNDLE_DIR}/Contents/Resources"
+mkdir -p "${BUNDLE_DIR}/Contents/PlugIns"
 
 cp "${RELEASE_BIN}" "${BUNDLE_DIR}/Contents/MacOS/${APP_NAME}"
 chmod +x "${BUNDLE_DIR}/Contents/MacOS/${APP_NAME}"
 
 # 3. Write Info.plist
-echo "[3/5] Generating Info.plist..."
+echo "[3/6] Generating Info.plist..."
 cat << 'EOF' > "${BUNDLE_DIR}/Contents/Info.plist"
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -70,13 +72,83 @@ cat << 'EOF' > "${BUNDLE_DIR}/Contents/Info.plist"
 </plist>
 EOF
 
-# 4. Create ZIP Distribution
-echo "[4/5] Creating ZIP archive..."
+# 4. Compile and Embed WidgetKit Extension (.appex)
+echo "[4/6] Compiling and embedding WidgetKit Extension (ClassFlowWidgets.appex)..."
+WIDGET_DIR="${BUNDLE_DIR}/Contents/PlugIns/ClassFlowWidgets.appex"
+mkdir -p "${WIDGET_DIR}/Contents/MacOS"
+mkdir -p "${WIDGET_DIR}/Contents/Resources"
+
+WIDGET_SRC_DIR="${MACOS_DIR}/WidgetExtension"
+SDK_PATH=$(xcrun --show-sdk-path --sdk macosx)
+
+swiftc \
+    -parse-as-library \
+    -target arm64-apple-macos15.0 \
+    -sdk "${SDK_PATH}" \
+    -framework WidgetKit \
+    -framework SwiftUI \
+    -framework AppKit \
+    -framework Foundation \
+    -O \
+    -o "${WIDGET_DIR}/Contents/MacOS/ClassFlowWidgets" \
+    "${WIDGET_SRC_DIR}/WidgetData.swift" \
+    "${WIDGET_SRC_DIR}/WidgetViews.swift" \
+    "${WIDGET_SRC_DIR}/WidgetExtension.swift"
+
+chmod +x "${WIDGET_DIR}/Contents/MacOS/ClassFlowWidgets"
+
+cat << 'EOF' > "${WIDGET_DIR}/Contents/Info.plist"
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>zh_CN</string>
+    <key>CFBundleDisplayName</key>
+    <string>ClassFlow 课程小组件</string>
+    <key>CFBundleExecutable</key>
+    <string>ClassFlowWidgets</string>
+    <key>CFBundleIdentifier</key>
+    <string>org.classflow.ClassFlow.ClassFlowWidgets</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>ClassFlowWidgets</string>
+    <key>CFBundlePackageType</key>
+    <string>XPC!</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>15.0</string>
+    <key>NSExtension</key>
+    <dict>
+        <key>NSExtensionPointIdentifier</key>
+        <string>com.apple.widgetkit-extension</string>
+    </dict>
+</dict>
+</plist>
+EOF
+
+# Code signing appex extension and application bundle (ad-hoc signature)
+echo "Code signing ClassFlowWidgets.appex and ClassFlow.app..."
+codesign --force --deep --sign - "${WIDGET_DIR}"
+codesign --force --deep --sign - "${BUNDLE_DIR}"
+
+# Register with macOS LaunchServices so the OS discovers the widget extension immediately
+LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+if [[ -x "${LSREGISTER}" ]]; then
+    "${LSREGISTER}" -f "${BUNDLE_DIR}" || true
+fi
+
+# 5. Create ZIP Distribution
+echo "[5/6] Creating ZIP archive..."
 cd "${DIST_DIR}"
 zip -r -q "${APP_NAME}-1.0.0-macOS-arm64.zip" "${APP_NAME}.app"
 
-# 5. Create DMG Disk Image with Applications symlink
-echo "[5/5] Building Apple DMG disk image..."
+# 6. Create DMG Disk Image with Applications symlink
+echo "[6/6] Building Apple DMG disk image..."
 STAGING_DIR="${DIST_DIR}/staging"
 mkdir -p "${STAGING_DIR}"
 cp -R "${BUNDLE_DIR}" "${STAGING_DIR}/"
@@ -91,7 +163,7 @@ hdiutil create \
 
 rm -rf "${STAGING_DIR}"
 
-# 6. Generate Checksums
+# Generate Checksums
 cd "${DIST_DIR}"
 shasum -a 256 "${DMG_NAME}" > "${DMG_NAME}.sha256"
 shasum -a 256 "${APP_NAME}-1.0.0-macOS-arm64.zip" > "${APP_NAME}-1.0.0-macOS-arm64.zip.sha256"
@@ -100,4 +172,7 @@ echo "============================================================"
 echo " Packaging Complete!"
 echo " Artifacts in ${DIST_DIR}:"
 ls -lh "${DIST_DIR}"
+echo ""
+echo " PlugIns in ${APP_NAME}.app:"
+ls -lh "${BUNDLE_DIR}/Contents/PlugIns"
 echo "============================================================"

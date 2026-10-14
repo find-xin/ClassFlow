@@ -5,6 +5,7 @@ import ClassFlowCore
 /// Native top toolbar containing semester switcher, week navigator, import/export, and action shortcuts.
 public struct MainWindowToolbar: View {
     @Bindable public var appState: AppState
+    @State private var isShowingWidgetPopover: Bool = false
 
     public init(appState: AppState) {
         self.appState = appState
@@ -120,6 +121,39 @@ public struct MainWindowToolbar: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut("n", modifiers: .command)
+
+                Button {
+                    isShowingWidgetPopover.toggle()
+                } label: {
+                    Label("小组件", systemImage: "rectangle.3.group")
+                        .font(.system(size: 12))
+                }
+                .buttonStyle(.bordered)
+                .help("查看桌面小组件效果")
+                .popover(isPresented: $isShowingWidgetPopover) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Text("ClassFlow 桌面小组件")
+                                .font(.headline)
+                            Spacer()
+                            Button("前往设置") {
+                                isShowingWidgetPopover = false
+                                appState.isShowingSettings = true
+                            }
+                            .font(.caption)
+                        }
+                        Divider()
+                        TodayClassesWidgetView(payload: appState.widgetDataStore.load())
+                            .frame(width: 325, height: 155)
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                            .shadow(radius: 4)
+                        Text("提示：可在桌面右击选择「编辑小组件」常驻到 Mac 桌面。")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding()
+                    .frame(width: 360)
+                }
 
                 Menu {
                     Toggle("显示周末", isOn: $appState.settings.showWeekends)
