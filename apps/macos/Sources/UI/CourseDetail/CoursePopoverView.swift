@@ -38,7 +38,7 @@ public struct CoursePopoverView: View {
                 Spacer()
 
                 Circle()
-                    .fill(Color(hex: item.color) ?? .accentColor)
+                    .fill(Color(hex: item.color))
                     .frame(width: 12, height: 12)
             }
 

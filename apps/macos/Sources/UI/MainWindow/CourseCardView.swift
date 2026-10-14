@@ -1,7 +1,7 @@
 import SwiftUI
 import ClassFlowCore
 
-/// Visual card component rendering a scheduled course occurrence.
+/// Visual card component rendering scheduled course occurrences with WakeUp's pastel aesthetics.
 public struct CourseCardView: View {
     public let item: TimelineItem
     public let height: CGFloat
@@ -21,33 +21,45 @@ public struct CourseCardView: View {
     }
 
     private var themeColor: Color {
-        Color(hex: item.color) ?? Color.accentColor
+        Color(hex: item.color, defaultColor: Color(hex: "#5B7FB5"))
     }
 
     public var body: some View {
         Button(action: onTap) {
             ZStack(alignment: .topLeading) {
-                // Background Frosted Material
-                FrostedCardBackground(
-                    color: item.status == .cancelled ? Color.gray : themeColor,
-                    opacity: item.status == .cancelled ? 0.35 : cardOpacity,
-                    cornerRadius: 8
-                )
+                // Background
+                if item.isCurrentWeek {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(themeColor.opacity(cardOpacity))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .strokeBorder(Color.white.opacity(0.18), lineWidth: 0.5)
+                        )
+                        .shadow(color: Color.black.opacity(0.08), radius: 3, x: 0, y: 1.5)
+                } else {
+                    // Non-current week: Translucent with dotted/faint border
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(themeColor.opacity(0.28))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .strokeBorder(themeColor.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                        )
+                }
 
-                // Card Content
+                // Content Layout
                 VStack(alignment: .leading, spacing: 3) {
-                    // Header row: Title + Badges
-                    HStack(alignment: .top, spacing: 4) {
+                    // Course Title
+                    HStack(alignment: .top, spacing: 2) {
                         Text(item.title)
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(.white)
-                            .lineLimit(2)
+                            .font(.system(size: 12.5, weight: .bold))
+                            .foregroundColor(item.isCurrentWeek ? .white : .primary.opacity(0.75))
+                            .lineLimit(height < 60 ? 1 : 2)
                             .strikethrough(item.status == .cancelled, color: .white.opacity(0.8))
 
                         Spacer(minLength: 0)
 
                         if item.hasConflict {
-                            Image(systemName: "exclamationmark.triangle.fill")
+                            Image(systemName: "exclamationmark.circle.fill")
                                 .font(.system(size: 10))
                                 .foregroundColor(.yellow)
                         }
@@ -56,33 +68,23 @@ public struct CourseCardView: View {
                             statusPill("已停", color: .red)
                         } else if item.status == .rescheduled {
                             statusPill("调课", color: .orange)
-                        } else if item.status == .makeup {
-                            statusPill("补课", color: .green)
                         }
                     }
 
-                    // Location / Room
+                    // Location: "@东九楼 D102"
                     if let location = item.location, !location.isEmpty {
-                        HStack(spacing: 2) {
-                            Image(systemName: "mappin.and.ellipse")
-                                .font(.system(size: 8))
-                            Text(location)
-                                .font(.system(size: 10))
-                                .lineLimit(1)
-                        }
-                        .foregroundColor(.white.opacity(0.92))
+                        Text("@\(location)")
+                            .font(.system(size: 10.5, weight: .medium))
+                            .foregroundColor(item.isCurrentWeek ? .white.opacity(0.92) : .secondary)
+                            .lineLimit(1)
                     }
 
-                    // Teacher (if height allows, e.g. multi-period span)
-                    if height >= 100, let teacher = item.teacher, !teacher.isEmpty {
-                        HStack(spacing: 2) {
-                            Image(systemName: "person.fill")
-                                .font(.system(size: 8))
-                            Text(teacher)
-                                .font(.system(size: 10))
-                                .lineLimit(1)
-                        }
-                        .foregroundColor(.white.opacity(0.85))
+                    // Teacher (if height allows)
+                    if height >= 95, let teacher = item.teacher, !teacher.isEmpty {
+                        Text(teacher)
+                            .font(.system(size: 9.5))
+                            .foregroundColor(item.isCurrentWeek ? .white.opacity(0.85) : .secondary.opacity(0.8))
+                            .lineLimit(1)
                     }
 
                     Spacer(minLength: 0)
@@ -90,46 +92,17 @@ public struct CourseCardView: View {
                 .padding(6)
             }
             .frame(height: max(32, height))
-            .shadow(color: Color.black.opacity(0.08), radius: 3, x: 0, y: 1)
         }
         .buttonStyle(.plain)
     }
 
     private func statusPill(_ text: String, color: Color) -> some View {
         Text(text)
-            .font(.system(size: 8, weight: .bold))
+            .font(.system(size: 8.5, weight: .bold))
             .foregroundColor(.white)
-            .padding(.horizontal, 3)
+            .padding(.horizontal, 3.5)
             .padding(.vertical, 1)
-            .background(color.opacity(0.85))
-            .clipShape(RoundedRectangle(cornerRadius: 3))
-    }
-}
-
-// MARK: - Color Hex Initializer
-extension Color {
-    public init?(hex: String) {
-        var hexSanitized = hex.trimmingCharacters(in: .whitespacesAndNewlines)
-        if hexSanitized.hasPrefix("#") {
-            hexSanitized.removeFirst()
-        }
-
-        guard hexSanitized.count == 6 || hexSanitized.count == 8 else { return nil }
-
-        var rgb: UInt64 = 0
-        guard Scanner(string: hexSanitized).scanHexInt64(&rgb) else { return nil }
-
-        if hexSanitized.count == 6 {
-            let r = Double((rgb & 0xFF0000) >> 16) / 255.0
-            let g = Double((rgb & 0x00FF00) >> 8) / 255.0
-            let b = Double(rgb & 0x0000FF) / 255.0
-            self.init(red: r, green: g, blue: b)
-        } else {
-            let r = Double((rgb & 0xFF000000) >> 24) / 255.0
-            let g = Double((rgb & 0x00FF0000) >> 16) / 255.0
-            let b = Double((rgb & 0x0000FF00) >> 8) / 255.0
-            let a = Double(rgb & 0x000000FF) / 255.0
-            self.init(red: r, green: g, blue: b, opacity: a)
-        }
+            .background(color.opacity(0.9))
+            .clipShape(RoundedRectangle(cornerRadius: 4))
     }
 }

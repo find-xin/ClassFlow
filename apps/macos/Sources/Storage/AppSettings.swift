@@ -7,6 +7,9 @@ public struct AppSettings: Codable, Sendable, Equatable {
     public var dimNonCurrentWeekCourses: Bool
     public var cardOpacity: Double
     public var customBackgroundPath: String?
+    public var wallpaperPreset: String // "wakeup_sky", "mint", "lavender", "warm_cream", "midnight", "custom"
+    public var isCompactMode: Bool
+    public var selectedTab: String // "schedule", "timetable", "study", "profile"
     public var enableMenuBarExtra: Bool
     public var themeMode: String // "system", "light", "dark"
 
@@ -29,6 +32,9 @@ public struct AppSettings: Codable, Sendable, Equatable {
         dimNonCurrentWeekCourses: Bool = true,
         cardOpacity: Double = 0.88,
         customBackgroundPath: String? = nil,
+        wallpaperPreset: String = "wakeup_sky",
+        isCompactMode: Bool = false,
+        selectedTab: String = "timetable",
         enableMenuBarExtra: Bool = true,
         themeMode: String = "system",
         calendarName: String = "ClassFlow 课程表",
@@ -46,6 +52,9 @@ public struct AppSettings: Codable, Sendable, Equatable {
         self.dimNonCurrentWeekCourses = dimNonCurrentWeekCourses
         self.cardOpacity = cardOpacity
         self.customBackgroundPath = customBackgroundPath
+        self.wallpaperPreset = wallpaperPreset
+        self.isCompactMode = isCompactMode
+        self.selectedTab = selectedTab
         self.enableMenuBarExtra = enableMenuBarExtra
         self.themeMode = themeMode
         self.calendarName = calendarName
@@ -66,6 +75,9 @@ public struct AppSettings: Codable, Sendable, Equatable {
         self.dimNonCurrentWeekCourses = try container.decodeIfPresent(Bool.self, forKey: .dimNonCurrentWeekCourses) ?? true
         self.cardOpacity = try container.decodeIfPresent(Double.self, forKey: .cardOpacity) ?? 0.88
         self.customBackgroundPath = try container.decodeIfPresent(String.self, forKey: .customBackgroundPath)
+        self.wallpaperPreset = try container.decodeIfPresent(String.self, forKey: .wallpaperPreset) ?? "wakeup_sky"
+        self.isCompactMode = try container.decodeIfPresent(Bool.self, forKey: .isCompactMode) ?? false
+        self.selectedTab = try container.decodeIfPresent(String.self, forKey: .selectedTab) ?? "timetable"
         self.enableMenuBarExtra = try container.decodeIfPresent(Bool.self, forKey: .enableMenuBarExtra) ?? true
         self.themeMode = try container.decodeIfPresent(String.self, forKey: .themeMode) ?? "system"
 

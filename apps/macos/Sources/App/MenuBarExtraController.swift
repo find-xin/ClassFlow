@@ -47,7 +47,7 @@ public struct MenuBarCompanionView: View {
                 ForEach(todayOccurrences) { item in
                     HStack(alignment: .center, spacing: 8) {
                         Circle()
-                            .fill(Color(hex: item.color) ?? .accentColor)
+                            .fill(Color(hex: item.color))
                             .frame(width: 8, height: 8)
 
                         VStack(alignment: .leading, spacing: 1) {

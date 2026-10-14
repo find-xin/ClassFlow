@@ -135,7 +135,7 @@ public struct TodayClassesWidgetView: View {
                     ForEach(payload.todayClasses.prefix(3)) { item in
                         HStack(spacing: 8) {
                             RoundedRectangle(cornerRadius: 2)
-                                .fill(Color(hex: item.colorHex) ?? .accentColor)
+                                .fill(Color(hex: item.colorHex))
                                 .frame(width: 3, height: 26)
 
                             VStack(alignment: .leading, spacing: 1) {
@@ -219,7 +219,7 @@ public struct WeekOverviewWidgetView: View {
                                         .padding(.horizontal, 2)
                                         .frame(maxWidth: .infinity)
                                         .frame(height: 20)
-                                        .background(Color(hex: course.colorHex) ?? .accentColor)
+                                        .background(Color(hex: course.colorHex))
                                         .clipShape(RoundedRectangle(cornerRadius: 3))
                                 }
                             }

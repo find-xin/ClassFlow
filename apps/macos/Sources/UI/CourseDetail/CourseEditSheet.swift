@@ -80,7 +80,7 @@ public struct CourseEditSheet: View {
                         Spacer()
                         ForEach(colors, id: \.self) { hex in
                             Circle()
-                                .fill(Color(hex: hex) ?? .gray)
+                                .fill(Color(hex: hex))
                                 .frame(width: 20, height: 20)
                                 .overlay(
                                     Circle()

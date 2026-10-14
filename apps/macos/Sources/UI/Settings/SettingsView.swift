@@ -73,6 +73,14 @@ public struct SettingsView: View {
     private var timetableTab: some View {
         Form {
             Section("课表视图选项") {
+                Picker("课表壁纸主题", selection: $appState.settings.wallpaperPreset) {
+                    Text("WakeUp 经典蔚蓝 (默认)").tag("wakeup_sky")
+                    Text("薄荷浅绿").tag("mint")
+                    Text("暮光薰衣草").tag("lavender")
+                    Text("暖光杏色").tag("warm_cream")
+                    Text("暗夜深空").tag("midnight")
+                }
+
                 Toggle("显示周六和周日 (7列视图)", isOn: $appState.settings.showWeekends)
                 Toggle("在课表中显示非本周课程", isOn: $appState.settings.showNonCurrentWeekCourses)
                 Toggle("淡化显示非本周课程 (半透明)", isOn: $appState.settings.dimNonCurrentWeekCourses)
