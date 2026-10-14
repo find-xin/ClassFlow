@@ -188,5 +188,64 @@ struct MacOSViewModelTests {
         #expect(plan.toUpdate.isEmpty)
         #expect(plan.toDelete.isEmpty)
     }
+
+    @Test("Create, switch, and delete semesters via AppState")
+    @MainActor
+    func testSemesterCreationAndManagement() {
+        let state = makeIsolatedAppState()
+        let initialSemCount = state.semesters.count
+
+        let newSem = state.createSemester(
+            name: "大二下新学期",
+            startDate: "2027-02-22",
+            totalWeeks: 18,
+            sections: AppState.standardSectionTimes()
+        )
+
+        #expect(state.semesters.count == initialSemCount + 1)
+        #expect(state.currentSemesterId == newSem.id)
+        #expect(state.currentSemester?.name == "大二下新学期")
+        #expect(state.currentSemester?.totalWeeks == 18)
+        #expect(state.currentSemester?.sections.count == 12)
+
+        // Try deleting a semester
+        state.deleteSemester(id: newSem.id)
+        #expect(state.semesters.count == initialSemCount)
+        #expect(state.currentSemesterId != newSem.id)
+
+        // Guard against deleting last semester
+        while state.semesters.count > 1 {
+            state.deleteSemester(id: state.semesters.last!.id)
+        }
+        #expect(state.semesters.count == 1)
+        state.deleteSemester(id: state.semesters.first!.id)
+        #expect(state.semesters.count == 1) // Must not delete last semester
+    }
+
+    @Test("Custom section times modification and persistence")
+    @MainActor
+    func testCustomSectionTimes() {
+        let state = makeIsolatedAppState()
+        guard let current = state.currentSemester else {
+            Issue.record("Missing current semester")
+            return
+        }
+
+        let customTimes: [SectionTime] = [
+            SectionTime(section: 1, startTime: "08:30", endTime: "09:15"),
+            SectionTime(section: 2, startTime: "09:20", endTime: "10:05"),
+            SectionTime(section: 3, startTime: "10:15", endTime: "11:00"),
+            SectionTime(section: 4, startTime: "11:05", endTime: "11:50"),
+            SectionTime(section: 5, startTime: "14:30", endTime: "15:15")
+        ]
+
+        state.updateSectionTimes(semesterId: current.id, sections: customTimes)
+
+        let updatedSem = state.currentSemester!
+        #expect(updatedSem.sections.count == 5)
+        #expect(updatedSem.sections[0].startTime == "08:30")
+        #expect(updatedSem.sections[0].endTime == "09:15")
+        #expect(updatedSem.sections[4].startTime == "14:30")
+    }
 }
 

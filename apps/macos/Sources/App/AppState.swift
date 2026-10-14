@@ -25,6 +25,11 @@ public final class AppState {
     public var stagedImportPreview: ImportPreview? = nil
     public var importErrorMessage: String? = nil
 
+    public var isShowingCreateSemester: Bool = false
+    public var isShowingManageSemesters: Bool = false
+    public var isShowingEditSectionTimes: Bool = false
+    public var editingSemesterForSections: Semester? = nil
+
     private let database: LocalDatabase
     public let timelineEngine: TimelineEngine
     private let mutationCoordinator: ScheduleMutationCoordinator
@@ -152,6 +157,118 @@ public final class AppState {
         }
         self.selectedWeek = calculateCurrentWeek(for: semester)
         save()
+    }
+
+    // MARK: - Semester Management
+
+    @discardableResult
+    public func createSemester(
+        name: String,
+        startDate: String,
+        totalWeeks: Int = 20,
+        sections: [SectionTime]? = nil
+    ) -> Semester {
+        let defaultSections = sections ?? defaultSectionTimes()
+        let cal = Calendar.current
+        let df = DateFormatter()
+        df.dateFormat = "yyyy-MM-dd"
+        let startD = df.date(from: startDate) ?? Date()
+        let endD = cal.date(byAdding: .weekOfYear, value: totalWeeks, to: startD) ?? startD
+        let endDateStr = df.string(from: endD)
+
+        let newSemester = Semester(
+            id: UUID(),
+            name: name,
+            startDate: startDate,
+            endDate: endDateStr,
+            totalWeeks: totalWeeks,
+            isCurrent: true,
+            sections: defaultSections
+        )
+
+        for i in 0..<semesters.count {
+            semesters[i].isCurrent = false
+        }
+        semesters.append(newSemester)
+        self.currentSemesterId = newSemester.id
+        self.selectedWeek = calculateCurrentWeek(for: newSemester)
+        save()
+        return newSemester
+    }
+
+    public func updateSemester(_ semester: Semester) {
+        if let idx = semesters.firstIndex(where: { $0.id == semester.id }) {
+            semesters[idx] = semester
+            save()
+        }
+    }
+
+    public func deleteSemester(id: UUID) {
+        guard semesters.count > 1 else { return }
+        semesters.removeAll(where: { $0.id == id })
+        courses.removeAll(where: { $0.semesterId == id })
+        if currentSemesterId == id {
+            if let first = semesters.first {
+                selectSemester(id: first.id)
+            }
+        } else {
+            save()
+        }
+    }
+
+    public func updateSectionTimes(semesterId: UUID, sections: [SectionTime]) {
+        if let idx = semesters.firstIndex(where: { $0.id == semesterId }) {
+            semesters[idx].sections = sections.sorted(by: { $0.section < $1.section })
+            save()
+        }
+    }
+
+    public static func standardSectionTimes() -> [SectionTime] {
+        let defaultSlots: [(start: (Int, Int), end: (Int, Int))] = [
+            ((8, 30), (9, 15)),
+            ((9, 20), (10, 05)),
+            ((10, 15), (11, 00)),
+            ((11, 05), (11, 50)),
+            ((14, 30), (15, 15)),
+            ((15, 20), (16, 05)),
+            ((16, 15), (17, 00)),
+            ((17, 05), (17, 50)),
+            ((18, 30), (19, 15)),
+            ((19, 20), (20, 05)),
+            ((20, 15), (21, 00)),
+            ((21, 05), (21, 50))
+        ]
+        return defaultSlots.enumerated().map { index, slot in
+            let sStr = String(format: "%02d:%02d", slot.start.0, slot.start.1)
+            let eStr = String(format: "%02d:%02d", slot.end.0, slot.end.1)
+            return SectionTime(section: index + 1, startTime: sStr, endTime: eStr)
+        }
+    }
+
+    public static func earlySectionTimes() -> [SectionTime] {
+        let defaultSlots: [(start: (Int, Int), end: (Int, Int))] = [
+            ((8, 00), (8, 45)),
+            ((8, 50), (9, 35)),
+            ((10, 05), (10, 50)),
+            ((10, 55), (11, 40)),
+            ((14, 00), (14, 45)),
+            ((14, 50), (15, 35)),
+            ((15, 55), (16, 40)),
+            ((16, 45), (17, 30)),
+            ((18, 30), (19, 15)),
+            ((19, 20), (20, 05)),
+            ((20, 10), (20, 55)),
+            ((21, 00), (21, 45))
+        ]
+        return defaultSlots.enumerated().map { index, slot in
+            let sStr = String(format: "%02d:%02d", slot.start.0, slot.start.1)
+            let eStr = String(format: "%02d:%02d", slot.end.0, slot.end.1)
+            return SectionTime(section: index + 1, startTime: sStr, endTime: eStr)
+        }
+    }
+
+    public func defaultSectionTimes() -> [SectionTime] {
+        Self.standardSectionTimes()
     }
 
     // MARK: - Course Management & Mutations

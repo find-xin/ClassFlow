@@ -86,22 +86,31 @@ public struct SettingsView: View {
     }
 
     private var semestersTab: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("学期列表")
-                .font(.headline)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("课表与学期管理")
+                    .font(.headline)
+                Spacer()
+                Button(action: {
+                    appState.isShowingCreateSemester = true
+                }) {
+                    Label("新建课表", systemImage: "plus")
+                }
+                .buttonStyle(.borderedProminent)
+            }
 
             List(appState.semesters) { sem in
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(sem.name)
                             .font(.system(size: 13, weight: .medium))
-                        Text("共 \(sem.totalWeeks) 周 | \(sem.startDate) 起")
+                        Text("共 \(sem.totalWeeks) 周 | \(sem.startDate) 起 | \(sem.sections.count) 节/天")
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
                     Spacer()
                     if sem.isCurrent {
-                        Text("当前学期")
+                        Text("当前使用")
                             .font(.caption)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
@@ -115,8 +124,28 @@ public struct SettingsView: View {
                         .buttonStyle(.bordered)
                         .font(.caption)
                     }
+
+                    Button("作息时间") {
+                        appState.editingSemesterForSections = sem
+                        appState.isShowingEditSectionTimes = true
+                    }
+                    .buttonStyle(.bordered)
+                    .font(.caption)
                 }
                 .padding(.vertical, 2)
+            }
+
+            HStack {
+                Button("打开课表管理器...") {
+                    appState.isShowingManageSemesters = true
+                }
+                .buttonStyle(.bordered)
+
+                Button("自定义当前作息时间...") {
+                    appState.editingSemesterForSections = appState.currentSemester
+                    appState.isShowingEditSectionTimes = true
+                }
+                .buttonStyle(.bordered)
             }
         }
         .padding()

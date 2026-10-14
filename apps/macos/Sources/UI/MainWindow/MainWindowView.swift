@@ -151,6 +151,18 @@ public struct MainWindowView: View {
                 )
             }
         }
+        // Create Semester Sheet
+        .sheet(isPresented: $appState.isShowingCreateSemester) {
+            SemesterCreateSheet(appState: appState)
+        }
+        // Manage Semesters Sheet
+        .sheet(isPresented: $appState.isShowingManageSemesters) {
+            SemesterManageSheet(appState: appState)
+        }
+        // Edit Section Times Sheet
+        .sheet(isPresented: $appState.isShowingEditSectionTimes) {
+            SectionTimeEditSheet(appState: appState, targetSemester: appState.editingSemesterForSections)
+        }
         .alert("导入失败", isPresented: .init(
             get: { appState.importErrorMessage != nil },
             set: { if !$0 { appState.importErrorMessage = nil } }
@@ -162,16 +174,26 @@ public struct MainWindowView: View {
     }
 
     private var emptySemesterPlaceholder: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 14) {
             Image(systemName: "calendar.badge.plus")
                 .font(.system(size: 48))
                 .foregroundColor(.secondary)
-            Text("暂无学期数据")
-                .font(.title3)
-            Button("创建第一个学期") {
-                appState.isShowingSettings = true
+            Text("暂无课表数据")
+                .font(.title3.bold())
+            Text("您可以新建一个属于自己的课表，或导入已有课表文件。")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            HStack(spacing: 12) {
+                Button("新建课表") {
+                    appState.isShowingCreateSemester = true
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button("导入课表文件...") {
+                    appState.isShowingSettings = true
+                }
+                .buttonStyle(.bordered)
             }
-            .buttonStyle(.borderedProminent)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

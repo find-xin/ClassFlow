@@ -77,11 +77,13 @@ echo "[4/6] Compiling and embedding WidgetKit Extension (ClassFlowWidgets.appex)
 WIDGET_DIR="${BUNDLE_DIR}/Contents/PlugIns/ClassFlowWidgets.appex"
 mkdir -p "${WIDGET_DIR}/Contents/MacOS"
 mkdir -p "${WIDGET_DIR}/Contents/Resources"
+mkdir -p /tmp/clang-cache
 
 WIDGET_SRC_DIR="${MACOS_DIR}/WidgetExtension"
 SDK_PATH=$(xcrun --show-sdk-path --sdk macosx)
 
 swiftc \
+    -module-cache-path /tmp/clang-cache \
     -parse-as-library \
     -target arm64-apple-macos15.0 \
     -sdk "${SDK_PATH}" \
@@ -120,6 +122,10 @@ cat << 'EOF' > "${WIDGET_DIR}/Contents/Info.plist"
     <string>1.0.0</string>
     <key>CFBundleVersion</key>
     <string>1</string>
+    <key>CFBundleSupportedPlatforms</key>
+    <array>
+        <string>MacOSX</string>
+    </array>
     <key>LSMinimumSystemVersion</key>
     <string>15.0</string>
     <key>NSExtension</key>
@@ -131,15 +137,25 @@ cat << 'EOF' > "${WIDGET_DIR}/Contents/Info.plist"
 </plist>
 EOF
 
-# Code signing appex extension and application bundle (ad-hoc signature)
-echo "Code signing ClassFlowWidgets.appex and ClassFlow.app..."
-codesign --force --deep --sign - "${WIDGET_DIR}"
-codesign --force --deep --sign - "${BUNDLE_DIR}"
+# Code signing appex extension and application bundle with App Sandbox entitlements
+echo "Code signing ClassFlowWidgets.appex and ClassFlow.app with Sandbox entitlements..."
+codesign --force --sign - --entitlements "${MACOS_DIR}/Entitlements/ClassFlowWidgets.entitlements" "${WIDGET_DIR}"
+codesign --force --sign - --entitlements "${MACOS_DIR}/Entitlements/ClassFlow.entitlements" "${BUNDLE_DIR}"
 
-# Register with macOS LaunchServices so the OS discovers the widget extension immediately
+# Install / update to /Applications if writable and register with macOS
 LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
-if [[ -x "${LSREGISTER}" ]]; then
-    "${LSREGISTER}" -f "${BUNDLE_DIR}" || true
+if [[ -d "/Applications" && -w "/Applications" ]]; then
+    echo "Installing updated ClassFlow.app into /Applications..."
+    rm -rf "/Applications/ClassFlow.app"
+    cp -R "${BUNDLE_DIR}" "/Applications/ClassFlow.app"
+    if [[ -x "${LSREGISTER}" ]]; then
+        "${LSREGISTER}" -f "/Applications/ClassFlow.app" || true
+    fi
+    pluginkit -a "/Applications/ClassFlow.app/Contents/PlugIns/ClassFlowWidgets.appex" || true
+else
+    if [[ -x "${LSREGISTER}" ]]; then
+        "${LSREGISTER}" -f "${BUNDLE_DIR}" || true
+    fi
 fi
 
 # 5. Create ZIP Distribution

@@ -1,7 +1,7 @@
 import SwiftUI
 import ClassFlowCore
 
-/// Header bar rendering weekday titles and calendar dates with today highlight.
+/// Header bar rendering month indicator, weekday titles, and calendar dates with WakeUp-inspired today highlight.
 public struct DayHeaderView: View {
     public let dateStrings: [String] // 7 dates
     public let showWeekends: Bool
@@ -13,34 +13,56 @@ public struct DayHeaderView: View {
         self.todayDateString = todayDateString
     }
 
-    private let dayNames = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+    private let dayNames = ["一", "二", "三", "四", "五", "六", "日"]
+
+    private var currentMonthString: String {
+        guard let first = dateStrings.first, let month = first.split(separator: "-").dropFirst().first else {
+            return "\(Calendar.current.component(.month, from: Date()))月"
+        }
+        let mInt = Int(month) ?? 1
+        return "\(mInt)月"
+    }
 
     public var body: some View {
         HStack(spacing: 4) {
-            // Space reserved for left section axis
-            Spacer()
-                .frame(width: 48)
+            // 1. Month column (aligned with section axis)
+            VStack(spacing: 1) {
+                Text(currentMonthString)
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(.primary)
+            }
+            .frame(width: 48)
 
+            // 2. Weekday & Day Number columns
             let visibleCount = showWeekends ? 7 : 5
             ForEach(0..<visibleCount, id: \.self) { index in
                 let dateStr = index < dateStrings.count ? dateStrings[index] : ""
                 let isToday = (dateStr == todayDateString)
+                let dayNumber = formatDayNumber(dateStr)
 
-                VStack(spacing: 2) {
+                VStack(spacing: 3) {
                     Text(dayNames[index])
-                        .font(.system(size: 13, weight: isToday ? .bold : .medium))
-                        .foregroundColor(isToday ? .accentColor : .primary)
-
-                    Text(formatShortDate(dateStr))
-                        .font(.system(size: 10, weight: .regular, design: .monospaced))
+                        .font(.system(size: 12, weight: isToday ? .bold : .medium))
                         .foregroundColor(isToday ? .accentColor : .secondary)
+
+                    if isToday {
+                        Text(dayNumber)
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(.white)
+                            .frame(width: 22, height: 22)
+                            .background(
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    .fill(Color.primary)
+                            )
+                    } else {
+                        Text(dayNumber)
+                            .font(.system(size: 11, weight: .regular))
+                            .foregroundColor(.secondary)
+                            .frame(width: 22, height: 22)
+                    }
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 6)
-                .background(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(isToday ? Color.accentColor.opacity(0.12) : Color.clear)
-                )
+                .padding(.vertical, 4)
             }
         }
         .padding(.horizontal, 8)
@@ -48,10 +70,13 @@ public struct DayHeaderView: View {
         .background(.bar)
     }
 
-    private func formatShortDate(_ isoDate: String) -> String {
-        // "2026-10-19" -> "10/19"
+    private func formatDayNumber(_ isoDate: String) -> String {
+        // "2026-10-19" -> "19"
         let parts = isoDate.split(separator: "-")
         guard parts.count == 3 else { return isoDate }
-        return "\(parts[1])/\(parts[2])"
+        if let dInt = Int(parts[2]) {
+            return "\(dInt)"
+        }
+        return String(parts[2])
     }
 }
