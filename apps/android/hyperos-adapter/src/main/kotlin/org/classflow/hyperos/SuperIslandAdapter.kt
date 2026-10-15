@@ -49,7 +49,7 @@ class SuperIslandAdapter(
             val systemPropertiesClass = Class.forName("android.os.SystemProperties")
             val getMethod = systemPropertiesClass.getMethod("get", String::class.java)
             val version = getMethod.invoke(null, PROP_HYPEROS_VERSION) as? String
-            !version.isNullOrBlank()
+            version != null && version.isNotBlank()
         } catch (e: Throwable) {
             Build.MANUFACTURER.equals("Xiaomi", ignoreCase = true)
         }

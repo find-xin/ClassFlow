@@ -143,8 +143,8 @@ class AndroidCalendarSyncService(private val context: Context) {
                 newMappings.add(
                     CalendarMapping(
                         semesterId = semesterId,
-                        courseId = item.courseId,
-                        scheduleId = item.scheduleId,
+                        courseId = item.courseId ?: "",
+                        scheduleId = item.scheduleId ?: "",
                         occurrenceDate = item.date,
                         startSection = item.startSection,
                         endSection = item.endSection,

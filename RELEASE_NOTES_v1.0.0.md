@@ -1,7 +1,7 @@
 # ClassFlow v1.0.0
 
 🎉 **ClassFlow 1.0.0 正式发布！**
-这是一款专为 macOS 与 Android 打造的高颜值、本地离线优先、原生跨平台课程表与时间规划应用。
+这是一款专为 macOS 与 Android 打造的高颜值、本地离线优先、原生跨平台课程表与时间规划应用，并同步提供小米手环端腕上快应用。
 
 ## 🌟 核心特性亮点
 
@@ -16,7 +16,13 @@
 - **纯原生 Jetpack Compose**：采用现代响应式架构与 Room 本地持久化；
 - **3×2 快捷菜单（···）**：移除传统冗杂“我的”Tab，集成作息设置、课表外观、已选课程与外观模式；
 - **模块化「学习」中心**：可在设置中随时启用或隐藏学习 Tab，专注时钟支持精确分钟倒计时与日/周/月/年投入统计；
-- **双模日程与待办**：支持日历日程（具体时间/节次、频次重复）与 Reminders 风格清单待办。
+- **双模日程与待办**：支持日历日程（具体时间/节次、频次重复）与 Reminders 风格清单待办；
+- **HyperOS 深度适配规范**：支持 HyperOS 3/4 焦点通知规范，无权限时优雅降级为常驻通知，不采用任何悬浮窗黑科技。
+
+### ⌚️ 小米手环 9 / 10 腕上快应用
+- **原生轻应用规范**：基于 Vela 快应用标准打造（`.rpk`），轻量低功耗；
+- **腕上课程速览**：抬腕即看当前正在进行与即将开始的课程，展示教室与节次时间；
+- **离线运行与震动提醒**：无需依赖手机常驻后台即可在手环端独立查看。
 
 ### ☁️ 自建云同步与隐私优先 (BYOC)
 - **零中心化账号**：无需官方账户，所有数据保存在本地 SQLite/Room 数据库中；
@@ -27,10 +33,29 @@
 
 ## 📦 安装包与 SHA-256 校验
 
-| 平台 | 架构 | 文件名 | SHA-256 校验和 |
-| :--- | :--- | :--- | :--- |
-| **macOS 安装镜像** | Apple Silicon (arm64) | `ClassFlow-1.0.0-macOS-arm64.dmg` | `199e194ec4d39cc9d32c324e595a024d81e2046ad7fbd9d61c345a36df8480b6` |
-| **macOS 绿色免安装** | Apple Silicon (arm64) | `ClassFlow-1.0.0-macOS-arm64.zip` | `0b11ee494e0b44c831fd6da59bac3bbf6cfc45436955338db6624558b3d87bcc` |
+| 平台 | 架构 / 类型 | 文件名 | 大小 | SHA-256 校验和 |
+| :--- | :--- | :--- | :--- | :--- |
+| **macOS 安装镜像** | Apple Silicon (arm64) | `ClassFlow-1.0.0-macOS-arm64.dmg` | 3.7 MB | `199e194ec4d39cc9d32c324e595a024d81e2046ad7fbd9d61c345a36df8480b6` |
+| **macOS 绿色免安装** | Apple Silicon (arm64) | `ClassFlow-1.0.0-macOS-arm64.zip` | 3.1 MB | `0b11ee494e0b44c831fd6da59bac3bbf6cfc45436955338db6624558b3d87bcc` |
+| **Android 客户端** | Universal (ARM/x86) | `ClassFlow-1.0.0-android.apk` | 18 MB | `03f21b9da2cd4eccad89686631cf988aa1e458b9b8a17f3a78483c00918b8b8f` |
+| **小米手环快应用** | 手环快应用安装包 | `ClassFlow-1.0.0-xiaomi-band.rpk` | 5.0 KB | `586df655546d1941fed1bd1e452f59dc6dabeab23545d0d3d0e168596a697307` |
+| **小米手环离线包** | 开发者安装源码包 | `ClassFlow-1.0.0-xiaomi-band.zip` | 5.0 KB | `586df655546d1941fed1bd1e452f59dc6dabeab23545d0d3d0e168596a697307` |
 
-### macOS 首次安装说明
-下载 `.dmg` 文件后双击挂载，将 `ClassFlow.app` 拖入 `Applications`（应用程序）文件夹即可直接运行。
+---
+
+## 🚀 各平台安装说明
+
+### 🍏 macOS
+1. 下载 `ClassFlow-1.0.0-macOS-arm64.dmg` 并双击挂载；
+2. 将 `ClassFlow.app` 拖入 `Applications`（应用程序）文件夹即可直接运行；
+3. 如需在通知中心添加小组件，打开「通知中心」->「编辑小组件」-> 搜索 `ClassFlow` 即可。
+
+### 🤖 Android
+1. 下载 `ClassFlow-1.0.0-android.apk` 至手机；
+2. 允许浏览器/文件管理器“安装未知来源应用”权限并点击安装；
+3. 首次启动授权日历和通知权限以享受自动日历导入与课前提醒。
+
+### ⌚️ 小米手环 9 / 10
+1. 下载 `ClassFlow-1.0.0-xiaomi-band.rpk`；
+2. 使用小米官方「小米运动健康」开发者模式、AstroBox 或 Nexio 手环管理工具将应用侧载推送至手环；
+3. 手环进入应用列表即可打开「ClassFlow 课表」。
