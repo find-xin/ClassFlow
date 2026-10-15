@@ -32,7 +32,8 @@ fun SearchSuggestionTextField(
     suggestions: List<String>,
     modifier: Modifier = Modifier,
     leadingIcon: ImageVector? = null,
-    singleLine: Boolean = true
+    singleLine: Boolean = true,
+    colors: TextFieldColors? = null
 ) {
     var expanded by remember { mutableStateOf(false) }
     var isFocused by remember { mutableStateOf(false) }
@@ -59,6 +60,7 @@ fun SearchSuggestionTextField(
             },
             label = { Text(label) },
             placeholder = { Text(placeholder) },
+            colors = colors ?: OutlinedTextFieldDefaults.colors(),
             leadingIcon = leadingIcon?.let {
                 { Icon(it, contentDescription = null, modifier = Modifier.size(20.dp)) }
             },

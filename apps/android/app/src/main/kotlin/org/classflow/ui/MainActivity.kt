@@ -33,6 +33,7 @@ import org.classflow.sync.FullSyncManager
 import org.classflow.ui.agenda.AgendaScreen
 import org.classflow.ui.components.WallpaperBackground
 import org.classflow.ui.detail.CourseDetailBottomSheet
+import org.classflow.ui.settings.MacSettingsDialog
 import org.classflow.ui.study.StudyScreen
 import org.classflow.ui.timetable.*
 import org.json.JSONArray
@@ -63,6 +64,11 @@ fun MainApp() {
         "dark" -> true
         "light" -> false
         else -> isSystemInDarkTheme()
+    }
+
+    val isWallpaperDark = when (appSettings.wallpaperPreset) {
+        "anime_blue", "forest_twilight" -> true
+        else -> isDark
     }
 
     // High contrast, refined dark theme matching macOS
@@ -104,6 +110,8 @@ fun MainApp() {
         ) {
             MainScreenHost(
                 appSettings = appSettings,
+                isDark = isDark,
+                isWallpaperDark = isWallpaperDark,
                 onUpdateSettings = { appSettings = it }
             )
         }
@@ -111,8 +119,73 @@ fun MainApp() {
 }
 
 @Composable
+fun MacStyleTabBar(
+    selectedTab: NavigationTab,
+    showStudyTab: Boolean,
+    isDark: Boolean,
+    isWallpaperDark: Boolean,
+    onTabSelected: (NavigationTab) -> Unit
+) {
+    val barBg = if (isDark) Color(0xD9141620) else Color(0xF2FFFFFF)
+    val textActive = if (isDark || isWallpaperDark) Color.White else Color(0xFF1F2937)
+    val textInactive = if (isDark || isWallpaperDark) Color.White.copy(alpha = 0.55f) else Color(0xFF9CA3AF)
+    val indicatorColor = if (isDark || isWallpaperDark) Color(0xFF818CF8) else Color(0xFF4F46E5)
+
+    Surface(
+        color = barBg,
+        tonalElevation = 0.dp,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp)
+                .navigationBarsPadding(),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            val tabs = buildList {
+                add(NavigationTab.AGENDA to "日程")
+                add(NavigationTab.TIMETABLE to "课程")
+                if (showStudyTab) {
+                    add(NavigationTab.STUDY to "学习")
+                }
+            }
+
+            tabs.forEach { (tab, label) ->
+                val isSelected = (selectedTab == tab)
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { onTabSelected(tab) }
+                        .padding(horizontal = 24.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = label,
+                        fontSize = 14.sp,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                        color = if (isSelected) textActive else textInactive
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Box(
+                        modifier = Modifier
+                            .width(16.dp)
+                            .height(2.5.dp)
+                            .clip(RoundedCornerShape(1.25.dp))
+                            .background(if (isSelected) indicatorColor else Color.Transparent)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun MainScreenHost(
     appSettings: AppSettings,
+    isDark: Boolean,
+    isWallpaperDark: Boolean,
     onUpdateSettings: (AppSettings) -> Unit
 ) {
     val context = LocalContext.current
@@ -127,6 +200,7 @@ fun MainScreenHost(
     var selectedOccurrence by remember { mutableStateOf<TimelineItem?>(null) }
     var selectedScheduleEvent by remember { mutableStateOf<CalendarEvent?>(null) }
     var showThreeDotsMenu by remember { mutableStateOf(false) }
+    var showMacSettingsDialog by remember { mutableStateOf(false) }
     var activeQuickActionSheet by remember { mutableStateOf(QuickActionSheetType.NONE) }
 
     // Import / Export Dialogs
@@ -268,31 +342,13 @@ fun MainScreenHost(
     Scaffold(
         containerColor = Color.Transparent,
         bottomBar = {
-            NavigationBar(
-                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
-                tonalElevation = 0.dp
-            ) {
-                NavigationBarItem(
-                    selected = selectedTab == NavigationTab.AGENDA,
-                    onClick = { selectedTab = NavigationTab.AGENDA },
-                    icon = { Icon(Icons.Default.ViewTimeline, contentDescription = "日程") },
-                    label = { Text("日程") }
-                )
-                NavigationBarItem(
-                    selected = selectedTab == NavigationTab.TIMETABLE,
-                    onClick = { selectedTab = NavigationTab.TIMETABLE },
-                    icon = { Icon(Icons.Default.CalendarMonth, contentDescription = "课程") },
-                    label = { Text("课程") }
-                )
-                if (appSettings.enableStudyModule) {
-                    NavigationBarItem(
-                        selected = selectedTab == NavigationTab.STUDY,
-                        onClick = { selectedTab = NavigationTab.STUDY },
-                        icon = { Icon(Icons.Default.Timer, contentDescription = "学习") },
-                        label = { Text("学习") }
-                    )
-                }
-            }
+            MacStyleTabBar(
+                selectedTab = selectedTab,
+                showStudyTab = appSettings.enableStudyModule,
+                isDark = isDark,
+                isWallpaperDark = isWallpaperDark,
+                onTabSelected = { selectedTab = it }
+            )
         }
     ) { innerPadding ->
         Surface(
@@ -316,6 +372,8 @@ fun MainScreenHost(
                     scheduleEvents = sampleSchedules,
                     sectionTimes = sectionTimes,
                     cardOpacity = appSettings.cardOpacity,
+                    isDark = isDark,
+                    isWallpaperDark = isWallpaperDark,
                     onWeekChange = { selectedWeek = it },
                     onCourseClick = { selectedOccurrence = it },
                     onScheduleClick = { selectedScheduleEvent = it },
@@ -358,7 +416,7 @@ fun MainScreenHost(
                             }
                         }
                     },
-                    onOpenThreeDotsMenu = { showThreeDotsMenu = true }
+                    onOpenThreeDotsMenu = { showMacSettingsDialog = true }
                 )
 
                 NavigationTab.STUDY -> StudyScreen()
@@ -369,10 +427,15 @@ fun MainScreenHost(
         if (showThreeDotsMenu) {
             ThreeDotsMenuDialog(
                 currentSettings = appSettings,
+                isDark = isDark,
                 onDismiss = { showThreeDotsMenu = false },
                 onOpenAction = { action ->
                     showThreeDotsMenu = false
-                    activeQuickActionSheet = action
+                    if (action == QuickActionSheetType.TIMETABLE_SETTINGS) {
+                        showMacSettingsDialog = true
+                    } else {
+                        activeQuickActionSheet = action
+                    }
                 },
                 onToggleTheme = {
                     val nextTheme = when (appSettings.themeMode) {
@@ -430,6 +493,53 @@ fun MainScreenHost(
             else -> { /* No sheet */ }
         }
 
+        // macOS-grade Preferences Hub
+        if (showMacSettingsDialog) {
+            MacSettingsDialog(
+                appSettings = appSettings,
+                sectionTimes = sectionTimes,
+                courses = sampleCourses,
+                isDark = isDark,
+                onUpdateSettings = onUpdateSettings,
+                onUpdateSections = { updated ->
+                    sectionTimes.clear()
+                    sectionTimes.addAll(updated)
+                },
+                onDeleteCourse = { course ->
+                    sampleCourses.remove(course)
+                    sampleOccurrences.removeAll { it.courseId == course.id }
+                },
+                onImportRequest = { type ->
+                    showMacSettingsDialog = false
+                    when (type) {
+                        ImportType.PASTE_JSON -> showPasteImportDialog = true
+                        ImportType.CLASSFLOW, ImportType.ICS -> showFileImportDialog = true
+                    }
+                },
+                onExportRequest = { isClassFlow ->
+                    showMacSettingsDialog = false
+                    if (isClassFlow) {
+                        val bundle = FullSyncBundle(
+                            courses = sampleCourses.toList(),
+                            schedules = sampleSchedules.toList(),
+                            todos = emptyList(),
+                            studyTasks = emptyList(),
+                            focusRecords = emptyList(),
+                            settings = appSettings
+                        )
+                        exportContent = FullSyncManager.serializeBundle(bundle)
+                        exportTitle = "ClassFlow 完整数据备份 (.classflow)"
+                        showExportDialog = true
+                    } else {
+                        exportContent = generateICSCalendar(sampleOccurrences, sampleSchedules)
+                        exportTitle = "导出系统日历文件 (.ics)"
+                        showExportDialog = true
+                    }
+                },
+                onDismiss = { showMacSettingsDialog = false }
+            )
+        }
+
         // Add Course Dialog
         if (showAddCourseDialog) {
             val existingNames = sampleCourses.map { it.name }.distinct()
@@ -444,6 +554,7 @@ fun MainScreenHost(
                 existingCourseNames = existingNames,
                 existingTeachers = existingTeachers,
                 existingClassrooms = existingClassrooms,
+                isDark = isDark,
                 onDismiss = { showAddCourseDialog = false },
                 onSaveCourse = { newCourse ->
                     sampleCourses.add(newCourse)
@@ -476,6 +587,7 @@ fun MainScreenHost(
         // Add Schedule Dialog
         if (showAddScheduleDialog) {
             ScheduleAddDialog(
+                isDark = isDark,
                 onDismiss = { showAddScheduleDialog = false },
                 onSaveSchedule = { newSchedule ->
                     sampleSchedules.add(0, newSchedule)
@@ -488,6 +600,7 @@ fun MainScreenHost(
         selectedOccurrence?.let { occurrence ->
             CourseDetailBottomSheet(
                 item = occurrence,
+                isDark = isDark,
                 onDismiss = { selectedOccurrence = null },
                 onApplyMutation = { _, _ ->
                     selectedOccurrence = null
@@ -502,6 +615,7 @@ fun MainScreenHost(
         // Paste JSON Import Dialog
         if (showPasteImportDialog) {
             PasteJSONImportDialog(
+                isDark = isDark,
                 onDismiss = { showPasteImportDialog = false },
                 onImportSuccess = { importedCourses, importedOccurrences ->
                     sampleCourses.addAll(importedCourses)
@@ -515,6 +629,7 @@ fun MainScreenHost(
         // File Import Dialog
         if (showFileImportDialog) {
             FileImportDialog(
+                isDark = isDark,
                 onDismiss = { showFileImportDialog = false },
                 onImportDemo = {
                     val demoCourse = Course(
@@ -555,6 +670,7 @@ fun MainScreenHost(
             ExportContentDialog(
                 title = exportTitle,
                 content = exportContent,
+                isDark = isDark,
                 onDismiss = { showExportDialog = false },
                 onCopy = {
                     clipboardManager.setText(AnnotatedString(exportContent))
@@ -609,17 +725,20 @@ fun generateICSCalendar(occurrences: List<TimelineItem>, schedules: List<Calenda
 
 @Composable
 fun PasteJSONImportDialog(
+    isDark: Boolean = false,
     onDismiss: () -> Unit,
     onImportSuccess: (List<Course>, List<TimelineItem>) -> Unit
 ) {
     var jsonText by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     val clipboardManager = LocalClipboardManager.current
+    val textPrimary = if (isDark) Color(0xFFF5F5F7) else Color(0xFF1F2937)
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        containerColor = if (isDark) Color(0xFF1E202B) else Color.White,
         title = {
-            Text("粘贴 JSON 导入课表", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text("粘贴 JSON 导入课表", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = textPrimary)
         },
         text = {
             Column(
@@ -814,35 +933,39 @@ fun PasteJSONImportDialog(
 
 @Composable
 fun FileImportDialog(
+    isDark: Boolean = false,
     onDismiss: () -> Unit,
     onImportDemo: () -> Unit
 ) {
+    val textPrimary = if (isDark) Color(0xFFF5F5F7) else Color(0xFF1F2937)
+
     AlertDialog(
         onDismissRequest = onDismiss,
+        containerColor = if (isDark) Color(0xFF1E202B) else Color.White,
         title = {
-            Text("从文件导入", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text("从文件导入", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = textPrimary)
         },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("ClassFlow 支持导入以下两类格式文件：", fontSize = 13.sp)
+                Text("ClassFlow 支持导入以下两类格式文件：", fontSize = 13.sp, color = textPrimary)
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(10.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                    colors = CardDefaults.cardColors(containerColor = if (isDark) Color(0xFF262838) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
-                        Text("1. .classflow 完整备份包", fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
-                        Text("包含所有课程、日程、待办清单、专注记录及配置，无损跨设备全量迁移。", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("1. .classflow 完整备份包", fontWeight = FontWeight.Bold, fontSize = 12.5.sp, color = textPrimary)
+                        Text("包含所有课程、日程、待办清单、专注记录及配置，无损跨设备全量迁移。", fontSize = 11.sp, color = if (isDark) Color(0xFFA1A3AC) else MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(10.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                    colors = CardDefaults.cardColors(containerColor = if (isDark) Color(0xFF262838) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
-                        Text("2. .ics 通用日历文件", fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
-                        Text("兼容苹果日历、Google Calendar、Outlook 的日历行程与课程。", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("2. .ics 通用日历文件", fontWeight = FontWeight.Bold, fontSize = 12.5.sp, color = textPrimary)
+                        Text("兼容苹果日历、Google Calendar、Outlook 的日历行程与课程。", fontSize = 11.sp, color = if (isDark) Color(0xFFA1A3AC) else MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
@@ -850,14 +973,15 @@ fun FileImportDialog(
         confirmButton = {
             Button(
                 onClick = onImportDemo,
-                shape = RoundedCornerShape(10.dp)
+                shape = RoundedCornerShape(10.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4F46E5))
             ) {
-                Text("加载示例备份数据")
+                Text("加载示例备份数据", fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("关闭")
+                Text("关闭", color = if (isDark) Color(0xFFA1A3AC) else Color(0xFF6B7280))
             }
         }
     )
@@ -867,27 +991,31 @@ fun FileImportDialog(
 fun ExportContentDialog(
     title: String,
     content: String,
+    isDark: Boolean = false,
     onDismiss: () -> Unit,
     onCopy: () -> Unit,
     onShare: () -> Unit
 ) {
+    val textPrimary = if (isDark) Color(0xFFF5F5F7) else Color(0xFF1F2937)
+
     AlertDialog(
         onDismissRequest = onDismiss,
+        containerColor = if (isDark) Color(0xFF1E202B) else Color.White,
         title = {
-            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = textPrimary)
         },
         text = {
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Text("已成功生成导出数据，您可以复制至剪贴板或通过系统分享：", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("已成功生成导出数据，您可以复制至剪贴板或通过系统分享：", fontSize = 12.sp, color = if (isDark) Color(0xFFA1A3AC) else MaterialTheme.colorScheme.onSurfaceVariant)
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(160.dp)
                         .clip(RoundedCornerShape(8.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
+                        .background(if (isDark) Color(0xFF262838) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
                         .padding(10.dp)
                         .verticalScroll(rememberScrollState())
                 ) {
@@ -895,7 +1023,7 @@ fun ExportContentDialog(
                         text = content,
                         fontSize = 11.sp,
                         fontFamily = FontFamily.Monospace,
-                        color = MaterialTheme.colorScheme.onSurface
+                        color = textPrimary
                     )
                 }
                 Row(

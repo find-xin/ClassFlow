@@ -41,6 +41,8 @@ fun TimetableScreen(
     scheduleEvents: List<CalendarEvent> = emptyList(),
     sectionTimes: List<SectionTime> = emptyList(),
     cardOpacity: Float = 0.88f,
+    isDark: Boolean = false,
+    isWallpaperDark: Boolean = true,
     onWeekChange: (Int) -> Unit,
     onCourseClick: (TimelineItem) -> Unit,
     onScheduleClick: (CalendarEvent) -> Unit = {},
@@ -79,6 +81,8 @@ fun TimetableScreen(
             selectedWeek = selectedWeek,
             totalWeeks = totalWeeks,
             semesterName = semesterName,
+            isDark = isDark,
+            isWallpaperDark = isWallpaperDark,
             onWeekChange = onWeekChange,
             onAddCourseClick = onAddCourseClick,
             onAddScheduleClick = onAddScheduleClick,
@@ -87,15 +91,16 @@ fun TimetableScreen(
             onOpenThreeDotsMenu = onOpenThreeDotsMenu
         )
 
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+        HorizontalDivider(color = if (isWallpaperDark) Color.White.copy(alpha = 0.12f) else Color(0xFFE5E7EB))
 
         // 2. Day Header Row (Month + 7 days with actual dates and WakeUp highlight)
         WakeUpDayHeaderRow(
             dateStrings = weekDates,
-            todayDateString = todayDateString
+            todayDateString = todayDateString,
+            isWallpaperDark = isWallpaperDark
         )
 
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.20f))
+        HorizontalDivider(color = if (isWallpaperDark) Color.White.copy(alpha = 0.10f) else Color(0xFFE5E7EB))
 
         // 3. Timetable Canvas (Section Axis + 7 Columns)
         TimetableCanvas(
@@ -106,6 +111,7 @@ fun TimetableScreen(
             weekDates = weekDates,
             selectedWeek = selectedWeek,
             cardOpacity = cardOpacity,
+            isWallpaperDark = isWallpaperDark,
             onCourseClick = onCourseClick,
             onScheduleClick = onScheduleClick,
             onAddAtSlot = onAddCourseAtSlot
@@ -119,7 +125,8 @@ fun TimetableScreen(
 @Composable
 fun WakeUpDayHeaderRow(
     dateStrings: List<String>,
-    todayDateString: String
+    todayDateString: String,
+    isWallpaperDark: Boolean = true
 ) {
     val dayNames = listOf("一", "二", "三", "四", "五", "六", "日")
 
@@ -147,12 +154,12 @@ fun WakeUpDayHeaderRow(
                 text = monthNumber,
                 style = MaterialTheme.typography.titleSmall.copy(fontSize = 13.sp),
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
+                color = if (isWallpaperDark) Color.White else Color(0xFF1F2937)
             )
             Text(
                 text = "月",
                 style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+                color = if (isWallpaperDark) Color.White.copy(alpha = 0.70f) else Color(0xFF6B7280)
             )
         }
 
@@ -178,7 +185,11 @@ fun WakeUpDayHeaderRow(
                     text = day,
                     fontSize = 12.sp,
                     fontWeight = if (isToday) FontWeight.Bold else FontWeight.Medium,
-                    color = if (isToday) Color.White else Color.White.copy(alpha = 0.75f)
+                    color = if (isWallpaperDark) {
+                        if (isToday) Color.White else Color.White.copy(alpha = 0.75f)
+                    } else {
+                        if (isToday) Color(0xFF1F2937) else Color(0xFF6B7280)
+                    }
                 )
 
                 if (isToday) {
@@ -186,7 +197,7 @@ fun WakeUpDayHeaderRow(
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(6.dp))
-                            .background(Color(0xFF3F51B5))
+                            .background(Color(0xFF4F46E5))
                             .padding(horizontal = 4.dp, vertical = 2.dp),
                         contentAlignment = Alignment.Center
                     ) {
@@ -206,7 +217,7 @@ fun WakeUpDayHeaderRow(
                             text = dateSubtext,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Normal,
-                            color = Color.White.copy(alpha = 0.65f)
+                            color = if (isWallpaperDark) Color.White.copy(alpha = 0.65f) else Color(0xFF9CA3AF)
                         )
                     }
                 }
@@ -228,6 +239,7 @@ fun TimetableCanvas(
     weekDates: List<String>,
     selectedWeek: Int,
     cardOpacity: Float = 0.88f,
+    isWallpaperDark: Boolean = true,
     onCourseClick: (TimelineItem) -> Unit,
     onScheduleClick: (CalendarEvent) -> Unit,
     onAddAtSlot: (dayOfWeek: Int, section: Int) -> Unit
@@ -266,14 +278,14 @@ fun TimetableCanvas(
                         text = sec.toString(),
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color.White
+                        color = if (isWallpaperDark) Color.White else Color(0xFF1F2937)
                     )
                     Text(
                         text = timeLabel,
                         fontSize = 8.5.sp,
                         lineHeight = 10.sp,
                         textAlign = TextAlign.Center,
-                        color = Color.White.copy(alpha = 0.60f)
+                        color = if (isWallpaperDark) Color.White.copy(alpha = 0.60f) else Color(0xFF9CA3AF)
                     )
                 }
             }
@@ -297,7 +309,7 @@ fun TimetableCanvas(
                         .fillMaxHeight()
                         .then(
                             if (isToday) {
-                                Modifier.background(Color.White.copy(alpha = 0.05f))
+                                Modifier.background(if (isWallpaperDark) Color.White.copy(alpha = 0.05f) else Color(0xFF4F46E5).copy(alpha = 0.04f))
                             } else Modifier
                         )
                         .padding(horizontal = 1.5.dp)
@@ -339,7 +351,7 @@ fun TimetableCanvas(
 }
 
 /**
- * WakeUp aesthetic course card with rounded corners, location, and non-current week dimming.
+ * WakeUp aesthetic course card with rounded corners, top accent stripe, location, and non-current week dimming.
  */
 @Composable
 fun CourseCard(
@@ -351,7 +363,6 @@ fun CourseCard(
     val cardColor = parseHexColor(item.color)
 
     val backgroundAlpha = if (isActiveThisWeek) cardOpacity else cardOpacity * 0.40f
-    val contentAlpha = if (isActiveThisWeek) 1.0f else 0.75f
 
     Box(
         modifier = modifier
@@ -366,39 +377,60 @@ fun CourseCard(
                     )
                 } else Modifier
             )
-            .padding(4.5.dp)
     ) {
-        Column {
-            if (!isActiveThisWeek) {
-                Text(
-                    text = "[非本周]",
-                    fontSize = 8.5.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White.copy(alpha = 0.85f)
-                )
-            }
-
-            Text(
-                text = item.title,
-                fontSize = 11.sp,
-                lineHeight = 13.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.White.copy(alpha = contentAlpha),
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis
+        Column(modifier = Modifier.fillMaxSize()) {
+            // Top Accent Stripe (3dp) matching macOS CourseCardView & Widget Image 2
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(3.dp)
+                    .background(cardColor)
             )
 
-            if (!item.location.isNullOrBlank()) {
-                Spacer(modifier = Modifier.height(2.dp))
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 4.dp, vertical = 3.dp)
+            ) {
+                if (!isActiveThisWeek) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(Color.Black.copy(alpha = 0.25f))
+                            .padding(horizontal = 3.dp, vertical = 1.dp)
+                    ) {
+                        Text(
+                            text = "非本周",
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(2.dp))
+                }
+
                 Text(
-                    text = "@${item.location}",
-                    fontSize = 9.5.sp,
-                    lineHeight = 11.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = Color.White.copy(alpha = contentAlpha * 0.90f),
-                    maxLines = 2,
+                    text = item.title,
+                    fontSize = 11.sp,
+                    lineHeight = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    maxLines = 3,
                     overflow = TextOverflow.Ellipsis
                 )
+
+                if (!item.location.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "@${item.location}",
+                        fontSize = 9.sp,
+                        lineHeight = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Color.White.copy(alpha = 0.90f),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         }
     }

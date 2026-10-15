@@ -108,11 +108,53 @@ class DomainModelTest {
         val settings = AppSettings(
             themeMode = "dark",
             enableStudyModule = false,
-            showWeekends = false
+            showWeekends = false,
+            cardOpacity = 0.75f,
+            wallpaperPreset = "forest_twilight",
+            syncInterval = "30m",
+            autoSyncEnabled = true
         )
         assertEquals("dark", settings.themeMode)
         assertEquals(false, settings.enableStudyModule)
         assertEquals(false, settings.showWeekends)
+        assertEquals(0.75f, settings.cardOpacity)
+        assertEquals("forest_twilight", settings.wallpaperPreset)
+        assertEquals("30m", settings.syncInterval)
+        assertEquals(true, settings.autoSyncEnabled)
+    }
+
+    @Test
+    fun testCourseAutocompletionCandidatesFiltering() {
+        val existingCourses = listOf(
+            Course(semesterId = "sem1", name = "高等数学", teacher = "张教授", schedules = listOf(
+                CourseSchedule(dayOfWeek = 1, startSection = 1, endSection = 2, classroom = "理教 101")
+            )),
+            Course(semesterId = "sem1", name = "高级英语视听说", teacher = "王老师", schedules = listOf(
+                CourseSchedule(dayOfWeek = 2, startSection = 3, endSection = 4, classroom = "外教 202")
+            )),
+            Course(semesterId = "sem1", name = "大学物理", teacher = "张教授", schedules = listOf(
+                CourseSchedule(dayOfWeek = 3, startSection = 1, endSection = 2, classroom = "理教 101")
+            ))
+        )
+
+        // Filter teachers matching "张"
+        val allTeachers = existingCourses.mapNotNull { it.teacher?.trim() }.filter { it.isNotEmpty() }.distinct()
+        val queryTeacher = "张"
+        val matchedTeachers = allTeachers.filter { it.contains(queryTeacher, ignoreCase = true) }
+        assertEquals(listOf("张教授"), matchedTeachers)
+
+        // Filter classrooms matching "理教"
+        val allClassrooms = existingCourses.flatMap { it.schedules }.mapNotNull { it.classroom?.trim() }.filter { it.isNotEmpty() }.distinct()
+        val queryClassroom = "理教"
+        val matchedClassrooms = allClassrooms.filter { it.contains(queryClassroom, ignoreCase = true) }
+        assertEquals(listOf("理教 101"), matchedClassrooms)
+
+        // Filter course names matching "高"
+        val allNames = existingCourses.map { it.name.trim() }.filter { it.isNotEmpty() }.distinct()
+        val queryName = "高"
+        val matchedNames = allNames.filter { it.contains(queryName, ignoreCase = true) }
+        assertEquals(listOf("高等数学", "高级英语视听说"), matchedNames)
     }
 }
+
 

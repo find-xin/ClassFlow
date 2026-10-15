@@ -20,6 +20,7 @@ import org.classflow.data.model.TimelineItem
 @Composable
 fun CourseDetailBottomSheet(
     item: TimelineItem,
+    isDark: Boolean = false,
     onDismiss: () -> Unit,
     onApplyMutation: (scope: EditingScope, newRoom: String?) -> Unit,
     onCancelCourse: (scope: EditingScope) -> Unit
@@ -31,6 +32,7 @@ fun CourseDetailBottomSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = if (isDark) Color(0xFF1E202B) else Color.White,
         shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
     ) {
         Column(

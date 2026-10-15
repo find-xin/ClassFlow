@@ -4,11 +4,13 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -28,14 +30,18 @@ enum class QuickActionSheetType {
 @Composable
 fun ThreeDotsMenuDialog(
     currentSettings: AppSettings,
+    isDark: Boolean = false,
     onDismiss: () -> Unit,
     onOpenAction: (QuickActionSheetType) -> Unit,
     onToggleTheme: () -> Unit
 ) {
+    val textPrimary = if (isDark) Color(0xFFF5F5F7) else Color(0xFF1F2937)
+
     AlertDialog(
         onDismissRequest = onDismiss,
+        containerColor = if (isDark) Color(0xFF1E202B) else Color.White,
         title = {
-            Text("课表快捷功能", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text("课表快捷功能", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = textPrimary)
         },
         text = {
             Column(
@@ -61,7 +67,7 @@ fun ThreeDotsMenuDialog(
                     )
                     QuickGridItem(
                         modifier = Modifier.weight(1f),
-                        icon = Icons.Default.MenuBook,
+                        icon = Icons.AutoMirrored.Filled.MenuBook,
                         title = "已选课程",
                         onClick = { onOpenAction(QuickActionSheetType.COURSE_LIST) }
                     )

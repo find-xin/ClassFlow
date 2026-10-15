@@ -40,6 +40,8 @@ fun WakeUpHeaderView(
     selectedWeek: Int,
     totalWeeks: Int,
     semesterName: String,
+    isDark: Boolean = false,
+    isWallpaperDark: Boolean = true,
     onWeekChange: (Int) -> Unit,
     onAddCourseClick: () -> Unit,
     onAddScheduleClick: () -> Unit,
@@ -52,6 +54,11 @@ fun WakeUpHeaderView(
     var showAddMenu by remember { mutableStateOf(false) }
     var showImportMenu by remember { mutableStateOf(false) }
     var showExportMenu by remember { mutableStateOf(false) }
+
+    val textPrimary = if (isWallpaperDark) Color.White else Color(0xFF1F2937)
+    val textSecondary = if (isWallpaperDark) Color.White.copy(alpha = 0.85f) else Color(0xFF6B7280)
+    val iconTint = if (isWallpaperDark) Color.White else Color(0xFF374151)
+    val menuBg = if (isDark) Color(0xFF222432) else Color.White
 
     val todayWeekdayShort = remember {
         val cal = Calendar.getInstance()
@@ -89,7 +96,7 @@ fun WakeUpHeaderView(
                 text = currentDateStr,
                 style = MaterialTheme.typography.titleMedium.copy(fontSize = 17.sp),
                 fontWeight = FontWeight.Bold,
-                color = Color.White
+                color = textPrimary
             )
             Spacer(modifier = Modifier.height(2.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -97,7 +104,7 @@ fun WakeUpHeaderView(
                     text = "第 $selectedWeek 周 周$todayWeekdayShort",
                     style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
                     fontWeight = FontWeight.Medium,
-                    color = Color.White.copy(alpha = 0.90f)
+                    color = textSecondary
                 )
                 if (selectedWeek != currentWeek) {
                     Spacer(modifier = Modifier.width(6.dp))
@@ -132,14 +139,15 @@ fun WakeUpHeaderView(
                     Icon(
                         Icons.Default.Add,
                         contentDescription = "添加",
-                        tint = Color.White,
+                        tint = iconTint,
                         modifier = Modifier.size(22.dp)
                     )
                 }
 
                 DropdownMenu(
                     expanded = showAddMenu,
-                    onDismissRequest = { showAddMenu = false }
+                    onDismissRequest = { showAddMenu = false },
+                    modifier = Modifier.background(menuBg)
                 ) {
                     DropdownMenuItem(
                         text = { Text("添加课程...", fontSize = 13.5.sp) },
@@ -169,14 +177,15 @@ fun WakeUpHeaderView(
                     Icon(
                         Icons.Default.FileDownload,
                         contentDescription = "导入",
-                        tint = Color.White,
+                        tint = iconTint,
                         modifier = Modifier.size(20.dp)
                     )
                 }
 
                 DropdownMenu(
                     expanded = showImportMenu,
-                    onDismissRequest = { showImportMenu = false }
+                    onDismissRequest = { showImportMenu = false },
+                    modifier = Modifier.background(menuBg)
                 ) {
                     DropdownMenuItem(
                         text = { Text("从 .classflow 备份包导入...", fontSize = 13.5.sp) },
@@ -194,7 +203,7 @@ fun WakeUpHeaderView(
                             onImportClick(ImportType.ICS)
                         }
                     )
-                    HorizontalDivider()
+                    HorizontalDivider(color = if (isDark) Color.White.copy(alpha = 0.08f) else Color(0xFFF0F0F2))
                     DropdownMenuItem(
                         text = { Text("粘贴教务脚本 / WakeUp JSON 导入...", fontSize = 13.5.sp) },
                         leadingIcon = { Icon(Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(18.dp)) },
@@ -215,14 +224,15 @@ fun WakeUpHeaderView(
                     Icon(
                         Icons.Default.Share,
                         contentDescription = "导出",
-                        tint = Color.White,
+                        tint = iconTint,
                         modifier = Modifier.size(19.dp)
                     )
                 }
 
                 DropdownMenu(
                     expanded = showExportMenu,
-                    onDismissRequest = { showExportMenu = false }
+                    onDismissRequest = { showExportMenu = false },
+                    modifier = Modifier.background(menuBg)
                 ) {
                     DropdownMenuItem(
                         text = { Text("导出当前课表为日历 (.ics)...", fontSize = 13.5.sp) },
@@ -251,7 +261,7 @@ fun WakeUpHeaderView(
                 Icon(
                     Icons.Default.MoreVert,
                     contentDescription = "设置与快捷功能",
-                    tint = Color.White,
+                    tint = iconTint,
                     modifier = Modifier.size(20.dp)
                 )
             }
@@ -262,20 +272,21 @@ fun WakeUpHeaderView(
     if (showWeekDrawer) {
         AlertDialog(
             onDismissRequest = { showWeekDrawer = false },
+            containerColor = if (isDark) Color(0xFF1E202B) else Color.White,
             title = {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("周数", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text("周数", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = if (isDark) Color.White else Color(0xFF1F2937))
                     TextButton(
                         onClick = {
                             onWeekChange(currentWeek)
                             showWeekDrawer = false
                         }
                     ) {
-                        Text("回到当前周 (第${currentWeek}周)", fontSize = 12.sp)
+                        Text("回到当前周 (第${currentWeek}周)", fontSize = 12.sp, color = Color(0xFF4F46E5))
                     }
                 }
             },
@@ -293,13 +304,13 @@ fun WakeUpHeaderView(
                             Text(
                                 text = "正在查看: 第 $selectedWeek 周",
                                 fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary,
+                                color = Color(0xFF4F46E5),
                                 fontSize = 14.sp
                             )
                             Text(
                                 text = "共 $totalWeeks 周",
                                 fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = if (isDark) Color.White.copy(alpha = 0.6f) else Color(0xFF6B7280)
                             )
                         }
 
@@ -308,11 +319,15 @@ fun WakeUpHeaderView(
                             onValueChange = { onWeekChange(it.toInt()) },
                             valueRange = 1f..totalWeeks.toFloat(),
                             steps = totalWeeks - 2,
+                            colors = SliderDefaults.colors(
+                                thumbColor = Color(0xFF4F46E5),
+                                activeTrackColor = Color(0xFF4F46E5)
+                            ),
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
 
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+                    HorizontalDivider(color = if (isDark) Color.White.copy(alpha = 0.10f) else Color(0xFFE5E7EB))
 
                     // Timetable Semester Card Switcher matching Image 3
                     Row(
@@ -320,13 +335,13 @@ fun WakeUpHeaderView(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("课表", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        Text("课表", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = if (isDark) Color.White else Color(0xFF1F2937))
                         Row {
                             TextButton(onClick = { /* New Semester */ }) {
-                                Text("新建课表", fontSize = 12.sp)
+                                Text("新建课表", fontSize = 12.sp, color = Color(0xFF4F46E5))
                             }
                             TextButton(onClick = { /* Manage */ }) {
-                                Text("管理", fontSize = 12.sp)
+                                Text("管理", fontSize = 12.sp, color = if (isDark) Color.White.copy(alpha = 0.7f) else Color(0xFF6B7280))
                             }
                         }
                     }
@@ -342,12 +357,12 @@ fun WakeUpHeaderView(
                                 .weight(1f)
                                 .height(80.dp)
                                 .clip(RoundedCornerShape(12.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp))
+                                .background(if (isDark) Color(0xFF262838) else Color(0xFFF3F4F8))
+                                .border(1.dp, if (isDark) Color.White.copy(alpha = 0.12f) else Color(0xFFE5E7EB), RoundedCornerShape(12.dp))
                                 .padding(10.dp)
                         ) {
                             Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
-                                Text("大三下", fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                                Text("大三下", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = if (isDark) Color.White.copy(alpha = 0.8f) else Color(0xFF1F2937))
                             }
                         }
 
@@ -357,8 +372,8 @@ fun WakeUpHeaderView(
                                 .weight(1f)
                                 .height(80.dp)
                                 .clip(RoundedCornerShape(12.dp))
-                                .background(Color(0xFF2C2250))
-                                .border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(12.dp))
+                                .background(if (isDark) Color(0xFF2C2250) else Color(0xFFEEF2FF))
+                                .border(2.dp, Color(0xFF4F46E5), RoundedCornerShape(12.dp))
                                 .padding(10.dp)
                         ) {
                             Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
@@ -366,15 +381,15 @@ fun WakeUpHeaderView(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    Text("大四上", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                    Text("大四上", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (isDark) Color.White else Color(0xFF1F2937))
                                     Icon(
                                         Icons.Default.Check,
                                         contentDescription = null,
-                                        tint = Color.White,
+                                        tint = Color(0xFF4F46E5),
                                         modifier = Modifier.size(16.dp)
                                     )
                                 }
-                                Text("当前主课表", fontSize = 10.sp, color = Color.White.copy(alpha = 0.7f))
+                                Text("当前主课表", fontSize = 10.sp, color = if (isDark) Color.White.copy(alpha = 0.7f) else Color(0xFF4F46E5))
                             }
                         }
                     }
@@ -383,9 +398,10 @@ fun WakeUpHeaderView(
             confirmButton = {
                 Button(
                     onClick = { showWeekDrawer = false },
-                    shape = RoundedCornerShape(10.dp)
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4F46E5))
                 ) {
-                    Text("完成")
+                    Text("完成", fontWeight = FontWeight.Bold)
                 }
             }
         )

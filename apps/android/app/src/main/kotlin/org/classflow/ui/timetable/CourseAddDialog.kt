@@ -1,5 +1,7 @@
 package org.classflow.ui.timetable
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -10,7 +12,10 @@ import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -30,6 +35,7 @@ fun CourseAddDialog(
     existingCourseNames: List<String> = emptyList(),
     existingTeachers: List<String> = emptyList(),
     existingClassrooms: List<String> = emptyList(),
+    isDark: Boolean = false,
     onDismiss: () -> Unit,
     onSaveCourse: (Course) -> Unit
 ) {
@@ -50,10 +56,25 @@ fun CourseAddDialog(
 
     val dayNames = listOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
 
+    val textPrimary = if (isDark) Color(0xFFF5F5F7) else Color(0xFF1F2937)
+    val textSecondary = if (isDark) Color(0xFFA1A3AC) else Color(0xFF6B7280)
+
+    val textFieldColors = OutlinedTextFieldDefaults.colors(
+        focusedBorderColor = if (isDark) Color(0xFF818CF8) else Color(0xFF4F46E5),
+        unfocusedBorderColor = if (isDark) Color.White.copy(alpha = 0.18f) else Color(0xFFD1D5DB),
+        focusedContainerColor = if (isDark) Color(0xFF262836) else Color(0xFFF9FAFB),
+        unfocusedContainerColor = if (isDark) Color(0xFF262836) else Color(0xFFF3F4F6),
+        focusedTextColor = if (isDark) Color.White else Color(0xFF1F2937),
+        unfocusedTextColor = if (isDark) Color.White else Color(0xFF1F2937),
+        focusedLabelColor = if (isDark) Color(0xFF818CF8) else Color(0xFF4F46E5),
+        unfocusedLabelColor = if (isDark) Color.White.copy(alpha = 0.65f) else Color(0xFF6B7280)
+    )
+
     AlertDialog(
         onDismissRequest = onDismiss,
+        containerColor = if (isDark) Color(0xFF1E202B) else Color.White,
         title = {
-            Text("添加课程", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text("添加课程", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = textPrimary)
         },
         text = {
             Column(
@@ -69,7 +90,8 @@ fun CourseAddDialog(
                     label = "课程名称 *",
                     placeholder = "例如：高等数学",
                     suggestions = existingCourseNames,
-                    leadingIcon = Icons.Default.Book
+                    leadingIcon = Icons.Default.Book,
+                    colors = textFieldColors
                 )
 
                 // 2. Teacher with WakeUp Autocomplete
@@ -79,7 +101,8 @@ fun CourseAddDialog(
                     label = "任课教师 (可选)",
                     placeholder = "例如：张教授",
                     suggestions = existingTeachers,
-                    leadingIcon = Icons.Default.Person
+                    leadingIcon = Icons.Default.Person,
+                    colors = textFieldColors
                 )
 
                 // 3. Classroom with WakeUp Autocomplete
@@ -89,25 +112,41 @@ fun CourseAddDialog(
                     label = "上课教室 / 地点 (可选)",
                     placeholder = "例如：东上 101",
                     suggestions = existingClassrooms,
-                    leadingIcon = Icons.Default.LocationOn
+                    leadingIcon = Icons.Default.LocationOn,
+                    colors = textFieldColors
                 )
 
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                HorizontalDivider(color = if (isDark) Color.White.copy(alpha = 0.10f) else Color(0xFFE5E7EB))
 
                 // 4. Weekday Selector
-                Text("上课星期", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                Text("上课星期", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = textSecondary)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     dayNames.forEachIndexed { index, dayName ->
                         val dayVal = index + 1
-                        FilterChip(
-                            selected = dayOfWeek == dayVal,
-                            onClick = { dayOfWeek = dayVal },
-                            label = { Text(dayName, fontSize = 10.sp) },
-                            modifier = Modifier.weight(1f)
-                        )
+                        val isSel = (dayOfWeek == dayVal)
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(
+                                    if (isSel) Color(0xFF4F46E5)
+                                    else if (isDark) Color(0xFF282B3C)
+                                    else Color(0xFFF3F4F6)
+                                )
+                                .clickable { dayOfWeek = dayVal }
+                                .padding(vertical = 7.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = dayName,
+                                fontSize = 10.5.sp,
+                                fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isSel) Color.White else textSecondary
+                            )
+                        }
                     }
                 }
 
@@ -121,6 +160,7 @@ fun CourseAddDialog(
                         onValueChange = { startSection = it.filter { ch -> ch.isDigit() } },
                         label = { Text("起始节次") },
                         shape = RoundedCornerShape(12.dp),
+                        colors = textFieldColors,
                         modifier = Modifier.weight(1f),
                         singleLine = true
                     )
@@ -129,13 +169,14 @@ fun CourseAddDialog(
                         onValueChange = { endSection = it.filter { ch -> ch.isDigit() } },
                         label = { Text("结束节次") },
                         shape = RoundedCornerShape(12.dp),
+                        colors = textFieldColors,
                         modifier = Modifier.weight(1f),
                         singleLine = true
                     )
                 }
 
                 // 6. Week range (从第几周到第几周) & Single/Double week toggle
-                Text("上课周次范围", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                Text("上课周次范围", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = textSecondary)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -145,6 +186,7 @@ fun CourseAddDialog(
                         onValueChange = { startWeek = it.filter { ch -> ch.isDigit() } },
                         label = { Text("起始周") },
                         shape = RoundedCornerShape(12.dp),
+                        colors = textFieldColors,
                         modifier = Modifier.weight(1f),
                         singleLine = true
                     )
@@ -153,6 +195,7 @@ fun CourseAddDialog(
                         onValueChange = { endWeek = it.filter { ch -> ch.isDigit() } },
                         label = { Text("结束周") },
                         shape = RoundedCornerShape(12.dp),
+                        colors = textFieldColors,
                         modifier = Modifier.weight(1f),
                         singleLine = true
                     )
@@ -162,25 +205,37 @@ fun CourseAddDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    FilterChip(
-                        selected = weekPattern == WeekPatternType.ALL,
-                        onClick = { weekPattern = WeekPatternType.ALL },
-                        label = { Text("每周") }
-                    )
-                    FilterChip(
-                        selected = weekPattern == WeekPatternType.ODD,
-                        onClick = { weekPattern = WeekPatternType.ODD },
-                        label = { Text("单周") }
-                    )
-                    FilterChip(
-                        selected = weekPattern == WeekPatternType.EVEN,
-                        onClick = { weekPattern = WeekPatternType.EVEN },
-                        label = { Text("双周") }
-                    )
+                    listOf(
+                        WeekPatternType.ALL to "每周",
+                        WeekPatternType.ODD to "单周",
+                        WeekPatternType.EVEN to "双周"
+                    ).forEach { (pattern, label) ->
+                        val isSel = (weekPattern == pattern)
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(
+                                    if (isSel) Color(0xFF4F46E5)
+                                    else if (isDark) Color(0xFF282B3C)
+                                    else Color(0xFFF3F4F6)
+                                )
+                                .clickable { weekPattern = pattern }
+                                .padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = label,
+                                fontSize = 12.sp,
+                                fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isSel) Color.White else textSecondary
+                            )
+                        }
+                    }
                 }
 
                 // 7. Google Calendar Style Color Picker
-                Text("卡片颜色", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                Text("卡片颜色", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = textSecondary)
                 GoogleCalendarColorPicker(
                     selectedHex = selectedColor,
                     onColorSelected = { selectedColor = it }
@@ -225,14 +280,15 @@ fun CourseAddDialog(
                         onSaveCourse(newCourse)
                     }
                 },
-                shape = RoundedCornerShape(10.dp)
+                shape = RoundedCornerShape(10.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4F46E5))
             ) {
-                Text("保存课程")
+                Text("保存课程", fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text("取消", color = textSecondary)
             }
         }
     )
