@@ -6,71 +6,80 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 
 /**
- * Wallpaper background supporting WakeUp aesthetic styles:
- * - "anime_blue": Dreamy anime-inspired deep violet & indigo twilight palette (matching WakeUp screenshot).
- * - "default": Clean flowing pastel or midnight gradient.
- * - Adds a soft ambient scrim so white text, location tags, and cards are crystal clear.
+ * Aesthetic wallpaper background directly cloned from macOS WallpaperBackgroundView.swift.
+ * Supported presets:
+ * - "default": 默认设置
+ * - "aurora": 极光
+ * - "midnight": 星空
+ * - "warm_cream": 暖阳
+ * - "mint": 薄荷
+ * - "sky": 天空
  */
+fun isWallpaperDark(preset: String, isSystemDark: Boolean, usePureColor: Boolean = false): Boolean {
+    if (usePureColor) return isSystemDark
+    return when (preset) {
+        "aurora", "midnight" -> true
+        else -> isSystemDark
+    }
+}
+
 @Composable
 fun WallpaperBackground(
     isDark: Boolean = isSystemInDarkTheme(),
-    wallpaperPreset: String = "anime_blue",
+    wallpaperPreset: String = "default",
+    usePureColorBackground: Boolean = false,
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit
 ) {
-    val backgroundBrush = when (wallpaperPreset) {
-        "anime_blue" -> {
-            Brush.verticalGradient(
-                colors = listOf(
-                    Color(0xFF2C2250), // Twilight violet
-                    Color(0xFF22254C), // Midnight purple
-                    Color(0xFF1B2042), // Deep indigo
-                    Color(0xFF12142B)  // Obsidian blue
-                )
-            )
+    val gradientColors = if (usePureColorBackground) {
+        listOf(
+            if (isDark) Color(0xFF0E1117) else Color(0xFFF5F7FB),
+            if (isDark) Color(0xFF0E1117) else Color(0xFFF5F7FB)
+        )
+    } else if (isDark) {
+        when (wallpaperPreset) {
+            "aurora" -> listOf(Color(0xFF0A111C), Color(0xFF14223A), Color(0xFF0D332F))
+            "mint" -> listOf(Color(0xFF0A1412), Color(0xFF112620), Color(0xFF0E1D19))
+            "warm_cream" -> listOf(Color(0xFF161311), Color(0xFF221D18), Color(0xFF181512))
+            "midnight" -> listOf(Color(0xFF08090C), Color(0xFF0F1117), Color(0xFF060709))
+            "sky" -> listOf(Color(0xFF09131E), Color(0xFF0F1D2E), Color(0xFF0B1622))
+            else -> listOf(Color(0xFF0D1117), Color(0xFF161B22), Color(0xFF0A0D12)) // default
         }
-        "forest_twilight" -> {
-            Brush.verticalGradient(
-                colors = listOf(
-                    Color(0xFF172D24),
-                    Color(0xFF12241D),
-                    Color(0xFF0E1C16),
-                    Color(0xFF0A1310)
-                )
-            )
-        }
-        else -> {
-            if (isDark) {
-                Brush.verticalGradient(
-                    colors = listOf(
-                        Color(0xFF111217),
-                        Color(0xFF151821),
-                        Color(0xFF13141B),
-                        Color(0xFF0E0F14)
-                    )
-                )
-            } else {
-                Brush.verticalGradient(
-                    colors = listOf(
-                        Color(0xFFF5F7FB),
-                        Color(0xFFF0F4FA),
-                        Color(0xFFF3F1F8),
-                        Color(0xFFF8F9FC)
-                    )
-                )
-            }
+    } else {
+        when (wallpaperPreset) {
+            "aurora" -> listOf(Color(0xFF1A2238), Color(0xFF283C63), Color(0xFF1B998B))
+            "mint" -> listOf(Color(0xFFC6E8DB), Color(0xFFDDF4EC), Color(0xFFC3E3D6))
+            "warm_cream" -> listOf(Color(0xFFEFE0CE), Color(0xFFF9F2E7), Color(0xFFE8D5BF))
+            "midnight" -> listOf(Color(0xFF151821), Color(0xFF1E2433), Color(0xFF11141B))
+            "sky" -> listOf(Color(0xFFE0F2FE), Color(0xFFBAE6FD), Color(0xFF7DD3FC))
+            else -> listOf(Color(0xFFB7D2EC), Color(0xFFCFE1F6), Color(0xFFB9CCE6)) // default
         }
     }
+
+    val backgroundBrush = Brush.linearGradient(
+        colors = gradientColors,
+        start = Offset(0f, 0f),
+        end = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)
+    )
 
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(brush = backgroundBrush)
     ) {
+        // macOS safety baseboard: guarantees crisp text contrast over vivid wallpapers
+        val safetyAlpha = if (usePureColorBackground) 0f else if (isDark) 0.35f else 0.12f
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = safetyAlpha))
+        )
+
         content()
     }
 }

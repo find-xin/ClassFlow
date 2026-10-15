@@ -32,8 +32,10 @@ import org.classflow.sync.FullSyncBundle
 import org.classflow.sync.FullSyncManager
 import org.classflow.ui.agenda.AgendaScreen
 import org.classflow.ui.components.WallpaperBackground
+import org.classflow.ui.components.isWallpaperDark
 import org.classflow.ui.detail.CourseDetailBottomSheet
 import org.classflow.ui.settings.MacSettingsDialog
+import org.classflow.ui.settings.TimetableAppearanceDialog
 import org.classflow.ui.study.StudyScreen
 import org.classflow.ui.timetable.*
 import org.json.JSONArray
@@ -57,7 +59,7 @@ enum class NavigationTab {
 @Composable
 fun MainApp() {
     var appSettings by remember {
-        mutableStateOf(AppSettings(themeMode = "system", enableStudyModule = true, wallpaperPreset = "anime_blue"))
+        mutableStateOf(AppSettings(themeMode = "system", enableStudyModule = true, wallpaperPreset = "default"))
     }
 
     val isDark = when (appSettings.themeMode) {
@@ -66,10 +68,11 @@ fun MainApp() {
         else -> isSystemInDarkTheme()
     }
 
-    val isWallpaperDark = when (appSettings.wallpaperPreset) {
-        "anime_blue", "forest_twilight" -> true
-        else -> isDark
-    }
+    val isWallpaperDark = isWallpaperDark(
+        preset = appSettings.wallpaperPreset,
+        isSystemDark = isDark,
+        usePureColor = appSettings.usePureColorBackground
+    )
 
     // High contrast, refined dark theme matching macOS
     val darkColors = darkColorScheme(
@@ -106,7 +109,8 @@ fun MainApp() {
     ) {
         WallpaperBackground(
             isDark = isDark,
-            wallpaperPreset = appSettings.wallpaperPreset
+            wallpaperPreset = appSettings.wallpaperPreset,
+            usePureColorBackground = appSettings.usePureColorBackground
         ) {
             MainScreenHost(
                 appSettings = appSettings,
@@ -374,6 +378,7 @@ fun MainScreenHost(
                     cardOpacity = appSettings.cardOpacity,
                     isDark = isDark,
                     isWallpaperDark = isWallpaperDark,
+                    appSettings = appSettings,
                     onWeekChange = { selectedWeek = it },
                     onCourseClick = { selectedOccurrence = it },
                     onScheduleClick = { selectedScheduleEvent = it },
@@ -416,7 +421,7 @@ fun MainScreenHost(
                             }
                         }
                     },
-                    onOpenThreeDotsMenu = { showMacSettingsDialog = true }
+                    onOpenThreeDotsMenu = { showThreeDotsMenu = true }
                 )
 
                 NavigationTab.STUDY -> StudyScreen()
@@ -479,8 +484,9 @@ fun MainScreenHost(
                 )
             }
             QuickActionSheetType.APPEARANCE -> {
-                AppearanceSettingsDialog(
-                    appSettings = appSettings,
+                TimetableAppearanceDialog(
+                    settings = appSettings,
+                    isDark = isDark,
                     onUpdateSettings = onUpdateSettings,
                     onDismiss = { activeQuickActionSheet = QuickActionSheetType.NONE }
                 )

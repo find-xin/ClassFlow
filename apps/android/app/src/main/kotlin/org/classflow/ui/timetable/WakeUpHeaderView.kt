@@ -85,42 +85,69 @@ fun WakeUpHeaderView(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // 1. Left: Clickable Date & Week Title (exact WakeUp layout)
+        // 1. Left: Clickable Date & Week Title (exact macOS WakeUpHeaderView layout)
         Column(
             modifier = Modifier
                 .clip(RoundedCornerShape(10.dp))
                 .clickable { showWeekDrawer = true }
                 .padding(horizontal = 4.dp, vertical = 2.dp)
         ) {
-            Text(
-                text = currentDateStr,
-                style = MaterialTheme.typography.titleMedium.copy(fontSize = 17.sp),
-                fontWeight = FontWeight.Bold,
-                color = textPrimary
-            )
-            Spacer(modifier = Modifier.height(2.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = "第 $selectedWeek 周 周$todayWeekdayShort",
-                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
-                    fontWeight = FontWeight.Medium,
-                    color = textSecondary
+                    style = MaterialTheme.typography.titleMedium.copy(fontSize = 20.sp),
+                    fontWeight = FontWeight.Bold,
+                    color = textPrimary
                 )
                 if (selectedWeek != currentWeek) {
                     Spacer(modifier = Modifier.width(6.dp))
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(Color(0xFF3F51B5))
-                            .padding(horizontal = 4.dp, vertical = 1.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFFFF5A5F))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
                     ) {
                         Text(
                             text = "非本周",
-                            fontSize = 9.sp,
+                            fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color.White
                         )
                     }
+                }
+                Spacer(modifier = Modifier.width(4.dp))
+                Icon(
+                    if (showWeekDrawer) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                    contentDescription = null,
+                    tint = textSecondary,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+            Spacer(modifier = Modifier.height(2.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = currentDateStr,
+                    fontSize = 11.5.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Medium,
+                    color = textSecondary
+                )
+                if (semesterName.isNotEmpty()) {
+                    Text(
+                        text = "·",
+                        fontSize = 11.5.sp,
+                        color = textSecondary.copy(alpha = 0.5f)
+                    )
+                    Text(
+                        text = semesterName,
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = textSecondary,
+                        maxLines = 1
+                    )
                 }
             }
         }

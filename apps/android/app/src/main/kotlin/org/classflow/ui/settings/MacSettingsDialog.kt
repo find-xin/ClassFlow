@@ -61,6 +61,7 @@ fun MacSettingsDialog(
     onDismiss: () -> Unit
 ) {
     var selectedCategory by remember { mutableStateOf("general") }
+    var isShowingAppearance by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
 
@@ -72,11 +73,11 @@ fun MacSettingsDialog(
 
     val categories = listOf(
         "general" to "通用",
-        "sections" to "作息时间",
         "sync" to "云同步",
-        "notifications" to "课前提醒",
-        "calendar" to "系统日历",
-        "backup" to "备份与导入",
+        "notifications" to "通知",
+        "calendar" to "日历",
+        "sections" to "作息时间",
+        "backup" to "备份导入",
         "courses" to "已选课程",
         "about" to "关于"
     )
@@ -94,7 +95,7 @@ fun MacSettingsDialog(
             tonalElevation = 6.dp
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
-                // 1. macOS Style Header with Coral/Indigo Finish Button
+                // 1. macOS Style Header with Coral Finish Button
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -106,7 +107,7 @@ fun MacSettingsDialog(
                         Icon(
                             Icons.Default.Settings,
                             contentDescription = null,
-                            tint = if (isDark) Color(0xFF818CF8) else Color(0xFF4F46E5),
+                            tint = Color(0xFFFF5A5F),
                             modifier = Modifier.size(22.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
@@ -120,11 +121,11 @@ fun MacSettingsDialog(
 
                     Button(
                         onClick = onDismiss,
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4F46E5)),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF5A5F)),
                         shape = RoundedCornerShape(20.dp),
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
                     ) {
-                        Text("完成", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Text("完成", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White)
                     }
                 }
 
@@ -149,9 +150,7 @@ fun MacSettingsDialog(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(16.dp))
                                     .background(
-                                        if (isSelected) {
-                                            if (isDark) Color(0xFF4F46E5) else Color(0xFF4F46E5)
-                                        } else Color.Transparent
+                                        if (isSelected) Color(0xFFFF5A5F) else Color.Transparent
                                     )
                                     .clickable { selectedCategory = catId }
                                     .padding(horizontal = 12.dp, vertical = 6.dp),
@@ -185,7 +184,11 @@ fun MacSettingsDialog(
                             cardBg = cardBg,
                             textPrimary = textPrimary,
                             textSecondary = textSecondary,
-                            onUpdateSettings = onUpdateSettings
+                            onUpdateSettings = onUpdateSettings,
+                            onOpenAppearance = { isShowingAppearance = true },
+                            onOpenSections = { selectedCategory = "sections" },
+                            onOpenBackup = { selectedCategory = "backup" },
+                            onOpenCourses = { selectedCategory = "courses" }
                         )
                         "sections" -> SectionsSettingsView(
                             sectionTimes = sectionTimes,
@@ -242,6 +245,15 @@ fun MacSettingsDialog(
             }
         }
     }
+
+    if (isShowingAppearance) {
+        TimetableAppearanceDialog(
+            settings = appSettings,
+            isDark = isDark,
+            onUpdateSettings = onUpdateSettings,
+            onDismiss = { isShowingAppearance = false }
+        )
+    }
 }
 
 @Composable
@@ -251,7 +263,11 @@ private fun GeneralSettingsView(
     cardBg: Color,
     textPrimary: Color,
     textSecondary: Color,
-    onUpdateSettings: (AppSettings) -> Unit
+    onUpdateSettings: (AppSettings) -> Unit,
+    onOpenAppearance: () -> Unit,
+    onOpenSections: () -> Unit,
+    onOpenBackup: () -> Unit,
+    onOpenCourses: () -> Unit
 ) {
     Text("外观与显示", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = textPrimary)
 
@@ -262,18 +278,18 @@ private fun GeneralSettingsView(
     ) {
         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             // Theme Mode
-            Text("外观模式", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = textPrimary)
+            Text("主题色彩", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = textPrimary)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                listOf("system" to "跟随系统", "light" to "浅色", "dark" to "深色").forEach { (mode, label) ->
+                listOf("system" to "跟随系统", "light" to "浅色模式", "dark" to "深色模式").forEach { (mode, label) ->
                     val isSel = (appSettings.themeMode == mode)
                     Box(
                         modifier = Modifier
                             .weight(1f)
                             .clip(RoundedCornerShape(8.dp))
-                            .background(if (isSel) Color(0xFF4F46E5) else if (isDark) Color(0xFF282B3C) else Color(0xFFF3F4F6))
+                            .background(if (isSel) Color(0xFFFF5A5F) else if (isDark) Color(0xFF282B3C) else Color(0xFFF3F4F6))
                             .clickable { onUpdateSettings(appSettings.copy(themeMode = mode)) }
                             .padding(vertical = 8.dp),
                         contentAlignment = Alignment.Center
@@ -290,57 +306,6 @@ private fun GeneralSettingsView(
 
             HorizontalDivider(color = if (isDark) Color.White.copy(alpha = 0.08f) else Color(0xFFF0F0F2))
 
-            // Wallpaper Presets
-            Text("课表壁纸风格", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = textPrimary)
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                listOf(
-                    "anime_blue" to "动漫暮光 (WakeUp 经典蓝紫)",
-                    "default" to "极简黑曜 (精细磨砂玻璃)",
-                    "forest_twilight" to "静谧幽林 (自然墨绿)"
-                ).forEach { (preset, label) ->
-                    val isSel = (appSettings.wallpaperPreset == preset)
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(if (isSel) Color(0xFF4F46E5).copy(alpha = 0.15f) else Color.Transparent)
-                            .clickable { onUpdateSettings(appSettings.copy(wallpaperPreset = preset)) }
-                            .padding(horizontal = 10.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(label, fontSize = 12.5.sp, color = textPrimary)
-                        if (isSel) {
-                            Icon(Icons.Default.Check, contentDescription = null, tint = Color(0xFF4F46E5), modifier = Modifier.size(16.dp))
-                        }
-                    }
-                }
-            }
-
-            HorizontalDivider(color = if (isDark) Color.White.copy(alpha = 0.08f) else Color(0xFFF0F0F2))
-
-            // Card Opacity Slider
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("课表卡片不透明度", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = textPrimary)
-                Text(
-                    text = "${(appSettings.cardOpacity * 100).toInt()}%",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF4F46E5)
-                )
-            }
-            Slider(
-                value = appSettings.cardOpacity,
-                onValueChange = { onUpdateSettings(appSettings.copy(cardOpacity = it)) },
-                valueRange = 0.30f..1.0f
-            )
-
-            HorizontalDivider(color = if (isDark) Color.White.copy(alpha = 0.08f) else Color(0xFFF0F0F2))
-
             // Show Weekends
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -353,13 +318,17 @@ private fun GeneralSettingsView(
                 }
                 Switch(
                     checked = appSettings.showWeekends,
-                    onCheckedChange = { onUpdateSettings(appSettings.copy(showWeekends = it)) }
+                    onCheckedChange = { onUpdateSettings(appSettings.copy(showWeekends = it)) },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = Color(0xFFFF5A5F)
+                    )
                 )
             }
 
             HorizontalDivider(color = if (isDark) Color.White.copy(alpha = 0.08f) else Color(0xFFF0F0F2))
 
-            // Study Module Toggle
+            // Study Focus Module
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -367,14 +336,110 @@ private fun GeneralSettingsView(
             ) {
                 Column {
                     Text("启用「学习」专注模块", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = textPrimary)
-                    Text("关闭后底栏将隐藏学习时钟与统计页面", fontSize = 11.sp, color = textSecondary)
+                    Text("在底部标签栏显示专注时钟与学习时长统计", fontSize = 11.sp, color = textSecondary)
                 }
                 Switch(
                     checked = appSettings.enableStudyModule,
-                    onCheckedChange = { onUpdateSettings(appSettings.copy(enableStudyModule = it)) }
+                    onCheckedChange = { onUpdateSettings(appSettings.copy(enableStudyModule = it)) },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = Color(0xFFFF5A5F)
+                    )
                 )
             }
         }
+    }
+
+    Spacer(modifier = Modifier.height(2.dp))
+
+    Text("快速定制", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = textPrimary)
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = cardBg)
+    ) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            QuickLinkRow(
+                icon = Icons.Default.Palette,
+                title = "课表外观与壁纸皮肤深度设置",
+                subtitle = "极简皮肤预设、纯色背景、课程格子外观",
+                textPrimary = textPrimary,
+                textSecondary = textSecondary,
+                onClick = onOpenAppearance
+            )
+
+            HorizontalDivider(color = if (isDark) Color.White.copy(alpha = 0.08f) else Color(0xFFF0F0F2))
+
+            QuickLinkRow(
+                icon = Icons.Default.AccessTime,
+                title = "作息时间表设置 (节次时长与联动)",
+                subtitle = "直接键盘输入修改全天各节次开始与结束时间",
+                textPrimary = textPrimary,
+                textSecondary = textSecondary,
+                onClick = onOpenSections
+            )
+
+            HorizontalDivider(color = if (isDark) Color.White.copy(alpha = 0.08f) else Color(0xFFF0F0F2))
+
+            QuickLinkRow(
+                icon = Icons.Default.ImportExport,
+                title = "数据备份与导入 / 导出",
+                subtitle = "ClassFlow 备份包、ICS 日历、教务脚本 JSON",
+                textPrimary = textPrimary,
+                textSecondary = textSecondary,
+                onClick = onOpenBackup
+            )
+
+            HorizontalDivider(color = if (isDark) Color.White.copy(alpha = 0.08f) else Color(0xFFF0F0F2))
+
+            QuickLinkRow(
+                icon = Icons.Default.MenuBook,
+                title = "已选课程管理",
+                subtitle = "查看、编辑或删除本学期已添加课程",
+                textPrimary = textPrimary,
+                textSecondary = textSecondary,
+                onClick = onOpenCourses
+            )
+        }
+    }
+}
+
+@Composable
+private fun QuickLinkRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String,
+    textPrimary: Color,
+    textSecondary: Color,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFFF5A5F).copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(icon, contentDescription = null, tint = Color(0xFFFF5A5F), modifier = Modifier.size(18.dp))
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Column {
+                Text(title, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold, color = textPrimary)
+                Text(subtitle, fontSize = 11.sp, color = textSecondary)
+            }
+        }
+        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = textSecondary, modifier = Modifier.size(18.dp))
     }
 }
 

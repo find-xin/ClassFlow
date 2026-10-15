@@ -15,6 +15,7 @@ import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
+import org.classflow.R
 
 /**
  * 2x2 Glance AppWidget matching WakeUp's Next Class Widget:
@@ -388,20 +389,20 @@ class WeekTimetableGlanceWidget : GlanceAppWidget() {
                                 teacher = "文明",
                                 classroom = "",
                                 isNonCurrentWeek = false,
-                                bgColor = Color(0xFFFFE4C4),
+                                colorTheme = "peach",
                                 accentColor = Color(0xFFFFBD80),
                                 textColor = Color(0xFF7A3E00),
                                 modifier = GlanceModifier.defaultWeight()
                             )
                         }
 
-                        // Col 1: Tue (Section 3-4 Mint card)
+                        // Col 1: Tue (Section 3-4 Mint card, seamless without dent)
                         Column(modifier = GlanceModifier.defaultWeight().fillMaxHeight().padding(horizontal = 1.dp)) {
                             repeat(2) { Spacer(modifier = GlanceModifier.defaultWeight()) }
                             GlancePastelCard(
                                 title = "认证与访问...",
                                 teacher = "崔永泉",
-                                bgColor = Color(0xFFC8F8E8),
+                                colorTheme = "mint",
                                 accentColor = Color(0xFF86E3C3),
                                 textColor = Color(0xFF0F5145),
                                 isTopHalf = true,
@@ -410,7 +411,7 @@ class WeekTimetableGlanceWidget : GlanceAppWidget() {
                             GlancePastelCard(
                                 classroom = "@A415",
                                 isNonCurrentWeek = true,
-                                bgColor = Color(0xFFC8F8E8),
+                                colorTheme = "mint",
                                 accentColor = Color(0xFF86E3C3),
                                 textColor = Color(0xFF0F5145),
                                 isBottomHalf = true,
@@ -424,13 +425,13 @@ class WeekTimetableGlanceWidget : GlanceAppWidget() {
                             repeat(5) { Spacer(modifier = GlanceModifier.defaultWeight()) }
                         }
 
-                        // Col 3: Thu (Section 3-4 Peach card)
+                        // Col 3: Thu (Section 3-4 Peach card, seamless without dent)
                         Column(modifier = GlanceModifier.defaultWeight().fillMaxHeight().padding(horizontal = 1.dp)) {
                             repeat(2) { Spacer(modifier = GlanceModifier.defaultWeight()) }
                             GlancePastelCard(
                                 title = "程序分析与...",
                                 teacher = "文明",
-                                bgColor = Color(0xFFFFE4C4),
+                                colorTheme = "peach",
                                 accentColor = Color(0xFFFFBD80),
                                 textColor = Color(0xFF7A3E00),
                                 isTopHalf = true,
@@ -439,7 +440,7 @@ class WeekTimetableGlanceWidget : GlanceAppWidget() {
                             GlancePastelCard(
                                 classroom = "@A415",
                                 isNonCurrentWeek = true,
-                                bgColor = Color(0xFFFFE4C4),
+                                colorTheme = "peach",
                                 accentColor = Color(0xFFFFBD80),
                                 textColor = Color(0xFF7A3E00),
                                 isBottomHalf = true,
@@ -448,13 +449,13 @@ class WeekTimetableGlanceWidget : GlanceAppWidget() {
                             Spacer(modifier = GlanceModifier.defaultWeight())
                         }
 
-                        // Col 4: Fri (Section 3-4 Mint card)
+                        // Col 4: Fri (Section 3-4 Mint card, seamless without dent)
                         Column(modifier = GlanceModifier.defaultWeight().fillMaxHeight().padding(horizontal = 1.dp)) {
                             repeat(2) { Spacer(modifier = GlanceModifier.defaultWeight()) }
                             GlancePastelCard(
                                 title = "认证与访问...",
                                 teacher = "崔永泉",
-                                bgColor = Color(0xFFC8F8E8),
+                                colorTheme = "mint",
                                 accentColor = Color(0xFF86E3C3),
                                 textColor = Color(0xFF0F5145),
                                 isTopHalf = true,
@@ -463,7 +464,7 @@ class WeekTimetableGlanceWidget : GlanceAppWidget() {
                             GlancePastelCard(
                                 classroom = "@A415",
                                 isNonCurrentWeek = true,
-                                bgColor = Color(0xFFC8F8E8),
+                                colorTheme = "mint",
                                 accentColor = Color(0xFF86E3C3),
                                 textColor = Color(0xFF0F5145),
                                 isBottomHalf = true,
@@ -490,6 +491,7 @@ class WeekTimetableGlanceWidget : GlanceAppWidget() {
 
 /**
  * WakeUp pastel card with top accent stripe and optional "非本周" pill matching Image 2.
+ * Uses custom 9-patch style seamless XML drawables to eliminate waist indentations when spanning multiple sections.
  */
 @Composable
 private fun GlancePastelCard(
@@ -497,22 +499,34 @@ private fun GlancePastelCard(
     teacher: String = "",
     classroom: String = "",
     isNonCurrentWeek: Boolean = false,
-    bgColor: Color,
+    colorTheme: String = "mint", // "mint" or "peach"
     accentColor: Color,
     textColor: Color,
     modifier: GlanceModifier = GlanceModifier,
     isTopHalf: Boolean = false,
     isBottomHalf: Boolean = false
 ) {
+    val bgDrawable = when (colorTheme) {
+        "mint" -> when {
+            isTopHalf -> R.drawable.bg_widget_card_mint_top
+            isBottomHalf -> R.drawable.bg_widget_card_mint_bottom
+            else -> R.drawable.bg_widget_card_mint_single
+        }
+        else -> when {
+            isTopHalf -> R.drawable.bg_widget_card_peach_top
+            isBottomHalf -> R.drawable.bg_widget_card_peach_bottom
+            else -> R.drawable.bg_widget_card_peach_single
+        }
+    }
+
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .cornerRadius(8.dp)
-            .background(bgColor)
+            .background(ImageProvider(bgDrawable))
     ) {
         Column(modifier = GlanceModifier.fillMaxSize()) {
             if (!isBottomHalf) {
-                // Top accent stripe (3dp)
+                // Top accent stripe (3dp) with rounded top corners
                 Box(
                     modifier = GlanceModifier
                         .fillMaxWidth()
