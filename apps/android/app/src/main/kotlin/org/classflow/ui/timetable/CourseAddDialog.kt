@@ -1,31 +1,32 @@
 package org.classflow.ui.timetable
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Book
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.classflow.data.model.Course
 import org.classflow.data.model.CourseSchedule
 import org.classflow.data.model.WeekPatternType
+import org.classflow.ui.components.GoogleCalendarColorPicker
+import org.classflow.ui.components.SearchSuggestionTextField
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CourseAddDialog(
     semesterId: String,
+    initialDayOfWeek: Int = 1,
+    initialStartSection: Int = 1,
+    initialEndSection: Int = 2,
     existingCourseNames: List<String> = emptyList(),
     existingTeachers: List<String> = emptyList(),
     existingClassrooms: List<String> = emptyList(),
@@ -35,9 +36,9 @@ fun CourseAddDialog(
     var name by remember { mutableStateOf("") }
     var teacher by remember { mutableStateOf("") }
     var classroom by remember { mutableStateOf("") }
-    var dayOfWeek by remember { mutableStateOf(1) } // 1: Mon ... 7: Sun
-    var startSection by remember { mutableStateOf("1") }
-    var endSection by remember { mutableStateOf("2") }
+    var dayOfWeek by remember { mutableIntStateOf(initialDayOfWeek) }
+    var startSection by remember { mutableStateOf(initialStartSection.toString()) }
+    var endSection by remember { mutableStateOf(initialEndSection.toString()) }
 
     // Week range (从第几周到第几周)
     var startWeek by remember { mutableStateOf("1") }
@@ -45,24 +46,7 @@ fun CourseAddDialog(
     var weekPattern by remember { mutableStateOf(WeekPatternType.ALL) } // ALL, ODD, EVEN
 
     // Color preset
-    val colorPresets = listOf("#4A90E2", "#5B7FB5", "#059669", "#E07A5F", "#9C27B0", "#FF5A5F", "#2A9D8F", "#3B82F6")
-    var selectedColor by remember { mutableStateOf(colorPresets.first()) }
-
-    // Autocomplete filtered suggestions
-    val nameSuggestions = remember(name, existingCourseNames) {
-        if (name.isBlank()) existingCourseNames.take(4)
-        else existingCourseNames.filter { it.contains(name, ignoreCase = true) && it != name }.take(4)
-    }
-
-    val teacherSuggestions = remember(teacher, existingTeachers) {
-        if (teacher.isBlank()) existingTeachers.take(4)
-        else existingTeachers.filter { it.contains(teacher, ignoreCase = true) && it != teacher }.take(4)
-    }
-
-    val classroomSuggestions = remember(classroom, existingClassrooms) {
-        if (classroom.isBlank()) existingClassrooms.take(4)
-        else existingClassrooms.filter { it.contains(classroom, ignoreCase = true) && it != classroom }.take(4)
-    }
+    var selectedColor by remember { mutableStateOf("#3F51B5") }
 
     val dayNames = listOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
 
@@ -78,85 +62,37 @@ fun CourseAddDialog(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // 1. Course Name with Autocomplete Suggestions
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    OutlinedTextField(
-                        value = name,
-                        onValueChange = { name = it },
-                        label = { Text("课程名称 *") },
-                        placeholder = { Text("例如：高等数学") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
-                    )
+                // 1. Course Name with WakeUp Autocomplete
+                SearchSuggestionTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = "课程名称 *",
+                    placeholder = "例如：高等数学",
+                    suggestions = existingCourseNames,
+                    leadingIcon = Icons.Default.Book
+                )
 
-                    if (nameSuggestions.isNotEmpty()) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            nameSuggestions.forEach { suggestion ->
-                                SuggestionChip(
-                                    onClick = { name = suggestion },
-                                    label = { Text(suggestion, fontSize = 11.sp) }
-                                )
-                            }
-                        }
-                    }
-                }
+                // 2. Teacher with WakeUp Autocomplete
+                SearchSuggestionTextField(
+                    value = teacher,
+                    onValueChange = { teacher = it },
+                    label = "任课教师 (可选)",
+                    placeholder = "例如：张教授",
+                    suggestions = existingTeachers,
+                    leadingIcon = Icons.Default.Person
+                )
 
-                // 2. Teacher with Autocomplete Suggestions
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    OutlinedTextField(
-                        value = teacher,
-                        onValueChange = { teacher = it },
-                        label = { Text("任课教师 (可选)") },
-                        placeholder = { Text("例如：张教授") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
-                    )
+                // 3. Classroom with WakeUp Autocomplete
+                SearchSuggestionTextField(
+                    value = classroom,
+                    onValueChange = { classroom = it },
+                    label = "上课教室 / 地点 (可选)",
+                    placeholder = "例如：东上 101",
+                    suggestions = existingClassrooms,
+                    leadingIcon = Icons.Default.LocationOn
+                )
 
-                    if (teacherSuggestions.isNotEmpty()) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            teacherSuggestions.forEach { suggestion ->
-                                SuggestionChip(
-                                    onClick = { teacher = suggestion },
-                                    label = { Text(suggestion, fontSize = 11.sp) }
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // 3. Classroom with Autocomplete Suggestions
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    OutlinedTextField(
-                        value = classroom,
-                        onValueChange = { classroom = it },
-                        label = { Text("上课教室 / 地点 (可选)") },
-                        placeholder = { Text("例如：东上 101") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
-                    )
-
-                    if (classroomSuggestions.isNotEmpty()) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            classroomSuggestions.forEach { suggestion ->
-                                SuggestionChip(
-                                    onClick = { classroom = suggestion },
-                                    label = { Text(suggestion, fontSize = 11.sp) }
-                                )
-                            }
-                        }
-                    }
-                }
-
-                Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
                 // 4. Weekday Selector
                 Text("上课星期", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
@@ -184,6 +120,7 @@ fun CourseAddDialog(
                         value = startSection,
                         onValueChange = { startSection = it.filter { ch -> ch.isDigit() } },
                         label = { Text("起始节次") },
+                        shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.weight(1f),
                         singleLine = true
                     )
@@ -191,6 +128,7 @@ fun CourseAddDialog(
                         value = endSection,
                         onValueChange = { endSection = it.filter { ch -> ch.isDigit() } },
                         label = { Text("结束节次") },
+                        shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.weight(1f),
                         singleLine = true
                     )
@@ -206,6 +144,7 @@ fun CourseAddDialog(
                         value = startWeek,
                         onValueChange = { startWeek = it.filter { ch -> ch.isDigit() } },
                         label = { Text("起始周") },
+                        shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.weight(1f),
                         singleLine = true
                     )
@@ -213,6 +152,7 @@ fun CourseAddDialog(
                         value = endWeek,
                         onValueChange = { endWeek = it.filter { ch -> ch.isDigit() } },
                         label = { Text("结束周") },
+                        shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.weight(1f),
                         singleLine = true
                     )
@@ -239,37 +179,12 @@ fun CourseAddDialog(
                     )
                 }
 
-                // 7. Card color selection
+                // 7. Google Calendar Style Color Picker
                 Text("卡片颜色", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    colorPresets.forEach { hex ->
-                        val col = try {
-                            Color(android.graphics.Color.parseColor(hex))
-                        } catch (e: Throwable) {
-                            Color.Blue
-                        }
-                        Box(
-                            modifier = Modifier
-                                .size(32.dp)
-                                .clip(CircleShape)
-                                .background(col)
-                                .clickable { selectedColor = hex },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            if (selectedColor == hex) {
-                                Icon(
-                                    Icons.Default.Check,
-                                    contentDescription = null,
-                                    tint = Color.White,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                        }
-                    }
-                }
+                GoogleCalendarColorPicker(
+                    selectedHex = selectedColor,
+                    onColorSelected = { selectedColor = it }
+                )
             }
         },
         confirmButton = {
@@ -309,7 +224,8 @@ fun CourseAddDialog(
 
                         onSaveCourse(newCourse)
                     }
-                }
+                },
+                shape = RoundedCornerShape(10.dp)
             ) {
                 Text("保存课程")
             }

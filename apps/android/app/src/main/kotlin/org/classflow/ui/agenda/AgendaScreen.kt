@@ -617,38 +617,10 @@ fun CreateAgendaItemDialog(
 
                 // Color picker
                 Text("标签颜色", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    colorPresets.forEach { hex ->
-                        val col = try {
-                            Color(android.graphics.Color.parseColor(hex))
-                        } catch (e: Throwable) {
-                            Color.Blue
-                        }
-                        Box(
-                            modifier = Modifier
-                                .size(32.dp)
-                                .clip(CircleShape)
-                                .background(col)
-                                .clickable { selectedColor = hex }
-                                .then(
-                                    if (selectedColor == hex) Modifier.padding(2.dp) else Modifier
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            if (selectedColor == hex) {
-                                Icon(
-                                    Icons.Default.Check,
-                                    contentDescription = null,
-                                    tint = Color.White,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                        }
-                    }
-                }
+                org.classflow.ui.components.GoogleCalendarColorPicker(
+                    selectedHex = selectedColor,
+                    onColorSelected = { selectedColor = it }
+                )
 
                 OutlinedTextField(
                     value = description,

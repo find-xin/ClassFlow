@@ -35,18 +35,6 @@ class SuperIslandAdapterTest {
     }
 
     private fun createDummyContext(): android.content.Context {
-        // Safe mock or proxy context for unit test environment
-        val proxyHandler = java.lang.reflect.InvocationHandler { _, method, _ ->
-            when (method.name) {
-                "getSystemService" -> null
-                "getPackageName" -> "org.classflow.test"
-                else -> null
-            }
-        }
-        return java.lang.reflect.Proxy.newProxyInstance(
-            android.content.Context::class.java.classLoader,
-            arrayOf(android.content.Context::class.java),
-            proxyHandler
-        ) as android.content.Context
+        return android.content.ContextWrapper(null)
     }
 }

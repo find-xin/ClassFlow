@@ -14,8 +14,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 import org.classflow.data.model.*
 import org.classflow.ui.agenda.AgendaScreen
+import org.classflow.ui.components.WallpaperBackground
 import org.classflow.ui.detail.CourseDetailBottomSheet
 import org.classflow.ui.study.StudyScreen
 import org.classflow.ui.timetable.*
@@ -47,39 +49,45 @@ fun MainApp() {
         else -> isSystemInDarkTheme()
     }
 
+    // High contrast, refined dark theme matching macOS
     val darkColors = darkColorScheme(
         primary = Color(0xFF6B8AFD),
         onPrimary = Color.White,
         primaryContainer = Color(0xFF283593),
         onPrimaryContainer = Color(0xFFE8EAF6),
-        surface = Color(0xFF141416),
-        onSurface = Color(0xFFEEEEEE),
-        surfaceVariant = Color(0xFF212226),
-        onSurfaceVariant = Color(0xFFB0B2B8),
-        background = Color(0xFF101012),
-        onBackground = Color(0xFFEEEEEE),
-        outlineVariant = Color(0xFF33353A)
+        surface = Color(0xFF14151B),
+        onSurface = Color(0xFFF5F5F7),
+        surfaceVariant = Color(0xFF1F212A),
+        onSurfaceVariant = Color(0xFFA1A3AC),
+        background = Color(0xFF0F1015),
+        onBackground = Color(0xFFF5F5F7),
+        outlineVariant = Color(0xFF2E313D)
     )
 
+    // Clean, crisp light theme matching macOS
     val lightColors = lightColorScheme(
         primary = Color(0xFF4F46E5),
         onPrimary = Color.White,
-        surface = Color(0xFFFBFBFC),
+        primaryContainer = Color(0xFFEEF2FF),
+        onPrimaryContainer = Color(0xFF312E81),
+        surface = Color(0xFFFFFFFF),
         onSurface = Color(0xFF1F2937),
-        surfaceVariant = Color(0xFFF1F3F6),
+        surfaceVariant = Color(0xFFF3F4F8),
         onSurfaceVariant = Color(0xFF6B7280),
-        background = Color(0xFFF8F9FA),
+        background = Color(0xFFF7F8FA),
         onBackground = Color(0xFF1F2937),
-        outlineVariant = Color(0xFFE5E7EB)
+        outlineVariant = Color(0xFFE2E4EC)
     )
 
     MaterialTheme(
         colorScheme = if (isDark) darkColors else lightColors
     ) {
-        MainScreenHost(
-            appSettings = appSettings,
-            onUpdateSettings = { appSettings = it }
-        )
+        WallpaperBackground(isDark = isDark) {
+            MainScreenHost(
+                appSettings = appSettings,
+                onUpdateSettings = { appSettings = it }
+            )
+        }
     }
 }
 
@@ -89,18 +97,26 @@ fun MainScreenHost(
     onUpdateSettings: (AppSettings) -> Unit
 ) {
     var selectedTab by remember { mutableStateOf(NavigationTab.TIMETABLE) }
-    var currentWeek by remember { mutableStateOf(1) }
+    val currentWeek = 1
+    var selectedWeek by remember { mutableIntStateOf(1) }
     val totalWeeks = 16
     val semesterName = "2026-2027 秋季学期"
 
     var selectedOccurrence by remember { mutableStateOf<TimelineItem?>(null) }
+    var selectedScheduleEvent by remember { mutableStateOf<CalendarEvent?>(null) }
     var showThreeDotsMenu by remember { mutableStateOf(false) }
     var activeQuickActionSheet by remember { mutableStateOf(QuickActionSheetType.NONE) }
+
+    // Dialogs
     var showAddCourseDialog by remember { mutableStateOf(false) }
+    var addCourseSlotDay by remember { mutableIntStateOf(1) }
+    var addCourseSlotSection by remember { mutableIntStateOf(1) }
+
+    var showAddScheduleDialog by remember { mutableStateOf(false) }
 
     // Sample Section Times
     val sectionTimes = remember {
-        listOf(
+        mutableStateListOf(
             SectionTime(1, "08:00", "08:45"),
             SectionTime(2, "08:50", "09:35"),
             SectionTime(3, "10:00", "10:45"),
@@ -134,10 +150,34 @@ fun MainScreenHost(
                 semesterId = "sem_1",
                 name = "数据结构与算法",
                 teacher = "李教授",
-                color = "#059669",
+                color = "#0B8043",
                 schedules = listOf(
                     CourseSchedule(dayOfWeek = 3, startSection = 3, endSection = 4, classroom = "信息楼 302")
                 )
+            )
+        )
+    }
+
+    // Schedules List (Calendar Events)
+    val sampleSchedules = remember {
+        mutableStateListOf(
+            CalendarEvent(
+                id = "sched_1",
+                title = "晨读早自习",
+                startTime = "07:20",
+                endTime = "07:55",
+                location = "图书馆一楼中庭",
+                color = "#039BE5",
+                frequency = "每天"
+            ),
+            CalendarEvent(
+                id = "sched_2",
+                title = "实验室科研讨论会",
+                startTime = "21:30",
+                endTime = "22:30",
+                location = "工科实验大楼 504",
+                color = "#8E24AA",
+                frequency = "每周"
             )
         )
     }
@@ -174,7 +214,7 @@ fun MainScreenHost(
                 startTime = "10:00",
                 endTime = "11:35",
                 weekNumber = 1,
-                color = "#059669",
+                color = "#0B8043",
                 teacher = "李教授"
             )
         )
@@ -188,8 +228,12 @@ fun MainScreenHost(
     }
 
     Scaffold(
+        containerColor = Color.Transparent,
         bottomBar = {
-            NavigationBar {
+            NavigationBar(
+                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+                tonalElevation = 0.dp
+            ) {
                 NavigationBarItem(
                     selected = selectedTab == NavigationTab.AGENDA,
                     onClick = { selectedTab = NavigationTab.AGENDA },
@@ -214,6 +258,7 @@ fun MainScreenHost(
         }
     ) { innerPadding ->
         Surface(
+            color = Color.Transparent,
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
@@ -226,12 +271,26 @@ fun MainScreenHost(
 
                 NavigationTab.TIMETABLE -> TimetableScreen(
                     currentWeek = currentWeek,
+                    selectedWeek = selectedWeek,
                     totalWeeks = totalWeeks,
                     semesterName = semesterName,
                     occurrences = sampleOccurrences,
-                    onWeekChange = { currentWeek = it },
+                    scheduleEvents = sampleSchedules,
+                    sectionTimes = sectionTimes,
+                    onWeekChange = { selectedWeek = it },
                     onCourseClick = { selectedOccurrence = it },
-                    onAddCourseClick = { showAddCourseDialog = true },
+                    onScheduleClick = { selectedScheduleEvent = it },
+                    onAddCourseClick = {
+                        addCourseSlotDay = 1
+                        addCourseSlotSection = 1
+                        showAddCourseDialog = true
+                    },
+                    onAddScheduleClick = { showAddScheduleDialog = true },
+                    onAddCourseAtSlot = { day, sec ->
+                        addCourseSlotDay = day
+                        addCourseSlotSection = sec
+                        showAddCourseDialog = true
+                    },
                     onOpenThreeDotsMenu = { showThreeDotsMenu = true }
                 )
 
@@ -265,6 +324,10 @@ fun MainScreenHost(
             QuickActionSheetType.SECTION_TIMES -> {
                 SectionTimesDialog(
                     sections = sectionTimes,
+                    onUpdateSections = { updated ->
+                        sectionTimes.clear()
+                        sectionTimes.addAll(updated)
+                    },
                     onDismiss = { activeQuickActionSheet = QuickActionSheetType.NONE }
                 )
             }
@@ -308,6 +371,9 @@ fun MainScreenHost(
 
             CourseAddDialog(
                 semesterId = "sem_1",
+                initialDayOfWeek = addCourseSlotDay,
+                initialStartSection = addCourseSlotSection,
+                initialEndSection = maxOf(addCourseSlotSection + 1, 2),
                 existingCourseNames = existingNames,
                 existingTeachers = existingTeachers,
                 existingClassrooms = existingClassrooms,
@@ -329,6 +395,7 @@ fun MainScreenHost(
                                 endSection = sched.endSection,
                                 startTime = "08:00",
                                 endTime = "09:35",
+                                weekNumber = selectedWeek,
                                 color = newCourse.color,
                                 teacher = newCourse.teacher
                             )
@@ -339,7 +406,18 @@ fun MainScreenHost(
             )
         }
 
-        // Inspection / Mutation Bottom Sheet
+        // Add Schedule Dialog
+        if (showAddScheduleDialog) {
+            ScheduleAddDialog(
+                onDismiss = { showAddScheduleDialog = false },
+                onSaveSchedule = { newSchedule ->
+                    sampleSchedules.add(0, newSchedule)
+                    showAddScheduleDialog = false
+                }
+            )
+        }
+
+        // Course Inspection Bottom Sheet
         selectedOccurrence?.let { occurrence ->
             CourseDetailBottomSheet(
                 item = occurrence,

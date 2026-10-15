@@ -37,7 +37,7 @@
 | :--- | :--- | :--- | :--- | :--- |
 | **macOS 安装镜像** | Apple Silicon (arm64) | `ClassFlow-1.0.0-macOS-arm64.dmg` | 3.7 MB | `199e194ec4d39cc9d32c324e595a024d81e2046ad7fbd9d61c345a36df8480b6` |
 | **macOS 绿色免安装** | Apple Silicon (arm64) | `ClassFlow-1.0.0-macOS-arm64.zip` | 3.1 MB | `0b11ee494e0b44c831fd6da59bac3bbf6cfc45436955338db6624558b3d87bcc` |
-| **Android 客户端** | Universal (ARM/x86) | `ClassFlow-1.0.0-android.apk` | 18 MB | `03f21b9da2cd4eccad89686631cf988aa1e458b9b8a17f3a78483c00918b8b8f` |
+| **Android 客户端** | Universal (ARM/x86) | `ClassFlow-1.0.0-android.apk` | 18 MB | `4f14e03d488f8ad830d3b6ed2930e77cd9bc9a4be0fa69674f4aeb381eb09f12` |
 | **小米手环快应用** | 手环快应用安装包 | `ClassFlow-1.0.0-xiaomi-band.rpk` | 5.0 KB | `586df655546d1941fed1bd1e452f59dc6dabeab23545d0d3d0e168596a697307` |
 | **小米手环离线包** | 开发者安装源码包 | `ClassFlow-1.0.0-xiaomi-band.zip` | 5.0 KB | `586df655546d1941fed1bd1e452f59dc6dabeab23545d0d3d0e168596a697307` |
 
