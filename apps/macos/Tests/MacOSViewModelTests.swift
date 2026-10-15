@@ -247,5 +247,330 @@ struct MacOSViewModelTests {
         #expect(updatedSem.sections[0].endTime == "09:15")
         #expect(updatedSem.sections[4].startTime == "14:30")
     }
+
+    @Test("Timetable profile management and switching")
+    @MainActor
+    func testTimetableProfiles() {
+        let state = makeIsolatedAppState()
+        #expect(!state.timetableProfiles.isEmpty)
+
+        // Create new profile
+        let newProfile = TimetableProfile(
+            name: "夏季作息时间表",
+            sections: [
+                SectionTime(section: 1, startTime: "08:00", endTime: "08:45"),
+                SectionTime(section: 2, startTime: "08:55", endTime: "09:40")
+            ],
+            fixedDuration: true,
+            sectionDurationMinutes: 45
+        )
+        state.saveTimetableProfile(newProfile)
+        #expect(state.timetableProfiles.contains(where: { $0.id == newProfile.id }))
+
+        // Select profile
+        state.selectTimetableProfile(id: newProfile.id)
+        #expect(state.activeProfileId == newProfile.id)
+        #expect(state.currentSemester?.sections.count == 2)
+        #expect(state.currentSemester?.sections[0].startTime == "08:00")
+    }
+
+    @Test("Appearance settings persistence")
+    @MainActor
+    func testAppearanceSettings() {
+        let state = makeIsolatedAppState()
+        state.settings.wallpaperPreset = "aurora"
+        state.settings.gridHeight = 72.0
+        state.settings.cardCornerRadius = 8.0
+        state.settings.showTimeInCard = true
+        state.settings.showAtPrefixForRoom = false
+        state.save()
+
+        #expect(state.settings.wallpaperPreset == "aurora")
+        #expect(state.settings.gridHeight == 72.0)
+        #expect(state.settings.cardCornerRadius == 8.0)
+        #expect(state.settings.showTimeInCard == true)
+        #expect(state.settings.showAtPrefixForRoom == false)
+    }
+
+    @Test("Start adding course with prefilled slot")
+    @MainActor
+    func testStartAddingCourseWithPrefilledSlot() {
+        let state = makeIsolatedAppState()
+        state.startAddingCourse(dayOfWeek: 3, startSection: 5, endSection: 6)
+        #expect(state.isAddingCourse == true)
+        #expect(state.prefilledSlotForAdd?.dayOfWeek == 3)
+        #expect(state.prefilledSlotForAdd?.startSection == 5)
+        #expect(state.prefilledSlotForAdd?.endSection == 6)
+    }
+
+    @Test("Current week occurrences respect weekPattern start/end and showNonCurrentWeekCourses")
+    @MainActor
+    func testCurrentWeekOccurrencesWeekRanges() {
+        let state = makeIsolatedAppState()
+        let semId = state.currentSemesterId!
+
+        // Course active only weeks 1..4
+        let earlyCourse = Course(
+            id: UUID(),
+            semesterId: semId,
+            name: "早期短学时讲座",
+            schedules: [
+                CourseSchedule(
+                    dayOfWeek: 1,
+                    startSection: 1,
+                    endSection: 2,
+                    classroom: "A101",
+                    weekPattern: WeekPattern(type: .all, startWeek: 1, endWeek: 4)
+                )
+            ]
+        )
+        state.courses = [earlyCourse]
+
+        // When viewing week 2 (active)
+        state.selectedWeek = 2
+        var items = state.currentWeekOccurrences
+        #expect(items.count == 1)
+        #expect(items[0].isCurrentWeek == true)
+
+        // When viewing week 6 (inactive for earlyCourse)
+        state.selectedWeek = 6
+        state.settings.showNonCurrentWeekCourses = true
+        items = state.currentWeekOccurrences
+        #expect(items.count == 1)
+        #expect(items[0].isCurrentWeek == false)
+
+        state.settings.showNonCurrentWeekCourses = false
+        items = state.currentWeekOccurrences
+        #expect(items.isEmpty)
+    }
+
+    @Test("Pomodoro ToDo task lifecycle and focus record logging")
+    @MainActor
+    func testPomodoroTaskManagementAndSessionRecording() {
+        let state = makeIsolatedAppState()
+
+        // 1. Create task linked to course
+        let task = PomodoroTask(
+            title: "微积分期中重点突破",
+            courseName: "高等数学",
+            estimatedPomodoros: 2,
+            priority: .high
+        )
+        state.addPomodoroTask(task)
+        #expect(state.pomodoroTasks.contains(where: { $0.id == task.id }))
+        #expect(state.activePomodoroTaskId == task.id)
+
+        // 2. Record a 25min completed pomodoro
+        state.recordCompletedPomodoro(
+            taskId: task.id,
+            taskTitle: task.title,
+            courseName: task.courseName,
+            focusMode: .pomodoro,
+            durationMinutes: 25,
+            tag: "期中复习"
+        )
+
+        let updatedTask = state.pomodoroTasks.first(where: { $0.id == task.id })!
+        #expect(updatedTask.completedPomodoros == 1)
+        #expect(updatedTask.totalFocusMinutes == 25)
+        #expect(updatedTask.isCompleted == false)
+        #expect(!state.pomodoroRecords.isEmpty)
+        #expect(state.pomodoroRecords[0].taskTitle == "微积分期中重点突破")
+
+        // 3. Record second pomodoro -> auto-completes task
+        state.recordCompletedPomodoro(
+            taskId: task.id,
+            taskTitle: task.title,
+            courseName: task.courseName,
+            focusMode: .pomodoro,
+            durationMinutes: 25,
+            tag: "期中复习"
+        )
+        let finishedTask = state.pomodoroTasks.first(where: { $0.id == task.id })!
+        #expect(finishedTask.completedPomodoros == 2)
+        #expect(finishedTask.isCompleted == true)
+        #expect(finishedTask.completedAt != nil)
+
+        // 4. Toggle completion
+        state.toggleTaskCompletion(id: task.id)
+        #expect(state.pomodoroTasks.first(where: { $0.id == task.id })!.isCompleted == false)
+
+        // 5. Delete task
+        state.deletePomodoroTask(id: task.id)
+        #expect(!state.pomodoroTasks.contains(where: { $0.id == task.id }))
+    }
+
+    @Test("CalendarEvent lifecycle and occurrence projection")
+    @MainActor
+    func testCalendarEventLifecycle() {
+        let state = makeIsolatedAppState()
+        let initialEventsCount = state.calendarEvents.count
+
+        let newEvent = CalendarEvent(
+            id: UUID(),
+            title: "学术讲座：量子计算前沿",
+            startTime: "2026-10-15T09:00:00",
+            endTime: "2026-10-15T11:00:00",
+            location: "学术交流厅 201",
+            description: "请携带笔记本",
+            color: "#34C759",
+            startSection: 1,
+            endSection: 2,
+            frequency: "daily"
+        )
+
+        state.addCalendarEvent(newEvent)
+        #expect(state.calendarEvents.count == initialEventsCount + 1)
+
+        let occurrences = state.currentWeekOccurrences
+        let projected = occurrences.first(where: { $0.calendarEventId == newEvent.id })
+        #expect(projected != nil)
+        #expect(projected?.sourceType == .calendarEvent)
+        #expect(projected?.title == "学术讲座：量子计算前沿")
+
+        state.deleteCalendarEvent(id: newEvent.id)
+        #expect(state.calendarEvents.count == initialEventsCount)
+        #expect(!state.currentWeekOccurrences.contains(where: { $0.calendarEventId == newEvent.id }))
+    }
+
+    @Test("TimetableDisplayMode and Day View navigation")
+    @MainActor
+    func testTimetableDisplayModeAndDayNavigation() {
+        let state = makeIsolatedAppState()
+        #expect(state.timetableDisplayMode == .week)
+
+        // Switch to Day View
+        state.timetableDisplayMode = .day
+        #expect(state.timetableDisplayMode == .day)
+
+        state.selectedDayOfWeek = 3
+        state.selectNextDay()
+        #expect(state.selectedDayOfWeek == 4)
+
+        state.selectPreviousDay()
+        #expect(state.selectedDayOfWeek == 3)
+
+        state.selectToday()
+        #expect(state.selectedDayOfWeek >= 1 && state.selectedDayOfWeek <= 7)
+    }
+
+    @Test("CalendarEvent with custom days of week recurrence")
+    @MainActor
+    func testCalendarEventCustomDaysOfWeek() {
+        let state = makeIsolatedAppState()
+        let event = CalendarEvent(
+            id: UUID(),
+            title: "实验室例会 (周一与周四)",
+            startTime: "2026-10-12T14:00:00",
+            endTime: "2026-10-12T15:30:00",
+            frequency: "customDays",
+            customDaysOfWeek: [1, 4]
+        )
+        state.addCalendarEvent(event)
+
+        let occurrences = state.currentWeekOccurrences.filter { $0.calendarEventId == event.id }
+        let days = Set(occurrences.map { $0.dayOfWeek })
+        #expect(days.contains(1))
+        #expect(days.contains(4))
+        #expect(!days.contains(2))
+        #expect(!days.contains(3))
+        #expect(!days.contains(5))
+    }
+
+    @Test("All-day and out-of-bounds early/late schedule events projection")
+    @MainActor
+    func testAllDayAndOutOfBoundsEvents() {
+        let state = makeIsolatedAppState()
+
+        // 1. All-Day Event
+        let allDayEvent = CalendarEvent(
+            id: UUID(),
+            title: "全天科研创新实践展",
+            startTime: "2026-10-14T00:00:00",
+            endTime: "2026-10-14T23:59:59",
+            isAllDay: true
+        )
+        state.addCalendarEvent(allDayEvent)
+
+        // 2. Early morning event (06:30 - 07:30, earlier than Section 1 08:00)
+        let earlyMorningEvent = CalendarEvent(
+            id: UUID(),
+            title: "晨间长跑与体能训练",
+            startTime: "2026-10-14T06:30:00",
+            endTime: "2026-10-14T07:30:00",
+            isAllDay: false
+        )
+        state.addCalendarEvent(earlyMorningEvent)
+
+        // 3. Late night event (22:00 - 23:00, later than Section 12 21:30)
+        let lateNightEvent = CalendarEvent(
+            id: UUID(),
+            title: "实验室夜间数据复盘会",
+            startTime: "2026-10-14T22:00:00",
+            endTime: "2026-10-14T23:00:00",
+            isAllDay: false
+        )
+        state.addCalendarEvent(lateNightEvent)
+
+        let occurrences = state.currentWeekOccurrences
+        let projectedAllDay = occurrences.first(where: { $0.calendarEventId == allDayEvent.id })
+        #expect(projectedAllDay != nil)
+        #expect(projectedAllDay?.isAllDay == true)
+
+        let projectedEarly = occurrences.first(where: { $0.calendarEventId == earlyMorningEvent.id })
+        #expect(projectedEarly != nil)
+        #expect(projectedEarly?.startTime == "06:30")
+        #expect(projectedEarly?.isAllDay == false)
+
+        let projectedLate = occurrences.first(where: { $0.calendarEventId == lateNightEvent.id })
+        #expect(projectedLate != nil)
+        #expect(projectedLate?.startTime == "22:00")
+        #expect(projectedLate?.isAllDay == false)
+
+        // Test SectionTime supporting 0 (早) and 99 (晚)
+        let earlySection = SectionTime(section: 0, startTime: "06:30", endTime: "08:00")
+        #expect(earlySection.section == 0)
+
+        let lateSection = SectionTime(section: 99, startTime: "21:30", endTime: "23:00")
+        #expect(lateSection.section == 99)
+    }
+
+    @Test("Course autocompletion search candidate extraction and filtering")
+    @MainActor
+    func testAutocompleteCandidateExtractionAndFiltering() {
+        let state = makeIsolatedAppState()
+
+        // 1. Verify candidate extraction from bootstrapped courses
+        let courseNames = Array(Set(state.courses.map { $0.name.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty })).sorted()
+        let courseTeachers = state.courses.compactMap { $0.teacher?.trimmingCharacters(in: .whitespacesAndNewlines) }
+        let scheduleTeachers = state.courses.flatMap { $0.schedules.compactMap { $0.teacher?.trimmingCharacters(in: .whitespacesAndNewlines) } }
+        let teachers = Array(Set((courseTeachers + scheduleTeachers).filter { !$0.isEmpty })).sorted()
+        let classrooms = Array(Set(state.courses.flatMap { $0.schedules.compactMap { $0.classroom?.trimmingCharacters(in: .whitespacesAndNewlines) } }.filter { !$0.isEmpty })).sorted()
+
+        #expect(!courseNames.isEmpty)
+        #expect(courseNames.contains(where: { $0.contains("高等数学") }))
+        #expect(!classrooms.isEmpty)
+        #expect(!teachers.isEmpty)
+
+        // 2. Test filtering logic
+        func filterSuggestions(_ query: String, candidates: [String]) -> [String] {
+            let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty { return candidates }
+            return candidates.filter { $0.localizedCaseInsensitiveContains(trimmed) }
+        }
+
+        // Empty query yields all candidates
+        #expect(filterSuggestions("", candidates: courseNames) == courseNames)
+
+        // Substring query filters matching candidates
+        let mathMatches = filterSuggestions("数学", candidates: courseNames)
+        #expect(!mathMatches.isEmpty)
+        #expect(mathMatches.allSatisfy { $0.contains("数学") })
+
+        // Query not present returns empty (allowing arbitrary custom typing)
+        let unlistedMatches = filterSuggestions("全新自创实验课", candidates: courseNames)
+        #expect(unlistedMatches.isEmpty)
+    }
 }
+
 

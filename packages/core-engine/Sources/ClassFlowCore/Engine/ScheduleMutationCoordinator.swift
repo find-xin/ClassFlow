@@ -94,6 +94,7 @@ public struct ScheduleMutationCoordinator: Sendable {
                     startSection: updatedStartSection,
                     endSection: updatedEndSection,
                     classroom: updatedClassroom,
+                    teacher: originalSchedule.teacher,
                     weekPattern: .custom(Array(futureWeeks))
                 )
                 mutableCourse.schedules.append(newSchedule)

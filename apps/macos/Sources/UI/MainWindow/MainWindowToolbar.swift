@@ -99,13 +99,19 @@ public struct MainWindowToolbar: View {
                 }
                 .menuStyle(.borderlessButton)
 
-                // 添加课程
-                Button(action: { appState.isAddingCourse = true }) {
-                    Label("添加课程", systemImage: "plus")
+                // 新建课程 / 日程
+                Menu {
+                    Button(action: { appState.isAddingCourse = true }) {
+                        Label("新建课程...", systemImage: "book.pages")
+                    }
+                    Button(action: { appState.startAddingCalendarEvent() }) {
+                        Label("新建日程 / 待办...", systemImage: "calendar.badge.plus")
+                    }
+                } label: {
+                    Label("新建", systemImage: "plus")
                         .font(.system(size: 12, weight: .semibold))
                 }
-                .buttonStyle(.borderedProminent)
-                .keyboardShortcut("n", modifiers: .command)
+                .menuStyle(.borderedButton)
 
                 // 桌面小组件预览
                 Button {
@@ -244,16 +250,7 @@ public struct MainWindowToolbar: View {
                 .foregroundColor(.accentColor)
                 .buttonStyle(.plain)
 
-                Text("•")
-                    .foregroundColor(.secondary)
 
-                Button("管理课表") {
-                    isShowingWeekPopover = false
-                    appState.isShowingManageSemesters = true
-                }
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(.accentColor)
-                .buttonStyle(.plain)
             }
 
             // 4. Timetable Cards ScrollView (Matching WakeUp cards with checkmark)

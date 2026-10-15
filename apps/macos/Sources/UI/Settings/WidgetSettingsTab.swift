@@ -29,12 +29,13 @@ public struct WidgetSettingsTab: View {
                             .font(.headline)
                         Spacer()
                         Picker("小组件规格", selection: $selectedPreviewTab) {
-                            Text("下节课程 (Small)").tag(0)
-                            Text("今日日程 (Medium)").tag(1)
-                            Text("周课程表 (Large)").tag(2)
+                            Text("下节 (S)").tag(0)
+                            Text("今日 (M)").tag(1)
+                            Text("周课表 (L)").tag(2)
+                            Text("巨幕周表 (XL)").tag(3)
                         }
                         .pickerStyle(.segmented)
-                        .frame(width: 320)
+                        .frame(width: 360)
                     }
 
                     HStack {
@@ -47,20 +48,33 @@ public struct WidgetSettingsTab: View {
                             case 1:
                                 TodayClassesWidgetView(payload: currentPayload)
                                     .frame(width: 325, height: 155)
-                            default:
-                                WeekOverviewWidgetView(payload: currentPayload)
+                            case 2:
+                                WeekOverviewWidgetView(payload: currentPayload, explicitFamily: .systemLarge)
                                     .frame(width: 325, height: 325)
+                            default:
+                                WeekOverviewWidgetView(payload: currentPayload, explicitFamily: .systemExtraLarge)
+                                    .frame(width: 480, height: 280)
                             }
                         }
-                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                        .shadow(color: Color.black.opacity(0.18), radius: 8, x: 0, y: 3)
+                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .shadow(color: Color.black.opacity(0.20), radius: 14, x: 0, y: 6)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .stroke(Color.primary.opacity(0.1), lineWidth: 1)
+                            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                .stroke(Color.white.opacity(0.25), lineWidth: 1)
                         )
-                        .padding(.vertical, 8)
+                        .padding(.vertical, 14)
                         Spacer()
                     }
+                    .background(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [Color.blue.opacity(0.18), Color.purple.opacity(0.15), Color.orange.opacity(0.10)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                    )
                 }
                 .padding()
                 .background(Color(nsColor: .controlBackgroundColor).opacity(0.6))
@@ -84,7 +98,7 @@ public struct WidgetSettingsTab: View {
                         Button {
                             refreshWidgets()
                         } label: {
-                            HStack(spacing: 4) {
+                            HStack(spacing: 5) {
                                 if isRefreshing {
                                     ProgressView().controlSize(.small)
                                 } else {
@@ -92,8 +106,14 @@ public struct WidgetSettingsTab: View {
                                 }
                                 Text("立即刷新小组件")
                             }
+                            .font(.system(size: 12.5, weight: .bold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 6)
+                            .background(Color(hex: "#FF5A5F"))
+                            .clipShape(Capsule())
                         }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(.plain)
                         .disabled(isRefreshing)
                     }
 

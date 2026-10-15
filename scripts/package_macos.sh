@@ -34,6 +34,9 @@ mkdir -p "${BUNDLE_DIR}/Contents/PlugIns"
 
 cp "${RELEASE_BIN}" "${BUNDLE_DIR}/Contents/MacOS/${APP_NAME}"
 chmod +x "${BUNDLE_DIR}/Contents/MacOS/${APP_NAME}"
+if [ -f "${MACOS_DIR}/Resources/AppIcon.icns" ]; then
+    cp "${MACOS_DIR}/Resources/AppIcon.icns" "${BUNDLE_DIR}/Contents/Resources/AppIcon.icns"
+fi
 
 # 3. Write Info.plist
 echo "[3/6] Generating Info.plist..."
@@ -44,6 +47,8 @@ cat << 'EOF' > "${BUNDLE_DIR}/Contents/Info.plist"
 <dict>
     <key>CFBundleExecutable</key>
     <string>ClassFlow</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundleIdentifier</key>
     <string>org.classflow.ClassFlow</string>
     <key>CFBundleName</key>
@@ -66,6 +71,17 @@ cat << 'EOF' > "${BUNDLE_DIR}/Contents/Info.plist"
     <string>ClassFlow 需要完整访问系统日历权限，以便自动创建专属课程表日历并在调课停课时保持同步。</string>
     <key>NSRemindersUsageDescription</key>
     <string>ClassFlow 需要提醒权限以便发送上课前提醒。</string>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>org.classflow.ClassFlow</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>classflow</string>
+            </array>
+        </dict>
+    </array>
     <key>NSHumanReadableCopyright</key>
     <string>Copyright © 2026 ClassFlow Contributors. Licensed under Apache-2.0.</string>
 </dict>
@@ -149,13 +165,18 @@ if [[ -d "/Applications" && -w "/Applications" ]]; then
     rm -rf "/Applications/ClassFlow.app"
     cp -R "${BUNDLE_DIR}" "/Applications/ClassFlow.app"
     if [[ -x "${LSREGISTER}" ]]; then
-        "${LSREGISTER}" -f "/Applications/ClassFlow.app" || true
+        "${LSREGISTER}" -f -R "/Applications/ClassFlow.app" || true
     fi
     pluginkit -a "/Applications/ClassFlow.app/Contents/PlugIns/ClassFlowWidgets.appex" || true
+    pluginkit -e use -i org.classflow.ClassFlow.ClassFlowWidgets || true
+    killall -9 chronod 2>/dev/null || true
 else
     if [[ -x "${LSREGISTER}" ]]; then
-        "${LSREGISTER}" -f "${BUNDLE_DIR}" || true
+        "${LSREGISTER}" -f -R "${BUNDLE_DIR}" || true
     fi
+    pluginkit -a "${BUNDLE_DIR}/Contents/PlugIns/ClassFlowWidgets.appex" || true
+    pluginkit -e use -i org.classflow.ClassFlow.ClassFlowWidgets || true
+    killall -9 chronod 2>/dev/null || true
 fi
 
 # 5. Create ZIP Distribution

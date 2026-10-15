@@ -1,0 +1,334 @@
+<template>
+  <div class="container">
+    <!-- Top Status Bar: Week & Current Time -->
+    <div class="top-bar">
+      <text class="week-pill">第 {{ currentWeek }} 周</text>
+      <text class="time-text">{{ currentTime }}</text>
+    </div>
+
+    <!-- 1. Next Class Hero Card (Nexio 风格高能卡片) -->
+    <div class="hero-card" if="{{ nextClass }}">
+      <div class="hero-header">
+        <text class="badge-status">{{ nextClass.statusText }}</text>
+        <text class="section-tag">第{{ nextClass.startSection }}-{{ nextClass.endSection }}节</text>
+      </div>
+      <text class="hero-title">{{ nextClass.title }}</text>
+      <div class="hero-details">
+        <text class="detail-room">📍 {{ nextClass.location }}</text>
+        <text class="detail-time">⏱ {{ nextClass.startTime }}-{{ nextClass.endTime }}</text>
+      </div>
+    </div>
+    <div class="hero-card empty-card" else>
+      <text class="empty-emoji">☕</text>
+      <text class="empty-title">今日课程已结束</text>
+      <text class="empty-sub">好好休息放松吧</text>
+    </div>
+
+    <!-- Day Selector Row (一 二 三 四 五 六 日) -->
+    <div class="day-selector">
+      <div for="{{ (index, day) in daysList }}" class="day-item {{ selectedDayIndex === index ? 'day-active' : '' }}" onclick="selectDay(index)">
+        <text class="day-text {{ selectedDayIndex === index ? 'text-active' : '' }}">{{ day.name }}</text>
+      </div>
+    </div>
+
+    <!-- 2. Course List for Selected Day -->
+    <list class="course-list">
+      <list-item type="course" for="{{ course in currentDayCourses }}" class="course-item">
+        <div class="course-card" style="border-left-color: {{ course.colorHex }}">
+          <div class="course-row">
+            <text class="course-name">{{ course.title }}</text>
+            <text class="course-period">第{{ course.startSection }}-{{ course.endSection }}节</text>
+          </div>
+          <div class="course-sub-row">
+            <text class="course-time">{{ course.startTime }} - {{ course.endTime }}</text>
+            <text class="course-room" if="{{ course.location }}">📍 {{ course.location }}</text>
+          </div>
+        </div>
+      </list-item>
+    </list>
+  </div>
+</template>
+
+<style>
+  .container {
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+    background-color: #000000;
+    padding-left: 12px;
+    padding-right: 12px;
+    padding-top: 18px;
+    padding-bottom: 24px;
+  }
+
+  .top-bar {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+
+  .week-pill {
+    font-size: 14px;
+    font-weight: bold;
+    color: #FF5A5F;
+    background-color: #261618;
+    padding-left: 8px;
+    padding-right: 8px;
+    padding-top: 2px;
+    padding-bottom: 2px;
+    border-radius: 10px;
+  }
+
+  .time-text {
+    font-size: 14px;
+    color: #888888;
+  }
+
+  /* Nexio Hero Card */
+  .hero-card {
+    flex-direction: column;
+    background-color: #1A1A1E;
+    border-radius: 16px;
+    padding: 12px;
+    margin-bottom: 12px;
+    border-width: 1px;
+    border-color: #2A2A30;
+  }
+
+  .hero-header {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+
+  .badge-status {
+    font-size: 11px;
+    font-weight: bold;
+    color: #34C759;
+    background-color: #122818;
+    padding-left: 6px;
+    padding-right: 6px;
+    padding-top: 2px;
+    padding-bottom: 2px;
+    border-radius: 6px;
+  }
+
+  .section-tag {
+    font-size: 11px;
+    color: #AAAAAA;
+  }
+
+  .hero-title {
+    font-size: 17px;
+    font-weight: bold;
+    color: #FFFFFF;
+    margin-bottom: 6px;
+  }
+
+  .hero-details {
+    flex-direction: column;
+  }
+
+  .detail-room {
+    font-size: 12px;
+    color: #DDDDDD;
+    margin-bottom: 2px;
+  }
+
+  .detail-time {
+    font-size: 11px;
+    color: #888888;
+  }
+
+  .empty-card {
+    align-items: center;
+    padding-top: 18px;
+    padding-bottom: 18px;
+  }
+
+  .empty-emoji {
+    font-size: 24px;
+    margin-bottom: 4px;
+  }
+
+  .empty-title {
+    font-size: 14px;
+    font-weight: bold;
+    color: #FFFFFF;
+  }
+
+  .empty-sub {
+    font-size: 11px;
+    color: #777777;
+  }
+
+  /* Day Selector */
+  .day-selector {
+    flex-direction: row;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+
+  .day-item {
+    width: 22px;
+    height: 22px;
+    border-radius: 11px;
+    align-items: center;
+    justify-content: center;
+    background-color: #18181A;
+  }
+
+  .day-active {
+    background-color: #FF5A5F;
+  }
+
+  .day-text {
+    font-size: 11px;
+    color: #888888;
+  }
+
+  .text-active {
+    color: #FFFFFF;
+    font-weight: bold;
+  }
+
+  /* Course List */
+  .course-list {
+    flex: 1;
+    width: 100%;
+  }
+
+  .course-item {
+    margin-bottom: 8px;
+  }
+
+  .course-card {
+    flex-direction: column;
+    background-color: #161618;
+    border-radius: 12px;
+    padding: 10px;
+    border-left-width: 4px;
+    border-left-color: #FF5A5F;
+  }
+
+  .course-row {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+  }
+
+  .course-name {
+    font-size: 13px;
+    font-weight: bold;
+    color: #FFFFFF;
+  }
+
+  .course-period {
+    font-size: 10px;
+    color: #888888;
+  }
+
+  .course-sub-row {
+    flex-direction: row;
+    justify-content: space-between;
+  }
+
+  .course-time {
+    font-size: 10px;
+    color: #999999;
+  }
+
+  .course-room {
+    font-size: 10px;
+    color: #CCCCCC;
+  }
+</style>
+
+<script>
+  import storage from '@system.storage'
+
+  export default {
+    private: {
+      currentWeek: 6,
+      currentTime: '10:15',
+      selectedDayIndex: 2, // Wednesday (0-indexed from Monday)
+      daysList: [
+        { name: '一' }, { name: '二' }, { name: '三' }, { name: '四' },
+        { name: '五' }, { name: '六' }, { name: '日' }
+      ],
+      nextClass: {
+        title: '高等数学',
+        location: '东上101',
+        startSection: 3,
+        endSection: 4,
+        startTime: '10:00',
+        endTime: '11:35',
+        statusText: '上课中 🟢'
+      },
+      scheduleData: {
+        0: [
+          { title: '大学英语', location: '外文楼201', startSection: 1, endSection: 2, startTime: '08:00', endTime: '09:35', colorHex: '#50E3C2' }
+        ],
+        1: [
+          { title: '近代史纲要', location: '教三102', startSection: 3, endSection: 4, startTime: '10:00', endTime: '11:35', colorHex: '#E8A87C' }
+        ],
+        2: [
+          { title: '高等数学', location: '东上101', startSection: 3, endSection: 4, startTime: '10:00', endTime: '11:35', colorHex: '#FF5A5F' },
+          { title: '计算机网络', location: '信息楼302', startSection: 7, endSection: 8, startTime: '16:00', endTime: '17:35', colorHex: '#5B7FB5' }
+        ],
+        3: [
+          { title: '大学体育', location: '西操场', startSection: 5, endSection: 6, startTime: '14:00', endTime: '15:35', colorHex: '#56A3A6' }
+        ],
+        4: [
+          { title: '线性代数', location: '东中204', startSection: 1, endSection: 2, startTime: '08:00', endTime: '09:35', colorHex: '#9B59B6' }
+        ],
+        5: [],
+        6: []
+      }
+    },
+
+    computed: {
+      currentDayCourses() {
+        return this.scheduleData[this.selectedDayIndex] || []
+      }
+    },
+
+    onInit() {
+      this.loadCachedTimetable()
+      this.updateClock()
+    },
+
+    selectDay(index) {
+      this.selectedDayIndex = index
+    },
+
+    loadCachedTimetable() {
+      const self = this
+      storage.get({
+        key: 'classflow_band_schedule',
+        success: function(data) {
+          if (data) {
+            try {
+              const parsed = JSON.parse(data)
+              if (parsed.currentWeek) self.currentWeek = parsed.currentWeek
+              if (parsed.nextClass) self.nextClass = parsed.nextClass
+              if (parsed.scheduleData) self.scheduleData = parsed.scheduleData
+            } catch (e) {
+              console.error('Failed to parse cached band schedule', e)
+            }
+          }
+        }
+      })
+    },
+
+    updateClock() {
+      const d = new Date()
+      const hh = String(d.getHours()).padStart(2, '0')
+      const mm = String(d.getMinutes()).padStart(2, '0')
+      this.currentTime = `${hh}:${mm}`
+    }
+  }
+</script>

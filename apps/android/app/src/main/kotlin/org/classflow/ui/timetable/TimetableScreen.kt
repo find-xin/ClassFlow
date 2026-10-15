@@ -3,15 +3,15 @@ package org.classflow.ui.timetable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -24,6 +24,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.classflow.data.model.TimelineItem
+import java.util.Calendar
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -35,7 +36,7 @@ fun TimetableScreen(
     onWeekChange: (Int) -> Unit,
     onCourseClick: (TimelineItem) -> Unit,
     onAddCourseClick: () -> Unit,
-    onSyncClick: () -> Unit
+    onOpenThreeDotsMenu: () -> Unit
 ) {
     Scaffold(
         topBar = {
@@ -70,11 +71,11 @@ fun TimetableScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = onSyncClick) {
-                        Icon(Icons.Default.Sync, contentDescription = "云同步")
-                    }
                     IconButton(onClick = onAddCourseClick) {
                         Icon(Icons.Default.Add, contentDescription = "添加课程")
+                    }
+                    IconButton(onClick = onOpenThreeDotsMenu) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "更多设置")
                     }
                 }
             )
@@ -88,7 +89,7 @@ fun TimetableScreen(
             // Day Header Row (Mon-Sun)
             DayHeaderRow()
 
-            Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+            Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
 
             // Timetable Canvas (Section Axis + 7 Columns)
             TimetableCanvas(
@@ -102,6 +103,18 @@ fun TimetableScreen(
 @Composable
 fun DayHeaderRow() {
     val dayNames = listOf("一", "二", "三", "四", "五", "六", "日")
+    val cal = Calendar.getInstance()
+    val todayDayOfWeek = when (cal.get(Calendar.DAY_OF_WEEK)) {
+        Calendar.MONDAY -> 1
+        Calendar.TUESDAY -> 2
+        Calendar.WEDNESDAY -> 3
+        Calendar.THURSDAY -> 4
+        Calendar.FRIDAY -> 5
+        Calendar.SATURDAY -> 6
+        Calendar.SUNDAY -> 7
+        else -> 1
+    }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -111,14 +124,28 @@ fun DayHeaderRow() {
         // Section index header blank space
         Box(modifier = Modifier.width(36.dp))
 
-        for (day in dayNames) {
-            Text(
-                text = "周$day",
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.Medium,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.weight(1f)
-            )
+        for ((index, day) in dayNames.withIndex()) {
+            val isToday = (index + 1 == todayDayOfWeek)
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "周$day",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = if (isToday) FontWeight.Bold else FontWeight.Medium,
+                    color = if (isToday) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                )
+                if (isToday) {
+                    Box(
+                        modifier = Modifier
+                            .padding(top = 2.dp)
+                            .size(4.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primary)
+                    )
+                }
+            }
         }
     }
 }
@@ -199,7 +226,7 @@ fun CourseCard(
         MaterialTheme.colorScheme.primary
     }
 
-    val alpha = if (item.isCurrentWeek) 0.92f else 0.45f
+    val alpha = if (item.isCurrentWeek) 0.90f else 0.40f
 
     Box(
         modifier = modifier

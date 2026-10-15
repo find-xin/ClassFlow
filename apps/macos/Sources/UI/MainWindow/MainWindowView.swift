@@ -6,9 +6,6 @@ import ClassFlowCore
 public struct MainWindowView: View {
     @Bindable public var appState: AppState
 
-    @State private var isShowingWeekDrawer: Bool = false
-    @State private var isShowingQuickMenu: Bool = false
-
     public init(appState: AppState) {
         self.appState = appState
     }
@@ -20,106 +17,80 @@ public struct MainWindowView: View {
     }
 
     public var body: some View {
-        ZStack(alignment: .bottom) {
-            // 1. Seamless Full-Window Aesthetic Wallpaper Background
-            WallpaperBackgroundView(settings: appState.settings)
-                .ignoresSafeArea()
-
-            // 2. Primary Layout Canvas
-            VStack(spacing: 0) {
-                // A. Minimalist Top Header (Clickable title + 4 ghost action icons)
-                WakeUpHeaderView(
-                    appState: appState,
-                    isShowingWeekDrawer: $isShowingWeekDrawer,
-                    isShowingQuickMenu: $isShowingQuickMenu
-                )
-                .padding(.horizontal, 18)
-                .padding(.top, 14)
-                .padding(.bottom, 6)
-
-                // B. Date Bar (10月, 三 14 with dark badge, 四 15...)
-                if let semester = appState.currentSemester {
-                    let weekDates = appState.timelineEngineWeekCalculator.dateStringsInWeek(
-                        weekNumber: appState.selectedWeek,
-                        semesterStartDate: semester.startDate
-                    )
-
-                    DayHeaderView(
-                        dateStrings: weekDates,
-                        showWeekends: appState.settings.showWeekends,
-                        todayDateString: todayDateString
-                    )
-                    .padding(.horizontal, 10)
-                    .padding(.bottom, 4)
-
-                    // C. Main Timetable Canvas (Transparent grid floating over wallpaper)
-                    TimetableGridView(
-                        semester: semester,
-                        occurrences: appState.currentWeekOccurrences,
-                        dateStrings: weekDates,
-                        showWeekends: appState.settings.showWeekends,
-                        todayDateString: todayDateString,
-                        cardOpacity: appState.settings.cardOpacity,
-                        onSelectOccurrence: { item in
-                            appState.selectedOccurrence = item
-                        },
-                        onQuickImport: {
-                            openImportDialog()
-                        }
-                    )
-                } else {
-                    emptySemesterPlaceholder
-                }
-
-                Spacer(minLength: 0)
-
-                // D. Bottom Navigation Bar (日程, 课程, 学习, 我的)
-                WakeUpTabBar(
-                    selectedTab: $appState.settings.selectedTab,
-                    onTabSelected: { tab in
-                        handleTabSelection(tab)
+        VStack(spacing: 0) {
+            // Dynamic Content Canvas based on selectedTab
+            Group {
+                switch appState.settings.selectedTab {
+                case "schedule":
+                    TodayAgendaTimelineView(appState: appState)
+                case "study":
+                    if appState.settings.enableStudyModule {
+                        StudyFocusView(appState: appState)
+                    } else {
+                        timetableContent
                     }
-                )
-                .padding(.top, 4)
-                .padding(.bottom, 8)
-            }
-
-            // 3. Floating Overlay Drawers at the Bottom (Week & Timetable, Quick Actions)
-            HStack(alignment: .bottom, spacing: 14) {
-                if isShowingWeekDrawer {
-                    WakeUpWeekAndTimetableDrawer(
-                        appState: appState,
-                        isPresented: $isShowingWeekDrawer
-                    )
-                    .transition(.asymmetric(
-                        insertion: .scale(scale: 0.95).combined(with: .opacity).combined(with: .move(edge: .bottom)),
-                        removal: .opacity.combined(with: .move(edge: .bottom))
-                    ))
-                }
-
-                Spacer()
-
-                if isShowingQuickMenu {
-                    WakeUpQuickMenuDrawer(
-                        appState: appState,
-                        isPresented: $isShowingQuickMenu
-                    )
-                    .transition(.asymmetric(
-                        insertion: .scale(scale: 0.95).combined(with: .opacity).combined(with: .move(edge: .bottom)),
-                        removal: .opacity.combined(with: .move(edge: .bottom))
-                    ))
+                default:
+                    timetableContent
                 }
             }
-            .padding(.horizontal, 18)
-            .padding(.bottom, 44) // Floats comfortably above bottom tab bar
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            // Bottom Navigation Bar (日程, 课程, [学习])
+            WakeUpTabBar(
+                selectedTab: $appState.settings.selectedTab,
+                showStudyTab: appState.settings.enableStudyModule,
+                onTabSelected: { tab in
+                    handleTabSelection(tab)
+                }
+            )
+            .padding(.top, 4)
+            .padding(.bottom, 8)
         }
-        .frame(minWidth: 840, minHeight: 640)
+        .frame(minWidth: 780, minHeight: 560)
+        .background {
+            WallpaperBackgroundView(settings: appState.settings)
+        }
+        .background {
+            Group {
+                Button("") { appState.previousWeek() }
+                    .keyboardShortcut("[", modifiers: .command)
+                Button("") { appState.nextWeek() }
+                    .keyboardShortcut("]", modifiers: .command)
+                Button("") { appState.previousWeek() }
+                    .keyboardShortcut(.leftArrow, modifiers: .option)
+                Button("") { appState.nextWeek() }
+                    .keyboardShortcut(.rightArrow, modifiers: .option)
+                Button("") { appState.jumpToCurrentWeek() }
+                    .keyboardShortcut("t", modifiers: .command)
+                Button("") { appState.startAddingCourse() }
+                    .keyboardShortcut("n", modifiers: .command)
+            }
+            .opacity(0)
+            .allowsHitTesting(false)
+        }
         // Course Detail Popover
         .popover(item: $appState.selectedOccurrence) { item in
             CoursePopoverView(
                 item: item,
                 onEdit: {
-                    appState.isEditingOccurrence = true
+                    if let courseId = item.courseId, let course = appState.courses.first(where: { $0.id == courseId }) {
+                        appState.selectedOccurrence = nil
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+                            appState.editingCourseInitialMode = .fullCourse
+                            appState.editingOccurrence = item
+                            appState.editingCourse = course
+                        }
+                    }
+                },
+                onReschedule: {
+                    if let courseId = item.courseId, let course = appState.courses.first(where: { $0.id == courseId }) {
+                        appState.selectedOccurrence = nil
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+                            appState.editingCourseInitialMode = .singleOccurrence
+                            appState.editingOccurrence = item
+                            appState.editingCourse = course
+                        }
+                    }
                 },
                 onQuickCancel: {
                     guard let courseId = item.courseId, let scheduleId = item.scheduleId else { return }
@@ -131,45 +102,64 @@ public struct MainWindowView: View {
                     )
                     appState.selectedOccurrence = nil
                 },
+                onRestore: {
+                    if let courseId = item.courseId, let scheduleId = item.scheduleId {
+                        appState.restoreCancelledOccurrence(
+                            courseId: courseId,
+                            scheduleId: scheduleId,
+                            occurrenceDate: item.date
+                        )
+                    }
+                    appState.selectedOccurrence = nil
+                },
                 onDelete: {
                     if let courseId = item.courseId {
                         appState.deleteCourse(id: courseId)
+                    } else if let eventId = item.calendarEventId {
+                        appState.deleteCalendarEvent(id: eventId)
                     }
                     appState.selectedOccurrence = nil
-                }
+                },
+                onStartFocus: appState.settings.enableStudyModule ? {
+                    appState.startFocusForCourse(item)
+                } : nil
             )
         }
-        // Course Edit Sheet
-        .sheet(isPresented: $appState.isEditingOccurrence) {
-            if let item = appState.selectedOccurrence, let semester = appState.currentSemester {
+        // Course Edit Sheet (Supports both full course and single-occurrence 临时调课)
+        .sheet(item: $appState.editingCourse) { course in
+            if let semester = appState.currentSemester {
                 CourseEditSheet(
-                    item: item,
+                    course: course,
+                    occurrence: appState.editingOccurrence,
+                    initialMode: appState.editingCourseInitialMode,
                     availableSections: semester.sections,
-                    onSave: { scope, name, teacher, color, day, start, end, room, notes in
-                        if let courseId = item.courseId, let scheduleId = item.scheduleId {
-                            if var course = appState.courses.first(where: { $0.id == courseId }) {
-                                course.name = name
-                                course.teacher = teacher
-                                course.color = color
-                                course.notes = notes
-                                appState.updateCourse(course)
-                            }
+                    courseNameSuggestions: existingCourseNames,
+                    teacherSuggestions: existingTeachers,
+                    classroomSuggestions: existingClassrooms,
+                    onSaveCourse: { updatedCourse in
+                        appState.updateCourse(updatedCourse)
+                        appState.editingCourse = nil
+                        appState.editingOccurrence = nil
+                    },
+                    onApplyMutation: { scope, day, start, end, room in
+                        if let occ = appState.editingOccurrence, let courseId = occ.courseId, let scheduleId = occ.scheduleId {
                             appState.applyMutation(
                                 courseId: courseId,
                                 scheduleId: scheduleId,
                                 scope: scope,
-                                occurrenceDate: item.date,
+                                occurrenceDate: occ.date,
                                 updatedDayOfWeek: day,
                                 updatedStartSection: start,
                                 updatedEndSection: end,
                                 updatedClassroom: room
                             )
                         }
-                        appState.isEditingOccurrence = false
-                        appState.selectedOccurrence = nil
+                        appState.editingCourse = nil
+                        appState.editingOccurrence = nil
                     },
                     onDismiss: {
-                        appState.isEditingOccurrence = false
+                        appState.editingCourse = nil
+                        appState.editingOccurrence = nil
                     }
                 )
             }
@@ -180,36 +170,92 @@ public struct MainWindowView: View {
                 CourseAddSheet(
                     semesterId: semester.id,
                     availableSections: semester.sections,
+                    initialSlot: appState.prefilledSlotForAdd,
+                    courseNameSuggestions: existingCourseNames,
+                    teacherSuggestions: existingTeachers,
+                    classroomSuggestions: existingClassrooms,
                     onSave: { newCourse in
                         appState.addCourse(newCourse)
                         appState.isAddingCourse = false
+                        appState.prefilledSlotForAdd = nil
                     },
                     onDismiss: {
                         appState.isAddingCourse = false
+                        appState.prefilledSlotForAdd = nil
                     }
                 )
             }
         }
+        // Add Calendar Event Sheet (from Timetable, Quick Menu, or Toolbar)
+        .sheet(isPresented: $appState.isAddingCalendarEvent) {
+            ScheduleItemCreateSheet(
+                appState: appState,
+                initialMode: .event,
+                prefilledDayOfWeek: appState.prefilledSlotForEvent?.dayOfWeek,
+                prefilledSection: appState.prefilledSlotForEvent?.startSection,
+                onDismiss: {
+                    appState.isAddingCalendarEvent = false
+                    appState.prefilledSlotForEvent = nil
+                }
+            )
+        }
         // Settings Sheet
         .sheet(isPresented: $appState.isShowingSettings) {
-            VStack {
-                HStack {
-                    Spacer()
-                    Button("完成") {
-                        appState.isShowingSettings = false
-                    }
-                    .padding()
-                }
-                SettingsView(appState: appState)
-            }
+            SettingsView(appState: appState, onDismiss: {
+                appState.isShowingSettings = false
+            })
         }
         // Create Semester Sheet
         .sheet(isPresented: $appState.isShowingCreateSemester) {
             SemesterCreateSheet(appState: appState)
         }
-        // Manage Semesters Sheet
-        .sheet(isPresented: $appState.isShowingManageSemesters) {
-            SemesterManageSheet(appState: appState)
+
+        // Timetable Profiles Sheet ("设置时间表" - Image 1)
+        .sheet(isPresented: $appState.isShowingSectionProfiles) {
+            TimetableProfilesSheet(
+                appState: appState,
+                isPresented: $appState.isShowingSectionProfiles
+            )
+        }
+        // Appearance Settings Sheet ("课表外观" - Images 3 & 4)
+        .sheet(isPresented: $appState.isShowingAppearance) {
+            TimetableAppearanceSheet(
+                appState: appState,
+                isPresented: $appState.isShowingAppearance
+            )
+        }
+        // Widgets Sheet (Direct Live Previews & Status)
+        .sheet(isPresented: $appState.isShowingWidgets) {
+            VStack(spacing: 0) {
+                HStack {
+                    Text("桌面与通知中心小组件")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(.primary)
+                    Spacer()
+                    Button("完成") {
+                        appState.isShowingWidgets = false
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 5)
+                    .background(Color(hex: "#FF5A5F"))
+                    .clipShape(Capsule())
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 14)
+                .background(.bar)
+
+                Divider()
+
+                WidgetSettingsTab(appState: appState)
+            }
+            .frame(width: 580, height: 620)
+        }
+        // Course List Sheet (已选课程管理)
+        .sheet(isPresented: $appState.isShowingCourseList) {
+            WakeUpCourseListSheet(appState: appState)
         }
         // Edit Section Times Sheet
         .sheet(isPresented: $appState.isShowingEditSectionTimes) {
@@ -241,18 +287,73 @@ public struct MainWindowView: View {
         }
     }
 
+    @ViewBuilder
+    private var timetableContent: some View {
+        VStack(spacing: 0) {
+            WakeUpHeaderView(appState: appState)
+                .padding(.leading, 78)
+                .padding(.trailing, 18)
+                .padding(.top, 14)
+                .padding(.bottom, 6)
+
+            if let semester = appState.currentSemester {
+                let weekDates = appState.timelineEngineWeekCalculator.dateStringsInWeek(
+                    weekNumber: appState.selectedWeek,
+                    semesterStartDate: semester.startDate
+                )
+
+                TimetableGridView(
+                    semester: semester,
+                    occurrences: appState.currentWeekOccurrences,
+                    dateStrings: weekDates,
+                    todayDateString: todayDateString,
+                    displayMode: appState.timetableDisplayMode,
+                    selectedDayOfWeek: appState.selectedDayOfWeek,
+                    settings: appState.settings,
+                    onSelectOccurrence: { item in
+                        appState.selectedOccurrence = item
+                    },
+                    onSelectDayOfWeek: { day in
+                        appState.selectedDayOfWeek = day
+                    },
+                    onAddCourseAt: { dayOfWeek, section in
+                        appState.startAddingCourse(dayOfWeek: dayOfWeek, startSection: section)
+                    },
+                    onAddCalendarEventAt: { dayOfWeek, section in
+                        appState.startAddingCalendarEvent(dayOfWeek: dayOfWeek, section: section)
+                    },
+                    onQuickImport: {
+                        openImportDialog()
+                    },
+                    onPreviousWeek: {
+                        appState.previousWeek()
+                    },
+                    onNextWeek: {
+                        appState.nextWeek()
+                    },
+                    onPreviousDay: {
+                        appState.selectPreviousDay()
+                    },
+                    onNextDay: {
+                        appState.selectNextDay()
+                    },
+                    onToday: {
+                        appState.selectToday()
+                    }
+                )
+            } else {
+                emptySemesterPlaceholder
+            }
+        }
+    }
+
     private func handleTabSelection(_ tab: String) {
-        switch tab {
-        case "schedule":
-            // In schedule tab, jump to current week
+        if tab == "study" && !appState.settings.enableStudyModule {
+            appState.settings.selectedTab = "courses"
+            return
+        }
+        if tab == "schedule" {
             appState.jumpToCurrentWeek()
-        case "timetable":
-            // Active timetable
-            break
-        case "profile":
-            appState.isShowingSettings = true
-        default:
-            break
         }
     }
 
@@ -286,16 +387,37 @@ public struct MainWindowView: View {
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
         if panel.runModal() == .OK, let url = panel.url {
-            if url.pathExtension.lowercased() == "classflow" {
+            let ext = url.pathExtension.lowercased()
+            if ext == "classflow" {
                 if let data = try? Data(contentsOf: url) {
                     appState.stageClassFlowImport(from: data)
                 }
-            } else if url.pathExtension.lowercased() == "ics" {
+            } else if ext == "ics" {
                 if let content = try? String(contentsOf: url, encoding: .utf8) {
                     appState.importICS(content: content)
                 }
+            } else if ext == "json" {
+                if let content = try? String(contentsOf: url, encoding: .utf8) {
+                    appState.importOpenFormatJSON(content: content)
+                }
             }
         }
+    }
+
+    // MARK: - Autocomplete Search Candidates
+    private var existingCourseNames: [String] {
+        Array(Set(appState.courses.map { $0.name.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty })).sorted()
+    }
+
+    private var existingTeachers: [String] {
+        let courseTeachers = appState.courses.compactMap { $0.teacher?.trimmingCharacters(in: .whitespacesAndNewlines) }
+        let scheduleTeachers = appState.courses.flatMap { $0.schedules.compactMap { $0.teacher?.trimmingCharacters(in: .whitespacesAndNewlines) } }
+        return Array(Set((courseTeachers + scheduleTeachers).filter { !$0.isEmpty })).sorted()
+    }
+
+    private var existingClassrooms: [String] {
+        let rooms = appState.courses.flatMap { $0.schedules.compactMap { $0.classroom?.trimmingCharacters(in: .whitespacesAndNewlines) } }
+        return Array(Set(rooms.filter { !$0.isEmpty })).sorted()
     }
 }
 

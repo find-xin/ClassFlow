@@ -9,19 +9,34 @@ public struct LocalDatabase: Sendable {
         public var exceptions: [ScheduleException]
         public var settings: AppSettings
         public var calendarMappings: [CalendarMapping]
+        public var timetableProfiles: [TimetableProfile]
+        public var activeProfileId: UUID?
+        public var pomodoroTasks: [PomodoroTask]
+        public var pomodoroRecords: [PomodoroRecord]
+        public var calendarEvents: [CalendarEvent]
 
         public init(
             semesters: [Semester] = [],
             courses: [Course] = [],
             exceptions: [ScheduleException] = [],
             settings: AppSettings = AppSettings(),
-            calendarMappings: [CalendarMapping] = []
+            calendarMappings: [CalendarMapping] = [],
+            timetableProfiles: [TimetableProfile] = [TimetableProfile.standardDefault(), TimetableProfile.earlyDefault()],
+            activeProfileId: UUID? = nil,
+            pomodoroTasks: [PomodoroTask] = PomodoroTask.defaultSampleTasks(),
+            pomodoroRecords: [PomodoroRecord] = PomodoroRecord.defaultSampleRecords(),
+            calendarEvents: [CalendarEvent] = []
         ) {
             self.semesters = semesters
             self.courses = courses
             self.exceptions = exceptions
             self.settings = settings
             self.calendarMappings = calendarMappings
+            self.timetableProfiles = timetableProfiles
+            self.activeProfileId = activeProfileId
+            self.pomodoroTasks = pomodoroTasks
+            self.pomodoroRecords = pomodoroRecords
+            self.calendarEvents = calendarEvents
         }
 
         public init(from decoder: Decoder) throws {
@@ -31,6 +46,11 @@ public struct LocalDatabase: Sendable {
             self.exceptions = try container.decodeIfPresent([ScheduleException].self, forKey: .exceptions) ?? []
             self.settings = try container.decodeIfPresent(AppSettings.self, forKey: .settings) ?? AppSettings()
             self.calendarMappings = try container.decodeIfPresent([CalendarMapping].self, forKey: .calendarMappings) ?? []
+            self.timetableProfiles = try container.decodeIfPresent([TimetableProfile].self, forKey: .timetableProfiles) ?? [TimetableProfile.standardDefault(), TimetableProfile.earlyDefault()]
+            self.activeProfileId = try container.decodeIfPresent(UUID.self, forKey: .activeProfileId)
+            self.pomodoroTasks = try container.decodeIfPresent([PomodoroTask].self, forKey: .pomodoroTasks) ?? PomodoroTask.defaultSampleTasks()
+            self.pomodoroRecords = try container.decodeIfPresent([PomodoroRecord].self, forKey: .pomodoroRecords) ?? PomodoroRecord.defaultSampleRecords()
+            self.calendarEvents = try container.decodeIfPresent([CalendarEvent].self, forKey: .calendarEvents) ?? []
         }
     }
 

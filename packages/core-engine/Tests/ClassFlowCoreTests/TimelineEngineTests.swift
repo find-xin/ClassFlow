@@ -206,4 +206,77 @@ struct TimelineEngineTests {
         #expect(occurrences[0].status == .normal)
         #expect(occurrences[0].location == "新实验室 B202")
     }
+
+    @Test("WeekPattern custom ranges (e.g. 1-8周 vs 9-16周) and non-current week visibility")
+    func testWeekPatternRangeFiltering() {
+        let semester = makeTestSemester()
+        let courseA = Course(
+            id: UUID(),
+            semesterId: semester.id,
+            name: "前期课程 (1-8周)",
+            schedules: [
+                CourseSchedule(
+                    dayOfWeek: 1,
+                    startSection: 1,
+                    endSection: 2,
+                    classroom: "A101",
+                    weekPattern: WeekPattern(type: .all, startWeek: 1, endWeek: 8)
+                )
+            ]
+        )
+        let courseB = Course(
+            id: UUID(),
+            semesterId: semester.id,
+            name: "后期课程 (9-16周)",
+            schedules: [
+                CourseSchedule(
+                    dayOfWeek: 1,
+                    startSection: 3,
+                    endSection: 4,
+                    classroom: "B202",
+                    weekPattern: WeekPattern(type: .all, startWeek: 9, endWeek: 16)
+                )
+            ]
+        )
+
+        // Generate for Week 5 with showNonCurrentWeekCourses = true
+        let week5Items = engine.generateOccurrences(
+            semester: semester,
+            courses: [courseA, courseB],
+            exceptions: [],
+            forWeek: 5,
+            showNonCurrentWeekCourses: true
+        )
+
+        #expect(week5Items.count == 2)
+        let itemA = week5Items.first(where: { $0.title == "前期课程 (1-8周)" })!
+        let itemB = week5Items.first(where: { $0.title == "后期课程 (9-16周)" })!
+        #expect(itemA.isCurrentWeek == true)
+        #expect(itemB.isCurrentWeek == false)
+
+        // Generate for Week 5 with showNonCurrentWeekCourses = false
+        let week5ActiveOnly = engine.generateOccurrences(
+            semester: semester,
+            courses: [courseA, courseB],
+            exceptions: [],
+            forWeek: 5,
+            showNonCurrentWeekCourses: false
+        )
+        #expect(week5ActiveOnly.count == 1)
+        #expect(week5ActiveOnly[0].title == "前期课程 (1-8周)")
+
+        // Generate for Week 10
+        let week10Items = engine.generateOccurrences(
+            semester: semester,
+            courses: [courseA, courseB],
+            exceptions: [],
+            forWeek: 10,
+            showNonCurrentWeekCourses: true
+        )
+        #expect(week10Items.count == 2)
+        let itemA10 = week10Items.first(where: { $0.title == "前期课程 (1-8周)" })!
+        let itemB10 = week10Items.first(where: { $0.title == "后期课程 (9-16周)" })!
+        #expect(itemA10.isCurrentWeek == false)
+        #expect(itemB10.isCurrentWeek == true)
+    }
 }

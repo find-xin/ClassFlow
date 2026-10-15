@@ -99,23 +99,35 @@ public struct WidgetDataStore: Sendable {
         }
     }
 
+    private var candidateURLs: [URL] {
+        var urls = [fileURL]
+        let homeDir = FileManager.default.homeDirectoryForCurrentUser
+        let containerDir = homeDir.appendingPathComponent("Library/Containers/org.classflow.ClassFlow.ClassFlowWidgets/Data/Library/Application Support/ClassFlow", isDirectory: true)
+        urls.append(containerDir.appendingPathComponent("widget_data.json"))
+        urls.append(URL(fileURLWithPath: "/tmp/classflow_widget_data.json"))
+        return urls
+    }
+
     public func save(_ payload: WidgetTimelinePayload) throws {
-        let folder = fileURL.deletingLastPathComponent()
-        if !FileManager.default.fileExists(atPath: folder.path) {
-            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let data = try encoder.encode(payload)
-        try data.write(to: fileURL, options: .atomic)
+
+        for url in candidateURLs {
+            let folder = url.deletingLastPathComponent()
+            try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try? data.write(to: url, options: .atomic)
+        }
     }
 
     public func load() -> WidgetTimelinePayload {
-        guard FileManager.default.fileExists(atPath: fileURL.path),
-              let data = try? Data(contentsOf: fileURL),
-              let payload = try? JSONDecoder().decode(WidgetTimelinePayload.self, from: data) else {
-            return WidgetTimelinePayload()
+        for url in candidateURLs {
+            if FileManager.default.fileExists(atPath: url.path),
+               let data = try? Data(contentsOf: url),
+               let payload = try? JSONDecoder().decode(WidgetTimelinePayload.self, from: data) {
+                return payload
+            }
         }
-        return payload
+        return WidgetTimelinePayload()
     }
 }

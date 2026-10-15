@@ -3,19 +3,33 @@ import SwiftUI
 /// Minimalist bottom navigation tab bar replicating WakeUp's 4 primary tabs: 日程, 课程, 学习, 我的.
 public struct WakeUpTabBar: View {
     @Binding public var selectedTab: String
+    public let showStudyTab: Bool
     public let onTabSelected: (String) -> Void
 
-    public init(selectedTab: Binding<String>, onTabSelected: @escaping (String) -> Void) {
+    public init(
+        selectedTab: Binding<String>,
+        showStudyTab: Bool = true,
+        onTabSelected: @escaping (String) -> Void
+    ) {
         self._selectedTab = selectedTab
+        self.showStudyTab = showStudyTab
         self.onTabSelected = onTabSelected
     }
 
-    private let tabs: [(id: String, name: String)] = [
-        ("schedule", "日程"),
-        ("timetable", "课程"),
-        ("study", "学习"),
-        ("profile", "我的")
-    ]
+    private var tabs: [(id: String, name: String)] {
+        if showStudyTab {
+            return [
+                ("schedule", "日程"),
+                ("timetable", "课程"),
+                ("study", "学习")
+            ]
+        } else {
+            return [
+                ("schedule", "日程"),
+                ("timetable", "课程")
+            ]
+        }
+    }
 
     public var body: some View {
         HStack(spacing: 50) {

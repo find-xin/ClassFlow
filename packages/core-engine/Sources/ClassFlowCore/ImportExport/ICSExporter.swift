@@ -24,6 +24,18 @@ public struct ICSExporter: Sendable {
         lines.append("X-WR-CALNAME:\(escapeICS(semester.name))")
         lines.append("X-WR-TIMEZONE:\(semester.timeZone)")
 
+        // RFC 5545 VTIMEZONE component for Google Calendar, Apple Calendar, and Outlook
+        lines.append("BEGIN:VTIMEZONE")
+        lines.append("TZID:\(semester.timeZone)")
+        lines.append("X-LIC-LOCATION:\(semester.timeZone)")
+        lines.append("BEGIN:STANDARD")
+        lines.append("TZOFFSETFROM:+0800")
+        lines.append("TZOFFSETTO:+0800")
+        lines.append("TZNAME:CST")
+        lines.append("DTSTART:19700101T000000")
+        lines.append("END:STANDARD")
+        lines.append("END:VTIMEZONE")
+
         let dtstamp = formatICSDate(Date())
 
         // Iterate through all teaching weeks
@@ -65,8 +77,12 @@ public struct ICSExporter: Sendable {
                 }
                 lines.append("DESCRIPTION:\(escapeICS(descriptionParts.joined(separator: "\\n")))")
 
-                lines.append("CATEGORIES:课程,Education")
                 lines.append("STATUS:CONFIRMED")
+                lines.append("BEGIN:VALARM")
+                lines.append("ACTION:DISPLAY")
+                lines.append("DESCRIPTION:上课提醒: \(escapeICS(occ.title))")
+                lines.append("TRIGGER:-PT15M")
+                lines.append("END:VALARM")
                 lines.append("END:VEVENT")
             }
         }

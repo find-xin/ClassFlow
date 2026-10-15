@@ -17,12 +17,12 @@ public struct TimelineEngine: Sendable {
         courses: [Course],
         exceptions: [ScheduleException],
         forWeek weekNumber: Int,
-        activeWeek: Int? = nil
+        activeWeek: Int? = nil,
+        showNonCurrentWeekCourses: Bool = true
     ) -> [TimelineItem] {
         guard weekNumber >= 1 && weekNumber <= semester.totalWeeks else { return [] }
 
         var items: [TimelineItem] = []
-        let currentWeekRef = activeWeek ?? weekNumber
 
         // Exception lookups
         let exceptionByOrigDateAndSchedule = Dictionary(
@@ -37,11 +37,15 @@ public struct TimelineEngine: Sendable {
         // 1. Process regular schedules
         for course in courses {
             for schedule in course.schedules {
-                let isActive = schedule.weekPattern.isActive(
+                let isActiveInWeek = schedule.weekPattern.isActive(
                     inWeek: weekNumber,
                     totalWeeks: semester.totalWeeks
                 )
-                guard isActive else { continue }
+
+                // If not active this week and user chose to hide non-current week courses, skip
+                if !isActiveInWeek && !showNonCurrentWeekCourses {
+                    continue
+                }
 
                 let dateStr = weekCalculator.dateString(
                     forWeek: weekNumber,
@@ -49,8 +53,8 @@ public struct TimelineEngine: Sendable {
                     semesterStartDate: semester.startDate
                 )
 
-                let startTime = semester.sectionTime(for: schedule.startSection)?.startTime
-                let endTime = semester.sectionTime(for: schedule.endSection)?.endTime
+                let startTime = schedule.customStartTime ?? semester.sectionTime(for: schedule.startSection)?.startTime
+                let endTime = schedule.customEndTime ?? semester.sectionTime(for: schedule.endSection)?.endTime
 
                 var item = TimelineItem(
                     id: "course_occ_\(schedule.id)_\(dateStr)",
@@ -66,10 +70,10 @@ public struct TimelineEngine: Sendable {
                     startTime: startTime,
                     endTime: endTime,
                     weekNumber: weekNumber,
-                    isCurrentWeek: (weekNumber == currentWeekRef),
+                    isCurrentWeek: isActiveInWeek,
                     status: .normal,
                     color: course.color,
-                    teacher: course.teacher,
+                    teacher: schedule.teacher ?? course.teacher,
                     notes: course.notes
                 )
 
@@ -130,7 +134,7 @@ public struct TimelineEngine: Sendable {
                     startTime: startTime,
                     endTime: endTime,
                     weekNumber: weekNumber,
-                    isCurrentWeek: (weekNumber == currentWeekRef),
+                    isCurrentWeek: true,
                     status: ex.exceptionType == .makeup ? .makeup : .rescheduled,
                     color: course.color,
                     teacher: course.teacher,

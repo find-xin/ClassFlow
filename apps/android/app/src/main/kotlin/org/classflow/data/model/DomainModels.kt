@@ -74,23 +74,27 @@ enum class OccurrenceStatus {
 
 data class TimelineItem(
     val id: String,
-    val courseId: String,
-    val scheduleId: String,
+    val courseId: String? = null,
+    val scheduleId: String? = null,
+    val calendarEventId: String? = null,
     val title: String,
-    val location: String?,
+    val location: String? = null,
     val date: String,
     val dayOfWeek: Int,
     val startSection: Int,
     val endSection: Int,
-    val startTime: String,
-    val endTime: String,
-    val weekNumber: Int,
+    val startTime: String? = null,
+    val endTime: String? = null,
+    val weekNumber: Int = 1,
     val isCurrentWeek: Boolean = true,
     val status: OccurrenceStatus = OccurrenceStatus.NORMAL,
     val color: String = "#4F46E5",
     val teacher: String? = null,
     val notes: String? = null,
-    val hasConflict: Boolean = false
+    val hasConflict: Boolean = false,
+    val isAllDay: Boolean = false,
+    val isTask: Boolean = false,
+    val isCompleted: Boolean = false
 )
 
 enum class EditingScope {
@@ -111,3 +115,47 @@ data class CalendarMapping(
     val contentHash: String,
     val lastSyncedAt: String
 )
+
+data class CalendarEvent(
+    val id: String = UUID.randomUUID().toString(),
+    val title: String,
+    val startTime: String = "08:00",
+    val endTime: String = "09:00",
+    val isAllDay: Boolean = false,
+    val location: String? = null,
+    val description: String? = null,
+    val color: String = "#FF5A5F",
+    val startSection: Int? = null,
+    val endSection: Int? = null,
+    val frequency: String = "none",
+    val customDaysOfWeek: List<Int> = emptyList(),
+    val isTask: Boolean = false,
+    val isCompleted: Boolean = false
+)
+
+data class StudyTask(
+    val id: String = UUID.randomUUID().toString(),
+    val title: String,
+    val courseName: String? = null,
+    val targetMinutes: Int = 45,
+    val completedMinutes: Int = 0,
+    val isCompleted: Boolean = false
+)
+
+data class FocusRecord(
+    val id: String = UUID.randomUUID().toString(),
+    val taskTitle: String,
+    val courseName: String? = null,
+    val durationMinutes: Int,
+    val completedAt: String
+)
+
+data class AppSettings(
+    val themeMode: String = "system", // "system", "light", "dark"
+    val enableStudyModule: Boolean = true,
+    val showWeekends: Boolean = true,
+    val showNonCurrentWeekCourses: Boolean = true,
+    val cardOpacity: Float = 0.88f,
+    val wallpaperPreset: String = "default"
+)
+

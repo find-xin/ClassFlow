@@ -1,11 +1,20 @@
 import SwiftUI
 import ClassFlowCore
 
-/// Settings tab for Bring Your Own Cloud (BYOC) credentials and synchronization control.
+/// Settings tab for Bring Your Own Cloud (BYOC) credentials and synchronization control,
+/// supporting both WebDAV (Jianguoyun 坚果云) and S3/Qiniu Kodo.
 public struct SyncSettingsTab: View {
     @Bindable public var appState: AppState
 
-    @State private var providerType: String = "qiniu"
+    @State private var providerType: String = "webdav"
+
+    // WebDAV Credentials
+    @State private var webdavServerURL: String = "https://dav.jianguoyun.com/dav/"
+    @State private var webdavUsername: String = ""
+    @State private var webdavPassword: String = ""
+    @State private var webdavPathPrefix: String = "ClassFlow/"
+
+    // S3 / Qiniu Credentials
     @State private var endpoint: String = "https://s3.cn-east-1.qiniucs.com"
     @State private var region: String = "cn-east-1"
     @State private var bucket: String = ""
@@ -26,38 +35,45 @@ public struct SyncSettingsTab: View {
 
     public var body: some View {
         Form {
-            Section("云存储服务配置 (BYOC)") {
-                Picker("存储类型", selection: $providerType) {
-                    Text("七牛云 Kodo (S3 兼容)").tag("qiniu")
-                    Text("通用 S3 兼容存储 (MinIO / R2 / AWS)").tag("s3")
+            Section("云同步服务 (BYOC)") {
+                Picker("同步驱动", selection: $providerType) {
+                    Text("WebDAV (标准协议)").tag("webdav")
+                    Text("S3 兼容对象存储").tag("s3")
                 }
-                .onChange(of: providerType) { _, newValue in
-                    if newValue == "qiniu" {
-                        endpoint = "https://s3.cn-east-1.qiniucs.com"
-                        region = "cn-east-1"
-                    }
-                }
-
-                TextField("Endpoint 服务地址", text: $endpoint)
-                TextField("Region 区域代号", text: $region)
-                TextField("存储桶 Bucket", text: $bucket)
-                TextField("存储路径前缀", text: $pathPrefix)
             }
 
-            Section("敏感身份凭证 (已加密存入 macOS Keychain)") {
-                TextField("Access Key (AK)", text: $accessKey)
-                SecureField("Secret Key (SK)", text: $secretKey)
+            if providerType == "webdav" {
+                Section("WebDAV 服务器配置") {
+                    TextField("服务器地址 (Server URL)", text: $webdavServerURL, prompt: Text("https://dav.jianguoyun.com/dav/"))
+                    TextField("同步目录 (Path)", text: $webdavPathPrefix, prompt: Text("ClassFlow/"))
+                    TextField("账号 / 邮箱 (Username)", text: $webdavUsername)
+                    SecureField("应用授权密码 (App Password)", text: $webdavPassword)
+                }
+            } else {
+                Section("S3 对象存储配置") {
+                    TextField("Endpoint 服务地址", text: $endpoint, prompt: Text("https://s3.cn-east-1.qiniucs.com"))
+                    TextField("Region 区域代号", text: $region, prompt: Text("cn-east-1"))
+                    TextField("存储桶 Bucket", text: $bucket)
+                    TextField("存储路径前缀", text: $pathPrefix, prompt: Text("classflow-sync/"))
+                }
 
+                Section("身份凭据 (Keychain 加密保护)") {
+                    TextField("Access Key (AK)", text: $accessKey)
+                    SecureField("Secret Key (SK)", text: $secretKey)
+                }
+            }
+
+            Section("连接诊断与授权验证") {
                 HStack {
                     Button(action: testConnectionAction) {
                         if isTesting {
                             ProgressView()
                                 .controlSize(.small)
                         } else {
-                            Text("测试连接")
+                            Text("测试云端连接")
                         }
                     }
-                    .disabled(isTesting || bucket.isEmpty || accessKey.isEmpty)
+                    .disabled(isTesting || !isConfigInputReady)
 
                     Spacer()
 
@@ -73,10 +89,10 @@ public struct SyncSettingsTab: View {
                 }
             }
 
-            Section("数据同步操作") {
+            Section("多端同步") {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("当前同步状态")
+                        Text("当前状态")
                             .font(.system(size: 13, weight: .medium))
                         Text(syncStatusMessage ?? "就绪")
                             .font(.caption)
@@ -85,11 +101,11 @@ public struct SyncSettingsTab: View {
 
                     Spacer()
 
-                    Button("立即同步") {
+                    Button("立即同步课表") {
                         triggerSync()
                     }
                     .buttonStyle(.borderedProminent)
-                    .disabled(isSyncing || bucket.isEmpty || accessKey.isEmpty)
+                    .disabled(isSyncing || !isConfigInputReady)
                 }
             }
         }
@@ -99,7 +115,27 @@ public struct SyncSettingsTab: View {
         }
     }
 
+    private var isConfigInputReady: Bool {
+        if providerType == "webdav" {
+            return !webdavServerURL.isEmpty && !webdavUsername.isEmpty && !webdavPassword.isEmpty
+        } else {
+            return !bucket.isEmpty && !accessKey.isEmpty && !secretKey.isEmpty
+        }
+    }
+
     private func loadCredentials() {
+        if let savedType = keychain.readSecret(account: "sync_provider_type") {
+            providerType = (savedType == "qiniu") ? "s3" : savedType
+        }
+        if let savedUser = keychain.readSecret(account: "webdav_user") {
+            webdavUsername = savedUser
+        }
+        if let savedPwd = keychain.readSecret(account: "webdav_pwd") {
+            webdavPassword = savedPwd
+        }
+        if let savedURL = keychain.readSecret(account: "webdav_url") {
+            webdavServerURL = savedURL
+        }
         if let savedAK = keychain.readSecret(account: "qiniu_ak") {
             accessKey = savedAK
         }
@@ -109,11 +145,36 @@ public struct SyncSettingsTab: View {
     }
 
     private func saveCredentials() {
-        if !accessKey.isEmpty {
-            keychain.saveSecret(account: "qiniu_ak", secret: accessKey)
+        keychain.saveSecret(account: "sync_provider_type", secret: providerType)
+        if providerType == "webdav" {
+            if !webdavUsername.isEmpty { keychain.saveSecret(account: "webdav_user", secret: webdavUsername) }
+            if !webdavPassword.isEmpty { keychain.saveSecret(account: "webdav_pwd", secret: webdavPassword) }
+            if !webdavServerURL.isEmpty { keychain.saveSecret(account: "webdav_url", secret: webdavServerURL) }
+        } else {
+            if !accessKey.isEmpty { keychain.saveSecret(account: "qiniu_ak", secret: accessKey) }
+            if !secretKey.isEmpty { keychain.saveSecret(account: "qiniu_sk", secret: secretKey) }
         }
-        if !secretKey.isEmpty {
-            keychain.saveSecret(account: "qiniu_sk", secret: secretKey)
+    }
+
+    private func makeStorageProvider() -> any StorageProvider {
+        if providerType == "webdav" {
+            let config = WebDAVStorageProvider.Configuration(
+                serverURL: webdavServerURL,
+                username: webdavUsername,
+                password: webdavPassword,
+                pathPrefix: webdavPathPrefix
+            )
+            return WebDAVStorageProvider(config: config)
+        } else {
+            let config = S3StorageProvider.Configuration(
+                endpoint: endpoint,
+                region: region,
+                bucket: bucket,
+                accessKey: accessKey,
+                secretKey: secretKey,
+                pathPrefix: pathPrefix
+            )
+            return S3StorageProvider(config: config)
         }
     }
 
@@ -122,15 +183,7 @@ public struct SyncSettingsTab: View {
         isTesting = true
         testResult = nil
 
-        let config = S3StorageProvider.Configuration(
-            endpoint: endpoint,
-            region: region,
-            bucket: bucket,
-            accessKey: accessKey,
-            secretKey: secretKey,
-            pathPrefix: pathPrefix
-        )
-        let provider = S3StorageProvider(config: config)
+        let provider = makeStorageProvider()
 
         Task {
             do {
@@ -156,17 +209,9 @@ public struct SyncSettingsTab: View {
     private func triggerSync() {
         saveCredentials()
         isSyncing = true
-        syncStatusMessage = "正在同步变更..."
+        syncStatusMessage = "正在连接并双向同步..."
 
-        let config = S3StorageProvider.Configuration(
-            endpoint: endpoint,
-            region: region,
-            bucket: bucket,
-            accessKey: accessKey,
-            secretKey: secretKey,
-            pathPrefix: pathPrefix
-        )
-        let provider = S3StorageProvider(config: config)
+        let provider = makeStorageProvider()
         let engine = SyncEngine()
 
         Task {
@@ -183,7 +228,7 @@ public struct SyncSettingsTab: View {
                     self.appState.exceptions = exceptions
                     self.appState.save()
                     self.isSyncing = false
-                    self.syncStatusMessage = "同步成功 (上传 \(summary.uploadedOperationsCount) 项, 下载 \(summary.downloadedPeerOperationsCount) 项)"
+                    self.syncStatusMessage = "同步完成 (上传 \(summary.uploadedOperationsCount) 项变更, 下载 \(summary.downloadedPeerOperationsCount) 项对端变更)"
                 }
             } catch {
                 await MainActor.run {

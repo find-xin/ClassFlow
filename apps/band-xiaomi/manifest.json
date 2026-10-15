@@ -1,0 +1,32 @@
+{
+  "package": "org.classflow.band",
+  "name": "ClassFlow 课程表",
+  "versionName": "1.0.0",
+  "versionCode": 1,
+  "minPlatformVersion": 1080,
+  "icon": "/common/icon.png",
+  "features": [
+    { "name": "system.storage" },
+    { "name": "system.prompt" },
+    { "name": "system.device" }
+  ],
+  "permissions": [
+    { "origin": "*" }
+  ],
+  "config": {
+    "logLevel": "off"
+  },
+  "router": {
+    "entry": "pages/index",
+    "pages": {
+      "pages/index": {
+        "component": "index"
+      }
+    }
+  },
+  "display": {
+    "backgroundColor": "#000000",
+    "titleBar": false,
+    "fullScreen": true
+  }
+}

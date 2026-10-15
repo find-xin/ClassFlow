@@ -132,7 +132,7 @@ public struct WeekOverviewWidget: Widget {
         }
         .configurationDisplayName("周课程表")
         .description("概览本周所有课程与日程分布")
-        .supportedFamilies([.systemLarge])
+        .supportedFamilies([.systemLarge, .systemExtraLarge])
     }
 }
 

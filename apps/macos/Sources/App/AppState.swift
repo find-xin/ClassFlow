@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import WidgetKit
 import Observation
 import ClassFlowCore
 
@@ -17,7 +18,13 @@ public final class AppState {
 
     // UI Presentation state
     public var selectedOccurrence: TimelineItem? = nil
+    public var editingCourse: Course? = nil
+    public var editingOccurrence: TimelineItem? = nil
+    public var editingCourseInitialMode: CourseEditSheet.EditMode = .fullCourse
     public var isAddingCourse: Bool = false
+    public var prefilledSlotForAdd: (dayOfWeek: Int, startSection: Int, endSection: Int)? = nil
+    public var isAddingCalendarEvent: Bool = false
+    public var prefilledSlotForEvent: (dayOfWeek: Int, startSection: Int, endSection: Int)? = nil
     public var isEditingOccurrence: Bool = false
     public var isShowingSettings: Bool = false
     public var isShowingImportPreview: Bool = false
@@ -26,9 +33,39 @@ public final class AppState {
     public var importErrorMessage: String? = nil
 
     public var isShowingCreateSemester: Bool = false
-    public var isShowingManageSemesters: Bool = false
     public var isShowingEditSectionTimes: Bool = false
     public var editingSemesterForSections: Semester? = nil
+    public var isShowingSectionProfiles: Bool = false
+    public var editingProfile: TimetableProfile? = nil
+    public var isShowingAppearance: Bool = false
+    public var isShowingWidgets: Bool = false
+    public var isShowingCourseList: Bool = false
+
+    public var timetableProfiles: [TimetableProfile] = []
+    public var activeProfileId: UUID? = nil
+
+    // Timetable Display Mode (Week vs Day View)
+    public enum TimetableDisplayMode: String, CaseIterable, Identifiable {
+        case week = "周"
+        case day = "日"
+        public var id: String { rawValue }
+    }
+    public var timetableDisplayMode: TimetableDisplayMode = .week
+    public var selectedDayOfWeek: Int = {
+        let weekday = Calendar.current.component(.weekday, from: Date())
+        return weekday == 1 ? 7 : (weekday - 1)
+    }()
+
+    // Calendar Events (通用日程) & Scheduling State
+    public var calendarEvents: [CalendarEvent] = []
+    public var isShowingCreateScheduleItem: Bool = false
+    public var selectedScheduleItemTab: String = "event" // "event" vs "task"
+
+    // Pomodoro ToDo (番茄ToDo) State
+    public var pomodoroTasks: [PomodoroTask] = []
+    public var pomodoroRecords: [PomodoroRecord] = []
+    public var activePomodoroTaskId: UUID? = nil
+    public var isShowingNewTaskSheet: Bool = false
 
     private let database: LocalDatabase
     public let timelineEngine: TimelineEngine
@@ -69,6 +106,14 @@ public final class AppState {
         self.exceptions = payload.exceptions
         self.settings = payload.settings
         self.calendarMappings = payload.calendarMappings
+        self.timetableProfiles = payload.timetableProfiles
+        self.activeProfileId = payload.activeProfileId ?? timetableProfiles.first?.id
+        self.pomodoroTasks = payload.pomodoroTasks
+        self.pomodoroRecords = payload.pomodoroRecords
+        self.calendarEvents = payload.calendarEvents
+        if activePomodoroTaskId == nil {
+            activePomodoroTaskId = pomodoroTasks.first(where: { !$0.isCompleted })?.id
+        }
 
         if let current = semesters.first(where: { $0.isCurrent }) ?? semesters.first {
             self.currentSemesterId = current.id
@@ -83,7 +128,12 @@ public final class AppState {
             courses: courses,
             exceptions: exceptions,
             settings: settings,
-            calendarMappings: calendarMappings
+            calendarMappings: calendarMappings,
+            timetableProfiles: timetableProfiles,
+            activeProfileId: activeProfileId,
+            pomodoroTasks: pomodoroTasks,
+            pomodoroRecords: pomodoroRecords,
+            calendarEvents: calendarEvents
         )
         do {
             try database.save(payload)
@@ -94,6 +144,129 @@ public final class AppState {
         Task {
             await scheduleNotifications()
         }
+    }
+
+    // MARK: - Pomodoro ToDo Management (番茄ToDo)
+
+    public func addPomodoroTask(_ task: PomodoroTask, setAsActive: Bool = true) {
+        pomodoroTasks.insert(task, at: 0)
+        if setAsActive || activePomodoroTaskId == nil {
+            activePomodoroTaskId = task.id
+        }
+        save()
+    }
+
+    public func startFocusForCourse(_ item: TimelineItem) {
+        selectedOccurrence = nil
+        if let existing = pomodoroTasks.first(where: { !$0.isCompleted && ($0.courseName == item.title || $0.courseId == item.courseId) }) {
+            activePomodoroTaskId = existing.id
+        } else {
+            let newTask = PomodoroTask(
+                title: "\(item.title) 课前预习与复习",
+                courseId: item.courseId,
+                courseName: item.title,
+                estimatedPomodoros: 2,
+                priority: .medium
+            )
+            addPomodoroTask(newTask, setAsActive: true)
+        }
+        settings.selectedTab = "study"
+    }
+
+    public func startFocusForTask(_ task: PomodoroTask) {
+        activePomodoroTaskId = task.id
+        settings.selectedTab = "study"
+    }
+
+    public func updatePomodoroTask(_ task: PomodoroTask) {
+        if let idx = pomodoroTasks.firstIndex(where: { $0.id == task.id }) {
+            pomodoroTasks[idx] = task
+            save()
+        }
+    }
+
+    public func toggleTaskCompletion(id: UUID) {
+        if let idx = pomodoroTasks.firstIndex(where: { $0.id == id }) {
+            pomodoroTasks[idx].isCompleted.toggle()
+            pomodoroTasks[idx].completedAt = pomodoroTasks[idx].isCompleted ? Date() : nil
+            save()
+        }
+    }
+
+    public func deletePomodoroTask(id: UUID) {
+        pomodoroTasks.removeAll(where: { $0.id == id })
+        if activePomodoroTaskId == id {
+            activePomodoroTaskId = pomodoroTasks.first(where: { !$0.isCompleted })?.id
+        }
+        save()
+    }
+
+    public func recordCompletedPomodoro(
+        taskId: UUID?,
+        taskTitle: String,
+        courseName: String?,
+        focusMode: FocusMode,
+        durationMinutes: Int,
+        tag: String = "日常自习"
+    ) {
+        let record = PomodoroRecord(
+            taskId: taskId,
+            taskTitle: taskTitle,
+            courseName: courseName,
+            focusMode: focusMode,
+            durationMinutes: durationMinutes,
+            completedAt: Date(),
+            tag: tag
+        )
+        pomodoroRecords.insert(record, at: 0)
+
+        if let tId = taskId, let idx = pomodoroTasks.firstIndex(where: { $0.id == tId }) {
+            pomodoroTasks[idx].completedPomodoros += 1
+            pomodoroTasks[idx].totalFocusMinutes += durationMinutes
+            if pomodoroTasks[idx].completedPomodoros >= pomodoroTasks[idx].estimatedPomodoros && !pomodoroTasks[idx].isCompleted {
+                pomodoroTasks[idx].isCompleted = true
+                pomodoroTasks[idx].completedAt = Date()
+            }
+        }
+        save()
+    }
+
+    // MARK: - Timetable Profile Management (Images 1 & 2)
+
+    public func selectTimetableProfile(id: UUID) {
+        guard let profile = timetableProfiles.first(where: { $0.id == id }) else { return }
+        self.activeProfileId = id
+        if let currentSem = currentSemester {
+            updateSectionTimes(semesterId: currentSem.id, sections: profile.sections)
+        }
+        save()
+    }
+
+    public func saveTimetableProfile(_ profile: TimetableProfile) {
+        if let idx = timetableProfiles.firstIndex(where: { $0.id == profile.id }) {
+            timetableProfiles[idx] = profile
+        } else {
+            timetableProfiles.append(profile)
+        }
+        if activeProfileId == profile.id || activeProfileId == nil {
+            activeProfileId = profile.id
+            if let currentSem = currentSemester {
+                updateSectionTimes(semesterId: currentSem.id, sections: profile.sections)
+            }
+        }
+        save()
+    }
+
+    public func deleteTimetableProfile(id: UUID) {
+        guard timetableProfiles.count > 1 else { return }
+        timetableProfiles.removeAll(where: { $0.id == id })
+        if activeProfileId == id {
+            activeProfileId = timetableProfiles.first?.id
+            if let first = timetableProfiles.first, let currentSem = currentSemester {
+                updateSectionTimes(semesterId: currentSem.id, sections: first.sections)
+            }
+        }
+        save()
     }
 
     // MARK: - Computed Properties
@@ -115,13 +288,159 @@ public final class AppState {
     public var currentWeekOccurrences: [TimelineItem] {
         guard let current = currentSemester else { return [] }
         let currentCourses = courses.filter { $0.semesterId == current.id }
-        return timelineEngine.generateOccurrences(
+        var items = timelineEngine.generateOccurrences(
             semester: current,
             courses: currentCourses,
             exceptions: exceptions,
             forWeek: selectedWeek,
-            activeWeek: calculatedCurrentWeek
+            activeWeek: calculatedCurrentWeek,
+            showNonCurrentWeekCourses: settings.showNonCurrentWeekCourses
         )
+
+        let weekDates = timelineEngine.weekCalculator.dateStringsInWeek(
+            weekNumber: selectedWeek,
+            semesterStartDate: current.startDate
+        )
+
+        for event in calendarEvents {
+            let eventItems = projectCalendarEvent(event, weekDates: weekDates, semester: current)
+            items.append(contentsOf: eventItems)
+        }
+
+        return items
+    }
+
+    private func projectCalendarEvent(_ event: CalendarEvent, weekDates: [String], semester: Semester) -> [TimelineItem] {
+        var results: [TimelineItem] = []
+        let df = DateFormatter()
+        df.dateFormat = "yyyy-MM-dd"
+        let cal = Calendar.current
+
+        for (dayIdx, dateStr) in weekDates.enumerated() {
+            let dayOfWeek = dayIdx + 1 // 1 = Monday ... 7 = Sunday
+            var shouldInclude = false
+
+            let freq = event.frequency ?? "none"
+            switch freq {
+            case "daily":
+                shouldInclude = true
+            case "workdays":
+                shouldInclude = (dayOfWeek <= 5)
+            case "weekly":
+                if let eventDate = df.date(from: String(event.startTime.prefix(10))) {
+                    let evWeekday = cal.component(.weekday, from: eventDate)
+                    let evDayOfWeek = evWeekday == 1 ? 7 : (evWeekday - 1)
+                    if evDayOfWeek == dayOfWeek {
+                        shouldInclude = true
+                    }
+                } else {
+                    shouldInclude = true
+                }
+            case "biweekly":
+                if selectedWeek % 2 == 1 {
+                    if let eventDate = df.date(from: String(event.startTime.prefix(10))) {
+                        let evWeekday = cal.component(.weekday, from: eventDate)
+                        let evDayOfWeek = evWeekday == 1 ? 7 : (evWeekday - 1)
+                        if evDayOfWeek == dayOfWeek {
+                            shouldInclude = true
+                        }
+                    }
+                }
+            case "customWeeks":
+                if let weeks = event.customWeeks, weeks.contains(selectedWeek) {
+                    if let eventDate = df.date(from: String(event.startTime.prefix(10))) {
+                        let evWeekday = cal.component(.weekday, from: eventDate)
+                        let evDayOfWeek = evWeekday == 1 ? 7 : (evWeekday - 1)
+                        if evDayOfWeek == dayOfWeek {
+                            shouldInclude = true
+                        }
+                    } else {
+                        shouldInclude = true
+                    }
+                }
+            case "customDays":
+                if let days = event.customDaysOfWeek, days.contains(dayOfWeek) {
+                    shouldInclude = true
+                }
+            case "monthly":
+                if let eventDate = df.date(from: String(event.startTime.prefix(10))),
+                   let curDate = df.date(from: dateStr) {
+                    let evDay = cal.component(.day, from: eventDate)
+                    let curDay = cal.component(.day, from: curDate)
+                    if evDay == curDay {
+                        shouldInclude = true
+                    }
+                }
+            default: // "none"
+                if event.startTime.hasPrefix(dateStr) {
+                    shouldInclude = true
+                }
+            }
+
+            if shouldInclude {
+                let startSec = event.startSection ?? 1
+                let endSec = event.endSection ?? startSec
+                let timeOnlyStart: String
+                if event.startTime.contains("T") {
+                    timeOnlyStart = String(event.startTime.split(separator: "T").last?.prefix(5) ?? "")
+                } else if event.startTime.contains(" ") {
+                    timeOnlyStart = String(event.startTime.split(separator: " ").last?.prefix(5) ?? "")
+                } else {
+                    timeOnlyStart = event.startTime
+                }
+
+                let timeOnlyEnd: String
+                if event.endTime.contains("T") {
+                    timeOnlyEnd = String(event.endTime.split(separator: "T").last?.prefix(5) ?? "")
+                } else if event.endTime.contains(" ") {
+                    timeOnlyEnd = String(event.endTime.split(separator: " ").last?.prefix(5) ?? "")
+                } else {
+                    timeOnlyEnd = event.endTime
+                }
+
+                let item = TimelineItem(
+                    id: "event_occ_\(event.id)_\(dateStr)",
+                    sourceType: .calendarEvent,
+                    calendarEventId: event.id,
+                    title: event.title,
+                    location: event.location,
+                    date: dateStr,
+                    dayOfWeek: dayOfWeek,
+                    startSection: startSec,
+                    endSection: endSec,
+                    startTime: timeOnlyStart.isEmpty ? nil : timeOnlyStart,
+                    endTime: timeOnlyEnd.isEmpty ? nil : timeOnlyEnd,
+                    weekNumber: selectedWeek,
+                    isCurrentWeek: true,
+                    status: .normal,
+                    color: event.color,
+                    teacher: nil,
+                    notes: event.description,
+                    isAllDay: event.isAllDay
+                )
+                results.append(item)
+            }
+        }
+        return results
+    }
+
+    // MARK: - Calendar Event CRUD
+
+    public func addCalendarEvent(_ event: CalendarEvent) {
+        calendarEvents.append(event)
+        save()
+    }
+
+    public func updateCalendarEvent(_ event: CalendarEvent) {
+        if let idx = calendarEvents.firstIndex(where: { $0.id == event.id }) {
+            calendarEvents[idx] = event
+            save()
+        }
+    }
+
+    public func deleteCalendarEvent(id: UUID) {
+        calendarEvents.removeAll(where: { $0.id == id })
+        save()
     }
 
     public func calculateCurrentWeek(for semester: Semester) -> Int {
@@ -147,6 +466,30 @@ public final class AppState {
 
     public func jumpToCurrentWeek() {
         selectedWeek = calculatedCurrentWeek
+    }
+
+    public func selectPreviousDay() {
+        if selectedDayOfWeek > 1 {
+            selectedDayOfWeek -= 1
+        } else {
+            previousWeek()
+            selectedDayOfWeek = 7
+        }
+    }
+
+    public func selectNextDay() {
+        if selectedDayOfWeek < 7 {
+            selectedDayOfWeek += 1
+        } else {
+            nextWeek()
+            selectedDayOfWeek = 1
+        }
+    }
+
+    public func selectToday() {
+        jumpToCurrentWeek()
+        let weekday = Calendar.current.component(.weekday, from: Date())
+        selectedDayOfWeek = weekday == 1 ? 7 : (weekday - 1)
     }
 
     public func selectSemester(id: UUID) {
@@ -273,6 +616,26 @@ public final class AppState {
 
     // MARK: - Course Management & Mutations
 
+    public func startAddingCourse(dayOfWeek: Int? = nil, startSection: Int? = nil, endSection: Int? = nil) {
+        if let day = dayOfWeek, let start = startSection {
+            let maxSec = currentSemester?.sections.count ?? 12
+            let end = endSection ?? min(start + 1, maxSec)
+            self.prefilledSlotForAdd = (day, start, end)
+        } else {
+            self.prefilledSlotForAdd = nil
+        }
+        self.isAddingCourse = true
+    }
+
+    public func startAddingCalendarEvent(dayOfWeek: Int? = nil, section: Int? = nil) {
+        if let day = dayOfWeek, let sec = section {
+            self.prefilledSlotForEvent = (day, sec, sec)
+        } else {
+            self.prefilledSlotForEvent = nil
+        }
+        self.isAddingCalendarEvent = true
+    }
+
     public func addCourse(_ course: Course) {
         courses.append(course)
         save()
@@ -344,6 +707,17 @@ public final class AppState {
         save()
     }
 
+    public func restoreCancelledOccurrence(
+        courseId: UUID,
+        scheduleId: UUID,
+        occurrenceDate: String
+    ) {
+        exceptions.removeAll { ex in
+            ex.scheduleId == scheduleId && ex.originalDate == occurrenceDate && ex.exceptionType == .cancel
+        }
+        save()
+    }
+
     // MARK: - Calendar Synchronization (EventKit)
 
     public func allSemesterOccurrences(for semester: Semester) -> [TimelineItem] {
@@ -356,7 +730,8 @@ public final class AppState {
                 courses: semesterCourses,
                 exceptions: exceptions,
                 forWeek: week,
-                activeWeek: currentWeek
+                activeWeek: currentWeek,
+                showNonCurrentWeekCourses: false
             )
             allItems.append(contentsOf: weekItems)
         }
@@ -504,9 +879,14 @@ public final class AppState {
 
         let nextItem = todayWidgetItems.first(where: { $0.isOngoing || ($0.minutesUntilStart != nil && $0.minutesUntilStart! >= 0) })
 
+        let weekDates = timelineEngineWeekCalculator.dateStringsInWeek(
+            weekNumber: weekNum,
+            semesterStartDate: current.startDate
+        )
         let dayNames = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
         var weekSchedules: [WidgetDaySchedule] = []
         for dayIdx in 1...7 {
+            let dateStr = (dayIdx <= weekDates.count) ? weekDates[dayIdx - 1] : ""
             let dayCourses = weekOccurrences.filter { $0.dayOfWeek == dayIdx && $0.status != .cancelled }.map { item in
                 WidgetCourseItem(
                     id: item.id,
@@ -524,7 +904,7 @@ public final class AppState {
                 WidgetDaySchedule(
                     id: dayIdx,
                     dayName: dayNames[dayIdx - 1],
-                    dateString: "",
+                    dateString: dateStr,
                     courses: dayCourses
                 )
             )
@@ -540,6 +920,47 @@ public final class AppState {
         )
 
         try? widgetDataStore.save(payload)
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    // MARK: - Deep Link Routing
+
+    public func handleDeepLink(_ url: URL) {
+        guard url.scheme == "classflow" else { return }
+        let host = url.host ?? ""
+        let path = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let targetId = path.isEmpty ? (url.query?.components(separatedBy: "id=").last ?? "") : path
+
+        if host == "occurrence", !targetId.isEmpty {
+            // 1. Search in current week's occurrences
+            if let occ = currentWeekOccurrences.first(where: { $0.id == targetId }) {
+                selectedOccurrence = occ
+                return
+            }
+            // 2. Search across entire semester
+            if let semester = currentSemester {
+                let currentCourses = courses.filter { $0.semesterId == semester.id }
+                for w in 1...semester.totalWeeks {
+                    let occs = timelineEngine.generateOccurrences(
+                        semester: semester,
+                        courses: currentCourses,
+                        exceptions: exceptions,
+                        forWeek: w,
+                        activeWeek: calculatedCurrentWeek,
+                        showNonCurrentWeekCourses: true
+                    )
+                    if let occ = occs.first(where: { $0.id == targetId }) {
+                        selectedWeek = w
+                        selectedOccurrence = occ
+                        return
+                    }
+                }
+            }
+        } else if host == "add" {
+            startAddingCourse()
+        } else if host == "today" || host == "schedule" {
+            jumpToCurrentWeek()
+        }
     }
 
     // MARK: - Import & Export Operations
@@ -617,6 +1038,27 @@ public final class AppState {
         let candidateCourses = icsImporter.convertToCourses(events: events, semester: current)
         for c in candidateCourses {
             addCourse(c)
+        }
+    }
+
+    public func importOpenFormatJSON(content: String) {
+        guard let current = currentSemester else {
+            self.importErrorMessage = "请先创建或选择一个学期后再导入课程"
+            return
+        }
+        let importer = OpenFormatCourseImporter()
+        do {
+            let result = try importer.parse(jsonString: content, semesterId: current.id)
+            for c in result.courses {
+                addCourse(c)
+            }
+            if let sections = result.parsedSections, !sections.isEmpty {
+                var updated = current
+                updated.sections = sections
+                updateSemester(updated)
+            }
+        } catch {
+            self.importErrorMessage = "解析失败: \(error.localizedDescription)"
         }
     }
 }

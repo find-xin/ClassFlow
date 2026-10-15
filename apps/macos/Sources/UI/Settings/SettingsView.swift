@@ -1,186 +1,256 @@
 import SwiftUI
 import ClassFlowCore
 
-/// Native macOS settings window with tabbed categories.
+/// Modern card-based settings hub for macOS, replacing crude forms with
+/// serene WakeUp-style cards, live toggles, and unified coral accents.
 public struct SettingsView: View {
     @Bindable public var appState: AppState
+    public var onDismiss: (() -> Void)? = nil
 
-    public init(appState: AppState) {
+    @State private var selectedCategory: String = "general"
+
+    public init(appState: AppState, onDismiss: (() -> Void)? = nil) {
         self.appState = appState
+        self.onDismiss = onDismiss
     }
+
+    private let categories: [(id: String, name: String, icon: String)] = [
+        ("general", "通用", "gearshape"),
+        ("calendar", "日历", "calendar.badge.clock"),
+        ("notifications", "通知", "bell.badge"),
+        ("sync", "云同步", "icloud.and.arrow.up"),
+        ("about", "关于", "info.circle")
+    ]
 
     public var body: some View {
-        TabView {
-            generalTab
-                .tabItem {
-                    Label("通用", systemImage: "gearshape")
-                }
-
-            timetableTab
-                .tabItem {
-                    Label("课程表", systemImage: "calendar")
-                }
-
-            semestersTab
-                .tabItem {
-                    Label("学期管理", systemImage: "books.vertical")
-                }
-
-            CalendarSettingsTab(appState: appState)
-                .tabItem {
-                    Label("日历", systemImage: "calendar.badge.clock")
-                }
-
-            NotificationSettingsTab(appState: appState)
-                .tabItem {
-                    Label("通知", systemImage: "bell.badge")
-                }
-
-            WidgetSettingsTab(appState: appState)
-                .tabItem {
-                    Label("小组件", systemImage: "rectangle.3.group")
-                }
-
-            SyncSettingsTab(appState: appState)
-                .tabItem {
-                    Label("云同步", systemImage: "icloud.and.arrow.up")
-                }
-
-            aboutTab
-                .tabItem {
-                    Label("关于", systemImage: "info.circle")
-                }
-        }
-        .frame(width: 560, height: 460)
-        .padding()
-    }
-
-    private var generalTab: some View {
-        Form {
-            Section("界面外观与系统") {
-                Picker("主题色彩", selection: $appState.settings.themeMode) {
-                    Text("跟随系统").tag("system")
-                    Text("浅色模式").tag("light")
-                    Text("深色模式").tag("dark")
-                }
-
-                Toggle("在系统菜单栏显示 ClassFlow 常驻状态", isOn: $appState.settings.enableMenuBarExtra)
-            }
-        }
-        .formStyle(.grouped)
-    }
-
-    private var timetableTab: some View {
-        Form {
-            Section("课表视图选项") {
-                Picker("课表壁纸主题", selection: $appState.settings.wallpaperPreset) {
-                    Text("WakeUp 经典蔚蓝 (默认)").tag("wakeup_sky")
-                    Text("薄荷浅绿").tag("mint")
-                    Text("暮光薰衣草").tag("lavender")
-                    Text("暖光杏色").tag("warm_cream")
-                    Text("暗夜深空").tag("midnight")
-                }
-
-                Toggle("显示周六和周日 (7列视图)", isOn: $appState.settings.showWeekends)
-                Toggle("在课表中显示非本周课程", isOn: $appState.settings.showNonCurrentWeekCourses)
-                Toggle("淡化显示非本周课程 (半透明)", isOn: $appState.settings.dimNonCurrentWeekCourses)
-
-                Slider(value: $appState.settings.cardOpacity, in: 0.5...1.0, step: 0.05) {
-                    Text("课程卡片不透明度: \(Int(appState.settings.cardOpacity * 100))%")
-                }
-            }
-        }
-        .formStyle(.grouped)
-    }
-
-    private var semestersTab: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(spacing: 0) {
+            // 1. Navigation Header
             HStack {
-                Text("课表与学期管理")
-                    .font(.headline)
+                Text("偏好设置")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(.primary)
+
                 Spacer()
-                Button(action: {
-                    appState.isShowingCreateSemester = true
-                }) {
-                    Label("新建课表", systemImage: "plus")
-                }
-                .buttonStyle(.borderedProminent)
-            }
 
-            List(appState.semesters) { sem in
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(sem.name)
-                            .font(.system(size: 13, weight: .medium))
-                        Text("共 \(sem.totalWeeks) 周 | \(sem.startDate) 起 | \(sem.sections.count) 节/天")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                if let dismissAction = onDismiss {
+                    Button("完成") {
+                        dismissAction()
                     }
-                    Spacer()
-                    if sem.isCurrent {
-                        Text("当前使用")
-                            .font(.caption)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Color.accentColor.opacity(0.15))
-                            .foregroundColor(.accentColor)
-                            .clipShape(Capsule())
-                    } else {
-                        Button("设为当前") {
-                            appState.selectSemester(id: sem.id)
+                    .buttonStyle(.plain)
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 5)
+                    .background(Color(hex: "#FF5A5F"))
+                    .clipShape(Capsule())
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
+            .background(.bar)
+
+            Divider()
+
+            // 2. Segmented Category Bar
+            HStack(spacing: 6) {
+                ForEach(categories, id: \.id) { cat in
+                    let isSelected = (selectedCategory == cat.id)
+
+                    Button(action: {
+                        withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                            selectedCategory = cat.id
                         }
-                        .buttonStyle(.bordered)
-                        .font(.caption)
+                    }) {
+                        HStack(spacing: 5) {
+                            Image(systemName: cat.icon)
+                                .font(.system(size: 12))
+                            Text(cat.name)
+                                .font(.system(size: 12.5, weight: isSelected ? .bold : .medium))
+                        }
+                        .foregroundColor(isSelected ? .white : .primary)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(
+                            Capsule()
+                                .fill(isSelected ? Color.primary : Color.clear)
+                        )
                     }
-
-                    Button("作息时间") {
-                        appState.editingSemesterForSections = sem
-                        appState.isShowingEditSectionTimes = true
-                    }
-                    .buttonStyle(.bordered)
-                    .font(.caption)
+                    .buttonStyle(.plain)
                 }
-                .padding(.vertical, 2)
             }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 10)
+            .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
 
-            HStack {
-                Button("打开课表管理器...") {
-                    appState.isShowingManageSemesters = true
-                }
-                .buttonStyle(.bordered)
+            Divider()
 
-                Button("自定义当前作息时间...") {
-                    appState.editingSemesterForSections = appState.currentSemester
-                    appState.isShowingEditSectionTimes = true
+            // 3. Tab Content
+            ScrollView {
+                VStack(spacing: 16) {
+                    switch selectedCategory {
+                    case "general":
+                        generalCategoryView
+                    case "calendar":
+                        CalendarSettingsTab(appState: appState)
+                    case "notifications":
+                        NotificationSettingsTab(appState: appState)
+                    case "sync":
+                        SyncSettingsTab(appState: appState)
+                    default:
+                        aboutCategoryView
+                    }
                 }
-                .buttonStyle(.bordered)
+                .padding(20)
             }
         }
-        .padding()
+        .frame(width: 580, height: 520)
     }
 
-    private var aboutTab: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "calendar.badge.clock")
-                .font(.system(size: 44))
-                .foregroundColor(.accentColor)
+    // MARK: - General Tab
 
-            Text("ClassFlow for macOS")
-                .font(.title2)
-                .bold()
+    private var generalCategoryView: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            // Appearance Card
+            VStack(alignment: .leading, spacing: 10) {
+                Text("外观与显示")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 4)
 
-            Text("版本 1.0.0 (Phase 3 Native Release)")
-                .font(.subheadline)
-                .foregroundColor(.secondary)
+                VStack(spacing: 0) {
+                    HStack {
+                        Text("主题色彩")
+                            .font(.system(size: 14))
+                        Spacer()
+                        Picker("", selection: $appState.settings.themeMode) {
+                            Text("跟随系统").tag("system")
+                            Text("浅色模式").tag("light")
+                            Text("深色模式").tag("dark")
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.segmented)
+                        .frame(width: 200)
+                        .onChange(of: appState.settings.themeMode) { _, _ in
+                            appState.save()
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
 
-            Text("ClassFlow 是一款面向大学生的高质量开源、原生跨平台课程表。\n坚持 Native First、Local First 与 Bring Your Own Cloud 原则。")
-                .font(.caption)
-                .multilineTextAlignment(.center)
-                .foregroundColor(.secondary)
-                .padding(.horizontal)
+                    Divider().padding(.leading, 16)
 
-            Spacer()
+                    HStack {
+                        Text("系统菜单栏图标常驻")
+                            .font(.system(size: 14))
+                        Spacer()
+                        Toggle("", isOn: $appState.settings.enableMenuBarExtra)
+                            .labelsHidden()
+                            .toggleStyle(.switch)
+                            .onChange(of: appState.settings.enableMenuBarExtra) { _, _ in
+                                appState.save()
+                            }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                }
+                .background(Color(nsColor: .controlBackgroundColor))
+                .cornerRadius(12)
+            }
+
+            // Quick Jump to Appearance and Profiles
+            VStack(alignment: .leading, spacing: 10) {
+                Text("快速定制")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 4)
+
+                VStack(spacing: 0) {
+                    Button(action: {
+                        onDismiss?()
+                        appState.isShowingAppearance = true
+                    }) {
+                        HStack {
+                            Label("课表外观与壁纸皮肤深度设置", systemImage: "paintbrush")
+                                .font(.system(size: 14))
+                                .foregroundColor(.primary)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 12))
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                    }
+                    .buttonStyle(.plain)
+
+                    Divider().padding(.leading, 16)
+
+                    Button(action: {
+                        onDismiss?()
+                        appState.isShowingSectionProfiles = true
+                    }) {
+                        HStack {
+                            Label("作息时间表设置 (节次时长与联动)", systemImage: "clock")
+                                .font(.system(size: 14))
+                                .foregroundColor(.primary)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 12))
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .background(Color(nsColor: .controlBackgroundColor))
+                .cornerRadius(12)
+            }
         }
-        .padding()
+    }
+
+    // MARK: - About Tab
+
+    private var aboutCategoryView: some View {
+        VStack(spacing: 16) {
+            ZStack {
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [Color(hex: "#FF5A5F"), Color(hex: "#FF8A65")],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 64, height: 64)
+
+                Image(systemName: "calendar.badge.clock")
+                    .font(.system(size: 30))
+                    .foregroundColor(.white)
+            }
+
+            VStack(spacing: 4) {
+                Text("ClassFlow for macOS")
+                    .font(.system(size: 18, weight: .bold))
+
+                Text("版本 1.0.0 (Native Release)")
+                    .font(.system(size: 12))
+                    .foregroundColor(.secondary)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("核心设计原则：")
+                    .font(.system(size: 13, weight: .bold))
+
+                Text("• Native First：全面采用原生 Swift / SwiftUI 开发，拒绝 Webview 性能损耗。\n• Local First：本地数据库驱动，离线即时交互，无缝平滑。\n• Bring Your Own Cloud：尊重隐私，用户自主配置存储服务，零强制账号依赖。")
+                    .font(.system(size: 12))
+                    .foregroundColor(.secondary)
+                    .lineSpacing(4)
+            }
+            .padding(16)
+            .background(Color(nsColor: .controlBackgroundColor))
+            .cornerRadius(12)
+        }
+        .padding(.top, 10)
     }
 }

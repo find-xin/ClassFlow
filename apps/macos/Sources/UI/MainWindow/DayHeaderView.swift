@@ -4,12 +4,19 @@ import ClassFlowCore
 /// Header bar rendering month indicator, weekday titles, and calendar dates with WakeUp-identical layout.
 public struct DayHeaderView: View {
     public let dateStrings: [String] // 7 dates
-    public let showWeekends: Bool
+    public let showSaturday: Bool
+    public let showSunday: Bool
     public let todayDateString: String
 
-    public init(dateStrings: [String], showWeekends: Bool, todayDateString: String) {
+    public init(
+        dateStrings: [String],
+        showSaturday: Bool = true,
+        showSunday: Bool = true,
+        todayDateString: String
+    ) {
         self.dateStrings = dateStrings
-        self.showWeekends = showWeekends
+        self.showSaturday = showSaturday
+        self.showSunday = showSunday
         self.todayDateString = todayDateString
     }
 
@@ -21,6 +28,16 @@ public struct DayHeaderView: View {
         }
         let mInt = Int(month) ?? 1
         return ("\(mInt)", "月")
+    }
+
+    private var visibleCount: Int {
+        if !showSaturday && !showSunday {
+            return 5
+        } else if showSaturday && !showSunday {
+            return 6
+        } else {
+            return 7
+        }
     }
 
     public var body: some View {
@@ -37,7 +54,6 @@ public struct DayHeaderView: View {
             .frame(width: 44)
 
             // 2. Weekday & Day Number columns
-            let visibleCount = showWeekends ? 7 : 5
             ForEach(0..<visibleCount, id: \.self) { index in
                 let dateStr = index < dateStrings.count ? dateStrings[index] : ""
                 let isToday = (dateStr == todayDateString)
@@ -56,7 +72,7 @@ public struct DayHeaderView: View {
                             .frame(width: 24, height: 24)
                             .background(
                                 RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                    .fill(Color(hex: "#1F1F1F"))
+                                    .fill(Color(hex: "#FF5A5F"))
                             )
                     } else {
                         Text(dayNumber)

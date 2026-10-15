@@ -31,4 +31,30 @@ extension Color {
             self.init(red: r, green: g, blue: b, opacity: a)
         }
     }
+
+    public func toHex() -> String? {
+        guard let components = NSColor(self).usingColorSpace(.sRGB) else { return nil }
+        let r = Float(components.redComponent)
+        let g = Float(components.greenComponent)
+        let b = Float(components.blueComponent)
+        return String(format: "#%02lX%02lX%02lX", lroundf(r * 255), lroundf(g * 255), lroundf(b * 255))
+    }
+
+    /// Evaluates whether the color has high relative luminance (light/pastel)
+    public var isLight: Bool {
+        guard let components = NSColor(self).usingColorSpace(.sRGB) else { return false }
+        let luminance = 0.299 * components.redComponent + 0.587 * components.greenComponent + 0.114 * components.blueComponent
+        return luminance > 0.62
+    }
+
+    /// Produces a darker variant suitable for high-contrast text on pastel backgrounds
+    public var deepShade: Color {
+        guard let components = NSColor(self).usingColorSpace(.sRGB) else { return self }
+        let factor: CGFloat = 0.45
+        return Color(
+            red: Double(components.redComponent * factor),
+            green: Double(components.greenComponent * factor),
+            blue: Double(components.blueComponent * factor)
+        )
+    }
 }

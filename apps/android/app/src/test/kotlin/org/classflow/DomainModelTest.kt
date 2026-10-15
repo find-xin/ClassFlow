@@ -66,4 +66,53 @@ class DomainModelTest {
         assertEquals("西教 204", exception.targetClassroom)
         assertEquals(3, exception.targetDayOfWeek)
     }
+
+    @Test
+    fun testCalendarEventAndTaskProperties() {
+        val event = CalendarEvent(
+            title = "系学术前沿讲座",
+            startTime = "14:00",
+            endTime = "15:30",
+            location = "报告厅 101",
+            frequency = "每周",
+            isTask = false
+        )
+
+        assertEquals("系学术前沿讲座", event.title)
+        assertEquals("14:00", event.startTime)
+        assertEquals("每周", event.frequency)
+        assertEquals(false, event.isTask)
+
+        val task = CalendarEvent(
+            title = "完成高数复习",
+            isTask = true,
+            isCompleted = false
+        )
+        assertEquals(true, task.isTask)
+        assertEquals(false, task.isCompleted)
+    }
+
+    @Test
+    fun testStudyTaskAndAppSettingsProperties() {
+        val studyTask = StudyTask(
+            title = "大学英语六级听力",
+            courseName = "大学英语",
+            targetMinutes = 45,
+            completedMinutes = 30
+        )
+
+        assertEquals("大学英语六级听力", studyTask.title)
+        assertEquals(45, studyTask.targetMinutes)
+        assertEquals(30, studyTask.completedMinutes)
+
+        val settings = AppSettings(
+            themeMode = "dark",
+            enableStudyModule = false,
+            showWeekends = false
+        )
+        assertEquals("dark", settings.themeMode)
+        assertEquals(false, settings.enableStudyModule)
+        assertEquals(false, settings.showWeekends)
+    }
 }
+

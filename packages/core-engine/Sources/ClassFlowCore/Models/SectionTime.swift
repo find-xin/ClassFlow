@@ -12,7 +12,7 @@ public struct SectionTime: Codable, Sendable, Identifiable, Equatable, Hashable 
     public var endTime: String
 
     public init(section: Int, startTime: String, endTime: String) {
-        precondition(section >= 1, "Section number must be positive and >= 1")
+        precondition(section >= 0, "Section number must be non-negative (>= 0)")
         self.section = section
         self.startTime = startTime
         self.endTime = endTime
