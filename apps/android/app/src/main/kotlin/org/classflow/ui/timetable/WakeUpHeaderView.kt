@@ -1,18 +1,14 @@
 package org.classflow.ui.timetable
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Book
-import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.automirrored.filled.Input
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -26,16 +22,17 @@ import androidx.compose.ui.unit.sp
 import java.text.SimpleDateFormat
 import java.util.*
 
-enum class TimetableDisplayMode {
-    WEEK,
-    DAY
-}
-
 /**
- * Top header matching WakeUp and macOS WakeUpHeaderView:
- * - Clickable week title with chevron, current date and semester name.
- * - Week / Day view toggle.
- * - Ghost action icons: (+) Add (Course/Schedule), (···) Quick Actions Menu.
+ * WakeUp 课程表 Aesthetic Top Bar matching Image 3:
+ * - Top-Left:
+ *     Line 1: 2026/10/16
+ *     Line 2: 第 7 周 周五
+ *     (Clicking opens floating Week Slider & Timetable Switcher drawer)
+ * - Top-Right (4 distinct action icon buttons):
+ *     (+) Add (Course / Schedule)
+ *     (↓) Import (.classflow / .ics / Paste JSON)
+ *     (⤴) Export (Export .ics / Full Backup .classflow)
+ *     (⋮) More / Settings Drawer
  */
 @Composable
 fun WakeUpHeaderView(
@@ -43,16 +40,18 @@ fun WakeUpHeaderView(
     selectedWeek: Int,
     totalWeeks: Int,
     semesterName: String,
-    displayMode: TimetableDisplayMode,
-    onDisplayModeChange: (TimetableDisplayMode) -> Unit,
     onWeekChange: (Int) -> Unit,
     onAddCourseClick: () -> Unit,
     onAddScheduleClick: () -> Unit,
+    onImportClick: (ImportType) -> Unit,
+    onExportClick: (ExportType) -> Unit,
     onOpenThreeDotsMenu: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var showWeekPicker by remember { mutableStateOf(false) }
+    var showWeekDrawer by remember { mutableStateOf(false) }
     var showAddMenu by remember { mutableStateOf(false) }
+    var showImportMenu by remember { mutableStateOf(false) }
+    var showExportMenu by remember { mutableStateOf(false) }
 
     val todayWeekdayShort = remember {
         val cal = Calendar.getInstance()
@@ -64,7 +63,7 @@ fun WakeUpHeaderView(
             Calendar.FRIDAY -> "五"
             Calendar.SATURDAY -> "六"
             Calendar.SUNDAY -> "日"
-            else -> "一"
+            else -> "五"
         }
     }
 
@@ -72,117 +71,69 @@ fun WakeUpHeaderView(
         SimpleDateFormat("yyyy/MM/dd", Locale.getDefault()).format(Date())
     }
 
-    val isCurrentWeek = (selectedWeek == currentWeek)
-
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+            .padding(horizontal = 16.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // 1. Left: Clickable Week and Date Title
+        // 1. Left: Clickable Date & Week Title (exact WakeUp layout)
         Column(
             modifier = Modifier
                 .clip(RoundedCornerShape(10.dp))
-                .clickable { showWeekPicker = true }
-                .padding(horizontal = 6.dp, vertical = 4.dp)
+                .clickable { showWeekDrawer = true }
+                .padding(horizontal = 4.dp, vertical = 2.dp)
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
+            Text(
+                text = currentDateStr,
+                style = MaterialTheme.typography.titleMedium.copy(fontSize = 17.sp),
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = "第${selectedWeek}周 周$todayWeekdayShort",
-                    style = MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp),
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
+                    text = "第 $selectedWeek 周 周$todayWeekdayShort",
+                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
+                    fontWeight = FontWeight.Medium,
+                    color = Color.White.copy(alpha = 0.90f)
                 )
-
-                if (!isCurrentWeek) {
+                if (selectedWeek != currentWeek) {
+                    Spacer(modifier = Modifier.width(6.dp))
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f))
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(Color(0xFF3F51B5))
+                            .padding(horizontal = 4.dp, vertical = 1.dp)
                     ) {
                         Text(
                             text = "非本周",
-                            fontSize = 10.sp,
+                            fontSize = 9.sp,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
+                            color = Color.White
                         )
                     }
                 }
-
-                Icon(
-                    Icons.Default.KeyboardArrowDown,
-                    contentDescription = "切换周次",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(2.dp))
-
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Text(
-                    text = currentDateStr,
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 11.5.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f)
-                )
-                Text(
-                    text = "·",
-                    fontSize = 11.5.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                )
-                Text(
-                    text = semesterName,
-                    fontSize = 11.5.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
-                )
             }
         }
 
-        // 2. Right: View Toggle + Action Icons
+        // 2. Right: 4 Sleek Ghost Action Icons: (+), (↓), (⤴), (⋮)
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            // Week / Day Toggle
-            SingleChoiceSegmentedButtonRow(
-                modifier = Modifier.height(34.dp)
-            ) {
-                SegmentedButton(
-                    selected = displayMode == TimetableDisplayMode.WEEK,
-                    onClick = { onDisplayModeChange(TimetableDisplayMode.WEEK) },
-                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2)
-                ) {
-                    Text("周", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                }
-                SegmentedButton(
-                    selected = displayMode == TimetableDisplayMode.DAY,
-                    onClick = { onDisplayModeChange(TimetableDisplayMode.DAY) },
-                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2)
-                ) {
-                    Text("日", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                }
-            }
-
             // (+) Add Menu
             Box {
                 IconButton(
                     onClick = { showAddMenu = true },
-                    modifier = Modifier.size(36.dp)
+                    modifier = Modifier.size(38.dp)
                 ) {
                     Icon(
                         Icons.Default.Add,
                         contentDescription = "添加",
-                        tint = MaterialTheme.colorScheme.onSurface
+                        tint = Color.White,
+                        modifier = Modifier.size(22.dp)
                     )
                 }
 
@@ -209,103 +160,245 @@ fun WakeUpHeaderView(
                 }
             }
 
-            // (···) 3-Dots Quick Actions Menu
+            // (↓) Import Menu
+            Box {
+                IconButton(
+                    onClick = { showImportMenu = true },
+                    modifier = Modifier.size(38.dp)
+                ) {
+                    Icon(
+                        Icons.Default.FileDownload,
+                        contentDescription = "导入",
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                DropdownMenu(
+                    expanded = showImportMenu,
+                    onDismissRequest = { showImportMenu = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("从 .classflow 备份包导入...", fontSize = 13.5.sp) },
+                        leadingIcon = { Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                        onClick = {
+                            showImportMenu = false
+                            onImportClick(ImportType.CLASSFLOW)
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("从 .ics 日历文件导入...", fontSize = 13.5.sp) },
+                        leadingIcon = { Icon(Icons.Default.CalendarToday, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                        onClick = {
+                            showImportMenu = false
+                            onImportClick(ImportType.ICS)
+                        }
+                    )
+                    HorizontalDivider()
+                    DropdownMenuItem(
+                        text = { Text("粘贴教务脚本 / WakeUp JSON 导入...", fontSize = 13.5.sp) },
+                        leadingIcon = { Icon(Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                        onClick = {
+                            showImportMenu = false
+                            onImportClick(ImportType.PASTE_JSON)
+                        }
+                    )
+                }
+            }
+
+            // (⤴) Export Menu
+            Box {
+                IconButton(
+                    onClick = { showExportMenu = true },
+                    modifier = Modifier.size(38.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Share,
+                        contentDescription = "导出",
+                        tint = Color.White,
+                        modifier = Modifier.size(19.dp)
+                    )
+                }
+
+                DropdownMenu(
+                    expanded = showExportMenu,
+                    onDismissRequest = { showExportMenu = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("导出当前课表为日历 (.ics)...", fontSize = 13.5.sp) },
+                        leadingIcon = { Icon(Icons.Default.Event, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                        onClick = {
+                            showExportMenu = false
+                            onExportClick(ExportType.ICS)
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("导出完整全量备份包 (.classflow)...", fontSize = 13.5.sp) },
+                        leadingIcon = { Icon(Icons.Default.Archive, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                        onClick = {
+                            showExportMenu = false
+                            onExportClick(ExportType.CLASSFLOW)
+                        }
+                    )
+                }
+            }
+
+            // (⋮) More / Settings Menu
             IconButton(
                 onClick = onOpenThreeDotsMenu,
-                modifier = Modifier.size(36.dp)
+                modifier = Modifier.size(38.dp)
             ) {
                 Icon(
                     Icons.Default.MoreVert,
-                    contentDescription = "更多设置",
-                    tint = MaterialTheme.colorScheme.onSurface
+                    contentDescription = "设置与快捷功能",
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp)
                 )
             }
         }
     }
 
-    // Week Picker Dialog
-    if (showWeekPicker) {
+    // WakeUp Style Floating Week Slider & Timetable Card Drawer (matching Image 3)
+    if (showWeekDrawer) {
         AlertDialog(
-            onDismissRequest = { showWeekPicker = false },
+            onDismissRequest = { showWeekDrawer = false },
             title = {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("选择周次", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-                    if (!isCurrentWeek) {
-                        TextButton(
-                            onClick = {
-                                onWeekChange(currentWeek)
-                                showWeekPicker = false
-                            }
-                        ) {
-                            Text("回到本周")
+                    Text("周数", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    TextButton(
+                        onClick = {
+                            onWeekChange(currentWeek)
+                            showWeekDrawer = false
                         }
+                    ) {
+                        Text("回到当前周 (第${currentWeek}周)", fontSize = 12.sp)
                     }
                 }
             },
             text = {
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(5),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 260.dp)
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    items(totalWeeks) { index ->
-                        val wk = index + 1
-                        val isSelected = (wk == selectedWeek)
-                        val isActualCurrent = (wk == currentWeek)
+                    // Smooth Week Slider matching Image 3
+                    Column {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "正在查看: 第 $selectedWeek 周",
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontSize = 14.sp
+                            )
+                            Text(
+                                text = "共 $totalWeeks 周",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
 
+                        Slider(
+                            value = selectedWeek.toFloat(),
+                            onValueChange = { onWeekChange(it.toInt()) },
+                            valueRange = 1f..totalWeeks.toFloat(),
+                            steps = totalWeeks - 2,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+
+                    // Timetable Semester Card Switcher matching Image 3
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("课表", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        Row {
+                            TextButton(onClick = { /* New Semester */ }) {
+                                Text("新建课表", fontSize = 12.sp)
+                            }
+                            TextButton(onClick = { /* Manage */ }) {
+                                Text("管理", fontSize = 12.sp)
+                            }
+                        }
+                    }
+
+                    // Semester Cards Thumbnail List
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        // Card 1
                         Box(
                             modifier = Modifier
-                                .height(42.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(
-                                    when {
-                                        isSelected -> MaterialTheme.colorScheme.primary
-                                        isActualCurrent -> MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                                        else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-                                    }
-                                )
-                                .clickable {
-                                    onWeekChange(wk)
-                                    showWeekPicker = false
-                                },
-                            contentAlignment = Alignment.Center
+                                .weight(1f)
+                                .height(80.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp))
+                                .padding(10.dp)
                         ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(
-                                    text = "$wk",
-                                    fontSize = 14.sp,
-                                    fontWeight = if (isSelected || isActualCurrent) FontWeight.Bold else FontWeight.Medium,
-                                    color = when {
-                                        isSelected -> MaterialTheme.colorScheme.onPrimary
-                                        isActualCurrent -> MaterialTheme.colorScheme.primary
-                                        else -> MaterialTheme.colorScheme.onSurface
-                                    }
-                                )
-                                if (isActualCurrent && !isSelected) {
-                                    Text(
-                                        text = "本周",
-                                        fontSize = 8.5.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary
+                            Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
+                                Text("大三下", fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                            }
+                        }
+
+                        // Card 2 (Active)
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(80.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color(0xFF2C2250))
+                                .border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(12.dp))
+                                .padding(10.dp)
+                        ) {
+                            Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text("大四上", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                    Icon(
+                                        Icons.Default.Check,
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(16.dp)
                                     )
                                 }
+                                Text("当前主课表", fontSize = 10.sp, color = Color.White.copy(alpha = 0.7f))
                             }
                         }
                     }
                 }
             },
             confirmButton = {
-                TextButton(onClick = { showWeekPicker = false }) {
-                    Text("取消")
+                Button(
+                    onClick = { showWeekDrawer = false },
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text("完成")
                 }
             }
         )
     }
+}
+
+enum class ImportType {
+    CLASSFLOW,
+    ICS,
+    PASTE_JSON
+}
+
+enum class ExportType {
+    ICS,
+    CLASSFLOW
 }

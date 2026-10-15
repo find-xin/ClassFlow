@@ -156,6 +156,10 @@ data class AppSettings(
     val showWeekends: Boolean = true,
     val showNonCurrentWeekCourses: Boolean = true,
     val cardOpacity: Float = 0.88f,
-    val wallpaperPreset: String = "default"
+    val wallpaperPreset: String = "default",
+    val customWallpaperUri: String? = null,
+    val syncInterval: String = "manual", // "manual", "on_launch", "15m", "30m", "1h", "6h", "daily"
+    val autoSyncEnabled: Boolean = false,
+    val lastSyncedTime: String? = null
 )
 

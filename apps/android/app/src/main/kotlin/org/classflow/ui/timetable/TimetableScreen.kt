@@ -40,21 +40,21 @@ fun TimetableScreen(
     occurrences: List<TimelineItem>,
     scheduleEvents: List<CalendarEvent> = emptyList(),
     sectionTimes: List<SectionTime> = emptyList(),
+    cardOpacity: Float = 0.88f,
     onWeekChange: (Int) -> Unit,
     onCourseClick: (TimelineItem) -> Unit,
     onScheduleClick: (CalendarEvent) -> Unit = {},
     onAddCourseClick: () -> Unit,
     onAddScheduleClick: () -> Unit,
     onAddCourseAtSlot: (dayOfWeek: Int, section: Int) -> Unit = { _, _ -> },
+    onImportClick: (ImportType) -> Unit = {},
+    onExportClick: (ExportType) -> Unit = {},
     onOpenThreeDotsMenu: () -> Unit
 ) {
-    var displayMode by remember { mutableStateOf(TimetableDisplayMode.WEEK) }
-
     // Calculate dates for the 7 days of the selected week
     val weekDates = remember(selectedWeek) {
         val cal = Calendar.getInstance()
         cal.firstDayOfWeek = Calendar.MONDAY
-        // Anchor to current week calculation
         val currentWeekIdx = currentWeek
         val weekDiff = selectedWeek - currentWeekIdx
         cal.add(Calendar.WEEK_OF_YEAR, weekDiff)
@@ -79,47 +79,37 @@ fun TimetableScreen(
             selectedWeek = selectedWeek,
             totalWeeks = totalWeeks,
             semesterName = semesterName,
-            displayMode = displayMode,
-            onDisplayModeChange = { displayMode = it },
             onWeekChange = onWeekChange,
             onAddCourseClick = onAddCourseClick,
             onAddScheduleClick = onAddScheduleClick,
+            onImportClick = onImportClick,
+            onExportClick = onExportClick,
             onOpenThreeDotsMenu = onOpenThreeDotsMenu
         )
 
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
 
-        if (displayMode == TimetableDisplayMode.WEEK) {
-            // 2. Day Header Row (Month + 7 days with actual dates and WakeUp highlight)
-            WakeUpDayHeaderRow(
-                dateStrings = weekDates,
-                todayDateString = todayDateString
-            )
+        // 2. Day Header Row (Month + 7 days with actual dates and WakeUp highlight)
+        WakeUpDayHeaderRow(
+            dateStrings = weekDates,
+            todayDateString = todayDateString
+        )
 
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.20f))
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.20f))
 
-            // 3. Timetable Canvas (Section Axis + 7 Columns)
-            TimetableCanvas(
-                occurrences = occurrences,
-                scheduleEvents = scheduleEvents,
-                sectionTimes = sectionTimes,
-                todayDateString = todayDateString,
-                weekDates = weekDates,
-                selectedWeek = selectedWeek,
-                onCourseClick = onCourseClick,
-                onScheduleClick = onScheduleClick,
-                onAddAtSlot = onAddCourseAtSlot
-            )
-        } else {
-            // Day View (日视图 - Linear Chronological Agenda)
-            DayViewTimeline(
-                occurrences = occurrences.filter { it.weekNumber == selectedWeek },
-                scheduleEvents = scheduleEvents,
-                todayDateString = todayDateString,
-                onCourseClick = onCourseClick,
-                onScheduleClick = onScheduleClick
-            )
-        }
+        // 3. Timetable Canvas (Section Axis + 7 Columns)
+        TimetableCanvas(
+            occurrences = occurrences,
+            scheduleEvents = scheduleEvents,
+            sectionTimes = sectionTimes,
+            todayDateString = todayDateString,
+            weekDates = weekDates,
+            selectedWeek = selectedWeek,
+            cardOpacity = cardOpacity,
+            onCourseClick = onCourseClick,
+            onScheduleClick = onScheduleClick,
+            onAddAtSlot = onAddCourseAtSlot
+        )
     }
 }
 
@@ -170,9 +160,13 @@ fun WakeUpDayHeaderRow(
         for ((index, day) in dayNames.withIndex()) {
             val dateStr = if (index < dateStrings.size) dateStrings[index] else ""
             val isToday = (dateStr == todayDateString)
-            val dayNumber = remember(dateStr) {
+            val dateSubtext = remember(dateStr) {
                 val parts = dateStr.split("-")
-                if (parts.size == 3) parts[2].toIntOrNull()?.toString() ?: parts[2] else ""
+                if (parts.size == 3) {
+                    val m = parts[1].toIntOrNull() ?: 10
+                    val d = parts[2].toIntOrNull() ?: 1
+                    "$m/$d"
+                } else ""
             }
 
             Column(
@@ -184,35 +178,35 @@ fun WakeUpDayHeaderRow(
                     text = day,
                     fontSize = 12.sp,
                     fontWeight = if (isToday) FontWeight.Bold else FontWeight.Medium,
-                    color = if (isToday) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                    color = if (isToday) Color.White else Color.White.copy(alpha = 0.75f)
                 )
 
                 if (isToday) {
-                    // WakeUp style elegant rounded badge
+                    // WakeUp style elegant rounded badge with high contrast
                     Box(
                         modifier = Modifier
-                            .size(22.dp)
                             .clip(RoundedCornerShape(6.dp))
-                            .background(MaterialTheme.colorScheme.onSurface),
+                            .background(Color(0xFF3F51B5))
+                            .padding(horizontal = 4.dp, vertical = 2.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = dayNumber,
-                            fontSize = 11.5.sp,
+                            text = dateSubtext,
+                            fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.surface
+                            color = Color.White
                         )
                     }
                 } else {
                     Box(
-                        modifier = Modifier.size(22.dp),
+                        modifier = Modifier.padding(vertical = 2.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = dayNumber,
-                            fontSize = 11.sp,
+                            text = dateSubtext,
+                            fontSize = 10.sp,
                             fontWeight = FontWeight.Normal,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f)
+                            color = Color.White.copy(alpha = 0.65f)
                         )
                     }
                 }
@@ -233,6 +227,7 @@ fun TimetableCanvas(
     todayDateString: String,
     weekDates: List<String>,
     selectedWeek: Int,
+    cardOpacity: Float = 0.88f,
     onCourseClick: (TimelineItem) -> Unit,
     onScheduleClick: (CalendarEvent) -> Unit,
     onAddAtSlot: (dayOfWeek: Int, section: Int) -> Unit
@@ -271,14 +266,14 @@ fun TimetableCanvas(
                         text = sec.toString(),
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
+                        color = Color.White
                     )
                     Text(
                         text = timeLabel,
                         fontSize = 8.5.sp,
                         lineHeight = 10.sp,
                         textAlign = TextAlign.Center,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f)
+                        color = Color.White.copy(alpha = 0.60f)
                     )
                 }
             }
@@ -302,7 +297,7 @@ fun TimetableCanvas(
                         .fillMaxHeight()
                         .then(
                             if (isToday) {
-                                Modifier.background(MaterialTheme.colorScheme.primary.copy(alpha = 0.04f))
+                                Modifier.background(Color.White.copy(alpha = 0.05f))
                             } else Modifier
                         )
                         .padding(horizontal = 1.5.dp)
@@ -329,6 +324,7 @@ fun TimetableCanvas(
                         CourseCard(
                             item = item,
                             isActiveThisWeek = isActiveThisWeek,
+                            cardOpacity = cardOpacity,
                             modifier = Modifier
                                 .padding(top = topOffset.dp)
                                 .height(cardHeight.dp)
@@ -349,11 +345,12 @@ fun TimetableCanvas(
 fun CourseCard(
     item: TimelineItem,
     isActiveThisWeek: Boolean,
+    cardOpacity: Float = 0.88f,
     modifier: Modifier = Modifier
 ) {
     val cardColor = parseHexColor(item.color)
 
-    val backgroundAlpha = if (isActiveThisWeek) 0.88f else 0.35f
+    val backgroundAlpha = if (isActiveThisWeek) cardOpacity else cardOpacity * 0.40f
     val contentAlpha = if (isActiveThisWeek) 1.0f else 0.75f
 
     Box(

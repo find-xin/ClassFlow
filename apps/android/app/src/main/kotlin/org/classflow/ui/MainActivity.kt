@@ -1,26 +1,42 @@
 package org.classflow.ui
 
+import android.content.Intent
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.Timer
-import androidx.compose.material.icons.filled.ViewTimeline
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import org.classflow.data.model.*
+import org.classflow.sync.FullSyncBundle
+import org.classflow.sync.FullSyncManager
 import org.classflow.ui.agenda.AgendaScreen
 import org.classflow.ui.components.WallpaperBackground
 import org.classflow.ui.detail.CourseDetailBottomSheet
 import org.classflow.ui.study.StudyScreen
 import org.classflow.ui.timetable.*
+import org.json.JSONArray
+import org.json.JSONObject
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -40,7 +56,7 @@ enum class NavigationTab {
 @Composable
 fun MainApp() {
     var appSettings by remember {
-        mutableStateOf(AppSettings(themeMode = "system", enableStudyModule = true))
+        mutableStateOf(AppSettings(themeMode = "system", enableStudyModule = true, wallpaperPreset = "anime_blue"))
     }
 
     val isDark = when (appSettings.themeMode) {
@@ -82,7 +98,10 @@ fun MainApp() {
     MaterialTheme(
         colorScheme = if (isDark) darkColors else lightColors
     ) {
-        WallpaperBackground(isDark = isDark) {
+        WallpaperBackground(
+            isDark = isDark,
+            wallpaperPreset = appSettings.wallpaperPreset
+        ) {
             MainScreenHost(
                 appSettings = appSettings,
                 onUpdateSettings = { appSettings = it }
@@ -96,6 +115,9 @@ fun MainScreenHost(
     appSettings: AppSettings,
     onUpdateSettings: (AppSettings) -> Unit
 ) {
+    val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
+
     var selectedTab by remember { mutableStateOf(NavigationTab.TIMETABLE) }
     val currentWeek = 1
     var selectedWeek by remember { mutableIntStateOf(1) }
@@ -106,6 +128,22 @@ fun MainScreenHost(
     var selectedScheduleEvent by remember { mutableStateOf<CalendarEvent?>(null) }
     var showThreeDotsMenu by remember { mutableStateOf(false) }
     var activeQuickActionSheet by remember { mutableStateOf(QuickActionSheetType.NONE) }
+
+    // Import / Export Dialogs
+    var showPasteImportDialog by remember { mutableStateOf(false) }
+    var showFileImportDialog by remember { mutableStateOf(false) }
+    var showExportDialog by remember { mutableStateOf(false) }
+    var exportContent by remember { mutableStateOf("") }
+    var exportTitle by remember { mutableStateOf("") }
+
+    // Auto-sync effect based on interval
+    LaunchedEffect(appSettings.autoSyncEnabled, appSettings.syncInterval) {
+        if (appSettings.autoSyncEnabled) {
+            val nowStr = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
+            FullSyncManager.lastSyncTimestamp = System.currentTimeMillis()
+            FullSyncManager.lastSyncStatus = "已自动全量同步 ($nowStr)"
+        }
+    }
 
     // Dialogs
     var showAddCourseDialog by remember { mutableStateOf(false) }
@@ -277,6 +315,7 @@ fun MainScreenHost(
                     occurrences = sampleOccurrences,
                     scheduleEvents = sampleSchedules,
                     sectionTimes = sectionTimes,
+                    cardOpacity = appSettings.cardOpacity,
                     onWeekChange = { selectedWeek = it },
                     onCourseClick = { selectedOccurrence = it },
                     onScheduleClick = { selectedScheduleEvent = it },
@@ -290,6 +329,34 @@ fun MainScreenHost(
                         addCourseSlotDay = day
                         addCourseSlotSection = sec
                         showAddCourseDialog = true
+                    },
+                    onImportClick = { type ->
+                        when (type) {
+                            ImportType.PASTE_JSON -> showPasteImportDialog = true
+                            ImportType.CLASSFLOW, ImportType.ICS -> showFileImportDialog = true
+                        }
+                    },
+                    onExportClick = { type ->
+                        when (type) {
+                            ExportType.CLASSFLOW -> {
+                                val bundle = FullSyncBundle(
+                                    courses = sampleCourses.toList(),
+                                    schedules = sampleSchedules.toList(),
+                                    todos = emptyList(),
+                                    studyTasks = emptyList(),
+                                    focusRecords = emptyList(),
+                                    settings = appSettings
+                                )
+                                exportContent = FullSyncManager.serializeBundle(bundle)
+                                exportTitle = "ClassFlow 完整数据备份 (.classflow)"
+                                showExportDialog = true
+                            }
+                            ExportType.ICS -> {
+                                exportContent = generateICSCalendar(sampleOccurrences, sampleSchedules)
+                                exportTitle = "导出系统日历文件 (.ics)"
+                                showExportDialog = true
+                            }
+                        }
                     },
                     onOpenThreeDotsMenu = { showThreeDotsMenu = true }
                 )
@@ -431,5 +498,435 @@ fun MainScreenHost(
                 }
             )
         }
+
+        // Paste JSON Import Dialog
+        if (showPasteImportDialog) {
+            PasteJSONImportDialog(
+                onDismiss = { showPasteImportDialog = false },
+                onImportSuccess = { importedCourses, importedOccurrences ->
+                    sampleCourses.addAll(importedCourses)
+                    sampleOccurrences.addAll(importedOccurrences)
+                    showPasteImportDialog = false
+                    Toast.makeText(context, "成功导入 ${importedCourses.size} 门课程！", Toast.LENGTH_SHORT).show()
+                }
+            )
+        }
+
+        // File Import Dialog
+        if (showFileImportDialog) {
+            FileImportDialog(
+                onDismiss = { showFileImportDialog = false },
+                onImportDemo = {
+                    val demoCourse = Course(
+                        id = "c_phy_${System.currentTimeMillis()}",
+                        semesterId = "sem_1",
+                        name = "大学物理实验",
+                        teacher = "赵教授",
+                        color = "#EA4335",
+                        schedules = listOf(CourseSchedule(dayOfWeek = 4, startSection = 5, endSection = 6, classroom = "物理实验楼 204"))
+                    )
+                    sampleCourses.add(demoCourse)
+                    sampleOccurrences.add(
+                        TimelineItem(
+                            id = "occ_phy_${System.currentTimeMillis()}",
+                            courseId = demoCourse.id,
+                            scheduleId = demoCourse.schedules.first().id,
+                            title = demoCourse.name,
+                            location = "物理实验楼 204",
+                            date = "2026-10-15",
+                            dayOfWeek = 4,
+                            startSection = 5,
+                            endSection = 6,
+                            startTime = "13:30",
+                            endTime = "15:05",
+                            weekNumber = selectedWeek,
+                            color = demoCourse.color,
+                            teacher = demoCourse.teacher
+                        )
+                    )
+                    showFileImportDialog = false
+                    Toast.makeText(context, "已从备份恢复示例课程！", Toast.LENGTH_SHORT).show()
+                }
+            )
+        }
+
+        // Export Dialog
+        if (showExportDialog) {
+            ExportContentDialog(
+                title = exportTitle,
+                content = exportContent,
+                onDismiss = { showExportDialog = false },
+                onCopy = {
+                    clipboardManager.setText(AnnotatedString(exportContent))
+                    Toast.makeText(context, "已复制到剪贴板！", Toast.LENGTH_SHORT).show()
+                },
+                onShare = {
+                    val sendIntent = Intent().apply {
+                        action = Intent.ACTION_SEND
+                        putExtra(Intent.EXTRA_TEXT, exportContent)
+                        type = "text/plain"
+                    }
+                    val shareIntent = Intent.createChooser(sendIntent, exportTitle)
+                    context.startActivity(shareIntent)
+                }
+            )
+        }
     }
+}
+
+/**
+ * Generates RFC 5545 standard .ics calendar format from occurrences and schedules.
+ */
+fun generateICSCalendar(occurrences: List<TimelineItem>, schedules: List<CalendarEvent>): String {
+    val sb = StringBuilder()
+    sb.append("BEGIN:VCALENDAR\n")
+    sb.append("VERSION:2.0\n")
+    sb.append("PRODID:-//ClassFlow//Timetable Calendar//CN\n")
+    occurrences.forEach { item ->
+        sb.append("BEGIN:VEVENT\n")
+        sb.append("UID:${item.id}@classflow.org\n")
+        sb.append("SUMMARY:${item.title}\n")
+        item.location?.let { sb.append("LOCATION:$it\n") }
+        item.teacher?.let { sb.append("DESCRIPTION:任课教师：$it\n") }
+        val dateClean = (item.date ?: "20261016").replace("-", "")
+        val startClean = (item.startTime ?: "08:00").replace(":", "") + "00"
+        val endClean = (item.endTime ?: "09:35").replace(":", "") + "00"
+        sb.append("DTSTART:${dateClean}T${startClean}\n")
+        sb.append("DTEND:${dateClean}T${endClean}\n")
+        sb.append("END:VEVENT\n")
+    }
+    schedules.forEach { sched ->
+        sb.append("BEGIN:VEVENT\n")
+        sb.append("UID:${sched.id}@classflow.org\n")
+        sb.append("SUMMARY:${sched.title}\n")
+        sched.location?.let { sb.append("LOCATION:$it\n") }
+        sched.description?.let { sb.append("DESCRIPTION:$it\n") }
+        sb.append("END:VEVENT\n")
+    }
+    sb.append("END:VCALENDAR\n")
+    return sb.toString()
+}
+
+@Composable
+fun PasteJSONImportDialog(
+    onDismiss: () -> Unit,
+    onImportSuccess: (List<Course>, List<TimelineItem>) -> Unit
+) {
+    var jsonText by remember { mutableStateOf("") }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    val clipboardManager = LocalClipboardManager.current
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text("粘贴 JSON 导入课表", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    text = "支持直接粘贴教务解析脚本、WakeUp 课程表导出 JSON 或 ClassFlow 数据包：",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                OutlinedTextField(
+                    value = jsonText,
+                    onValueChange = {
+                        jsonText = it
+                        errorMessage = null
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(180.dp),
+                    placeholder = { Text("在此粘贴 JSON 数据...", fontSize = 12.sp) },
+                    shape = RoundedCornerShape(10.dp)
+                )
+
+                errorMessage?.let { err ->
+                    Text(err, color = MaterialTheme.colorScheme.error, fontSize = 11.5.sp)
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = {
+                            clipboardManager.getText()?.text?.let { jsonText = it }
+                        },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("粘贴剪贴板", fontSize = 12.sp)
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            jsonText = """
+                            [
+                              {
+                                "name": "计算机网络",
+                                "teacher": "孙教授",
+                                "room": "网络楼 401",
+                                "day": 2,
+                                "startNode": 1,
+                                "step": 2,
+                                "color": "#FBBC04"
+                              },
+                              {
+                                "name": "操作系统原理",
+                                "teacher": "周教授",
+                                "room": "计算机大楼 208",
+                                "day": 4,
+                                "startNode": 3,
+                                "step": 2,
+                                "color": "#4285F4"
+                              }
+                            ]
+                            """.trimIndent()
+                        },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("填入示例", fontSize = 12.sp)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    try {
+                        val text = jsonText.trim()
+                        if (text.isEmpty()) {
+                            errorMessage = "请先粘贴 JSON 内容"
+                            return@Button
+                        }
+
+                        val parsedCourses = mutableListOf<Course>()
+                        val parsedOccurrences = mutableListOf<TimelineItem>()
+
+                        if (text.startsWith("{")) {
+                            val root = JSONObject(text)
+                            if (root.has("courses")) {
+                                val bundle = FullSyncManager.deserializeBundle(text)
+                                parsedCourses.addAll(bundle.courses)
+                                bundle.courses.forEach { c ->
+                                    c.schedules.forEach { s ->
+                                        parsedOccurrences.add(
+                                            TimelineItem(
+                                                id = "occ_${System.currentTimeMillis()}_${s.id}",
+                                                courseId = c.id,
+                                                scheduleId = s.id,
+                                                title = c.name,
+                                                location = s.classroom,
+                                                date = "2026-10-14",
+                                                dayOfWeek = s.dayOfWeek,
+                                                startSection = s.startSection,
+                                                endSection = s.endSection,
+                                                startTime = "08:00",
+                                                endTime = "09:35",
+                                                weekNumber = 1,
+                                                color = c.color,
+                                                teacher = c.teacher
+                                            )
+                                        )
+                                    }
+                                }
+                            }
+                        } else if (text.startsWith("[")) {
+                            val arr = JSONArray(text)
+                            for (i in 0 until arr.length()) {
+                                val obj = arr.getJSONObject(i)
+                                val name = obj.optString("name", obj.optString("courseName", "课程 ${i + 1}"))
+                                val teacher = obj.optString("teacher", obj.optString("teacherName", "")).ifEmpty { null }
+                                val classroom = obj.optString("room", obj.optString("position", obj.optString("classroom", ""))).ifEmpty { null }
+                                val day = obj.optInt("day", obj.optInt("dayOfWeek", 1))
+                                val start = obj.optInt("startNode", obj.optInt("startSection", obj.optInt("start", 1)))
+                                val step = obj.optInt("step", obj.optInt("nodeCount", 2))
+                                val end = obj.optInt("endSection", obj.optInt("end", start + step - 1))
+                                val color = obj.optString("color", "#3F51B5")
+
+                                val courseId = "c_imported_${System.currentTimeMillis()}_$i"
+                                val schedId = "s_imported_${System.currentTimeMillis()}_$i"
+                                val course = Course(
+                                    id = courseId,
+                                    semesterId = "sem_1",
+                                    name = name,
+                                    teacher = teacher,
+                                    color = color,
+                                    schedules = listOf(
+                                        CourseSchedule(
+                                            id = schedId,
+                                            dayOfWeek = day,
+                                            startSection = start,
+                                            endSection = end,
+                                            classroom = classroom
+                                        )
+                                    )
+                                )
+                                parsedCourses.add(course)
+                                parsedOccurrences.add(
+                                    TimelineItem(
+                                        id = "occ_${System.currentTimeMillis()}_$i",
+                                        courseId = courseId,
+                                        scheduleId = schedId,
+                                        title = name,
+                                        location = classroom,
+                                        date = "2026-10-14",
+                                        dayOfWeek = day,
+                                        startSection = start,
+                                        endSection = end,
+                                        startTime = "08:00",
+                                        endTime = "09:35",
+                                        weekNumber = 1,
+                                        color = color,
+                                        teacher = teacher
+                                    )
+                                )
+                            }
+                        }
+
+                        if (parsedCourses.isEmpty()) {
+                            errorMessage = "未能识别出课程数据，请检查 JSON 格式"
+                        } else {
+                            onImportSuccess(parsedCourses, parsedOccurrences)
+                        }
+                    } catch (e: Exception) {
+                        errorMessage = "解析失败: ${e.message}"
+                    }
+                },
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Text("解析并导入")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("取消")
+            }
+        }
+    )
+}
+
+@Composable
+fun FileImportDialog(
+    onDismiss: () -> Unit,
+    onImportDemo: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text("从文件导入", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("ClassFlow 支持导入以下两类格式文件：", fontSize = 13.sp)
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text("1. .classflow 完整备份包", fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
+                        Text("包含所有课程、日程、待办清单、专注记录及配置，无损跨设备全量迁移。", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text("2. .ics 通用日历文件", fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
+                        Text("兼容苹果日历、Google Calendar、Outlook 的日历行程与课程。", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onImportDemo,
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Text("加载示例备份数据")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("关闭")
+            }
+        }
+    )
+}
+
+@Composable
+fun ExportContentDialog(
+    title: String,
+    content: String,
+    onDismiss: () -> Unit,
+    onCopy: () -> Unit,
+    onShare: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text("已成功生成导出数据，您可以复制至剪贴板或通过系统分享：", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(160.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
+                        .padding(10.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    Text(
+                        text = content,
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = onCopy,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("复制内容", fontSize = 12.sp)
+                    }
+                    Button(
+                        onClick = onShare,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("系统分享", fontSize = 12.sp)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("完成")
+            }
+        }
+    )
 }

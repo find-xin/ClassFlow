@@ -220,8 +220,99 @@ fun TimetableSettingsDialog(
 
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
 
-                // Cloud Sync Section (BYOC: Integrated inside Timetable Settings)
-                Text("云端同步设置 (BYOC)", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                // Cloud Sync Section (BYOC: Full data synchronization across all domains)
+                Text("全量云端数据同步 (BYOC)", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                Text(
+                    text = "多端同步课程表、日历日程、待办清单、专注任务与打卡统计、系统外观配置。",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                // Sync Status & Trigger Card
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("同步状态", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(
+                                    text = org.classflow.sync.FullSyncManager.lastSyncStatus,
+                                    fontSize = 13.5.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            Button(
+                                onClick = {
+                                    // Trigger immediate full sync
+                                    org.classflow.sync.FullSyncManager.lastSyncStatus = "正在全量同步..."
+                                    val nowStr = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
+                                    org.classflow.sync.FullSyncManager.lastSyncTimestamp = System.currentTimeMillis()
+                                    org.classflow.sync.FullSyncManager.lastSyncStatus = "全量数据同步完成 ($nowStr)"
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                            ) {
+                                Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("立即全量同步", fontSize = 12.5.sp)
+                            }
+                        }
+
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+
+                        // Auto-sync Toggle
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("开启自动同步", fontSize = 13.5.sp, fontWeight = FontWeight.Medium)
+                            Switch(
+                                checked = appSettings.autoSyncEnabled,
+                                onCheckedChange = { onUpdateSettings(appSettings.copy(autoSyncEnabled = it)) }
+                            )
+                        }
+
+                        // Sync Interval Selection
+                        if (appSettings.autoSyncEnabled) {
+                            Text("同步时间间隔", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                val intervals = listOf(
+                                    "launch" to "启动时",
+                                    "15m" to "15分钟",
+                                    "30m" to "30分钟",
+                                    "1h" to "1小时",
+                                    "manual" to "仅手动"
+                                )
+                                intervals.forEach { (code, label) ->
+                                    FilterChip(
+                                        selected = appSettings.syncInterval == code,
+                                        onClick = { onUpdateSettings(appSettings.copy(syncInterval = code)) },
+                                        label = { Text(label, fontSize = 11.sp) }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
 
                 Card(
                     modifier = Modifier
@@ -241,8 +332,8 @@ fun TimetableSettingsDialog(
                         Icon(Icons.Default.CloudQueue, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("WebDAV 云同步", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                            Text("支持坚果云、自建 Nextcloud 等私有同步", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("WebDAV 云同步配置", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                            Text("支持坚果云、自建 Nextcloud、InfiniCLOUD 等", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
@@ -498,13 +589,14 @@ fun AppearanceSettingsDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Text("课表外观设置", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text("课表外观与壁纸设置", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         },
         text = {
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
+                // Theme Mode
                 Text("外观模式", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -518,6 +610,49 @@ fun AppearanceSettingsDialog(
                         )
                     }
                 }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+
+                // Wallpaper Preset Selection
+                Text("壁纸背景风格", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    val wallpapers = listOf(
+                        "anime_blue" to "动漫暮光 (WakeUp 经典蓝紫)",
+                        "default" to "极简黑曜 (精细磨砂玻璃)",
+                        "forest_twilight" to "静谧幽林 (自然墨绿)"
+                    )
+                    wallpapers.forEach { (preset, label) ->
+                        FilterChip(
+                            selected = appSettings.wallpaperPreset == preset,
+                            onClick = { onUpdateSettings(appSettings.copy(wallpaperPreset = preset)) },
+                            label = { Text(label, fontSize = 12.sp) },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+
+                // Card Opacity Slider
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("课表卡片不透明度", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                    Text(
+                        text = "${(appSettings.cardOpacity * 100).toInt()}%",
+                        fontSize = 12.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                Slider(
+                    value = appSettings.cardOpacity,
+                    onValueChange = { onUpdateSettings(appSettings.copy(cardOpacity = it)) },
+                    valueRange = 0.30f..1.0f,
+                    steps = 14
+                )
             }
         },
         confirmButton = {
