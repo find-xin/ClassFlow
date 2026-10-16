@@ -60,7 +60,12 @@ enum class TaskFilter(val label: String) {
 }
 
 @Composable
-fun StudyScreen() {
+fun StudyScreen(
+    initialTaskTitle: String? = null,
+    initialCourseName: String? = null,
+    autoStart: Boolean = false,
+    onFocusConsumed: () -> Unit = {}
+) {
     var selectedSubTab by remember { mutableIntStateOf(0) } // 0: 专注时钟, 1: 统计与热力图
 
     // Focus Engine State
@@ -107,6 +112,29 @@ fun StudyScreen() {
                 isCompleted = true
             )
         )
+    }
+
+    // Auto-start focus linkage from Agenda or Course click
+    LaunchedEffect(autoStart, initialTaskTitle) {
+        if (autoStart && !initialTaskTitle.isNullOrBlank()) {
+            val existing = tasks.firstOrNull { it.title == initialTaskTitle }
+            val target = existing ?: run {
+                val created = StudyTask(
+                    title = initialTaskTitle,
+                    courseName = initialCourseName,
+                    targetMinutes = 25
+                )
+                tasks.add(0, created)
+                created
+            }
+            activeTaskId = target.id
+            focusMode = StudyFocusMode.POMODORO
+            focusDurationMinutes = 25
+            secondsRemaining = 25 * 60
+            isRunning = true
+            timerPhase = TimerPhase.FOCUSING
+            onFocusConsumed()
+        }
     }
 
     val activeTask = remember(tasks, activeTaskId) {
@@ -163,9 +191,9 @@ fun StudyScreen() {
         map
     }
 
-    // Timer Ticker
-    LaunchedEffect(isRunning, secondsRemaining, countUpSeconds) {
-        if (isRunning) {
+    // Timer Ticker - robust while(isRunning) loop without frequent coroutine teardown
+    LaunchedEffect(isRunning, focusMode) {
+        while (isRunning) {
             delay(1000L)
             if (focusMode == StudyFocusMode.POMODORO) {
                 if (secondsRemaining > 0) {
@@ -414,11 +442,11 @@ fun StudyScreen() {
                         },
                         onStartTask = { task ->
                             activeTaskId = task.id
-                            if (!isRunning) {
-                                focusMode = StudyFocusMode.POMODORO
-                                focusDurationMinutes = 25
-                                secondsRemaining = 25 * 60
-                            }
+                            focusMode = StudyFocusMode.POMODORO
+                            focusDurationMinutes = 25
+                            secondsRemaining = 25 * 60
+                            isRunning = true
+                            timerPhase = TimerPhase.FOCUSING
                         },
                         onDeleteTask = { task ->
                             tasks.remove(task)

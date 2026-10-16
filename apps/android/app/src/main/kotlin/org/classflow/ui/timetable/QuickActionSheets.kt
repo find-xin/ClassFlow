@@ -1,8 +1,11 @@
 package org.classflow.ui.timetable
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -11,6 +14,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -29,8 +35,49 @@ fun SectionTimesDialog(
     onUpdateSections: (List<SectionTime>) -> Unit = {},
     onDismiss: () -> Unit
 ) {
+    var fixedDuration by remember { mutableStateOf(true) }
+    var sectionDurationMinutes by remember { mutableIntStateOf(45) }
+    var showDurationDialog by remember { mutableStateOf(false) }
     var editingSection by remember { mutableStateOf<SectionTime?>(null) }
     val currentList = remember { mutableStateListOf<SectionTime>().apply { addAll(sections) } }
+
+    fun computeEndTime(start: String, minutes: Int): String {
+        val parts = start.split(":")
+        if (parts.size != 2) return start
+        val h = parts[0].toIntOrNull() ?: return start
+        val m = parts[1].toIntOrNull() ?: return start
+        val totalMinutes = (h * 60 + m + minutes) % (24 * 60)
+        val newH = totalMinutes / 60
+        val newM = totalMinutes % 60
+        return String.format("%02d:%02d", newH, newM)
+    }
+
+    fun recalculateAllEndTimes(duration: Int) {
+        for (i in currentList.indices) {
+            val sec = currentList[i]
+            val newEnd = computeEndTime(sec.startTime, duration)
+            currentList[i] = sec.copy(endTime = newEnd)
+        }
+    }
+
+    fun addSection() {
+        val nextSecNum = currentList.size + 1
+        val lastEnd = currentList.lastOrNull()?.endTime ?: "08:00"
+        val newStart = computeEndTime(lastEnd, 10)
+        val newEnd = computeEndTime(newStart, sectionDurationMinutes)
+        currentList.add(SectionTime(nextSecNum, newStart, newEnd))
+    }
+
+    fun removeSection(sec: SectionTime) {
+        if (currentList.size > 1) {
+            currentList.remove(sec)
+            val renumbered = currentList.mapIndexed { idx, item ->
+                item.copy(section = idx + 1)
+            }
+            currentList.clear()
+            currentList.addAll(renumbered)
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -41,20 +88,22 @@ fun SectionTimesDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 440.dp)
+                    .heightIn(max = 480.dp)
                     .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                currentList.forEach { sec ->
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { editingSection = sec },
-                        shape = RoundedCornerShape(10.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-                        )
-                    ) {
+                // 1. Top Card: Fixed duration & per-section duration (WakeUp & macOS 1:1 Parity)
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                    border = androidx.compose.foundation.BorderStroke(
+                        0.5.dp,
+                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        // Row 1: Fixed Duration Switch
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -62,25 +111,168 @@ fun SectionTimesDialog(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = "第 ${sec.section} 节",
-                                fontWeight = FontWeight.Bold,
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = "${sec.startTime} ~ ${sec.endTime}",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    fontWeight = FontWeight.Medium
+                                    text = "固定上课时长",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurface
                                 )
-                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "修改上课时间会跟随联动",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+                                )
+                            }
+                            Switch(
+                                checked = fixedDuration,
+                                onCheckedChange = { fixedDuration = it }
+                            )
+                        }
+
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
+
+                        // Row 2: Per-section Duration Selector
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { showDurationDialog = true }
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "每节课上课时长",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = "$sectionDurationMinutes 分钟",
+                                    fontSize = 13.5.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                                 Icon(
-                                    Icons.Default.Edit,
-                                    contentDescription = "直接修改时间",
-                                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
-                                    modifier = Modifier.size(16.dp)
+                                    Icons.Default.ChevronRight,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
+                            }
+                        }
+                    }
+                }
+
+                // 2. Sections Header with Add Section Action
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "请注意是 24 小时制！",
+                        fontSize = 11.5.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    )
+
+                    Surface(
+                        onClick = { addSection() },
+                        shape = CircleShape,
+                        color = Color(0xFFFF5A5F).copy(alpha = 0.12f),
+                        border = androidx.compose.foundation.BorderStroke(0.8.dp, Color(0xFFFF5A5F).copy(alpha = 0.35f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Add,
+                                contentDescription = null,
+                                modifier = Modifier.size(13.dp),
+                                tint = Color(0xFFFF5A5F)
+                            )
+                            Text(
+                                text = "添加节次",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFFF5A5F)
+                            )
+                        }
+                    }
+                }
+
+                // 3. Sections List Card
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                    border = androidx.compose.foundation.BorderStroke(
+                        0.5.dp,
+                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        currentList.forEachIndexed { idx, sec ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { editingSection = sec }
+                                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "第 ${sec.section} 节课",
+                                    fontSize = 13.5.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = MaterialTheme.colorScheme.surface,
+                                        border = androidx.compose.foundation.BorderStroke(
+                                            0.5.dp,
+                                            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                                        )
+                                    ) {
+                                        Text(
+                                            text = "${sec.startTime} - ${sec.endTime}",
+                                            fontSize = 12.5.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                        )
+                                    }
+
+                                    if (currentList.size > 1) {
+                                        IconButton(
+                                            onClick = { removeSection(sec) },
+                                            modifier = Modifier.size(24.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.RemoveCircle,
+                                                contentDescription = "删除节次",
+                                                tint = MaterialTheme.colorScheme.error.copy(alpha = 0.75f),
+                                                modifier = Modifier.size(17.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (idx < currentList.size - 1) {
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f))
                             }
                         }
                     }
@@ -105,6 +297,61 @@ fun SectionTimesDialog(
         }
     )
 
+    // Duration Picker Dialog (30, 35, 40, 45, 50, 55, 60 minutes)
+    if (showDurationDialog) {
+        val availableDurations = listOf(30, 35, 40, 45, 50, 55, 60)
+        AlertDialog(
+            onDismissRequest = { showDurationDialog = false },
+            title = { Text("选择每节课上课时长", fontWeight = FontWeight.Bold, fontSize = 16.sp) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    availableDurations.forEach { d ->
+                        val isSelected = (sectionDurationMinutes == d)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(
+                                    if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                                    else Color.Transparent
+                                )
+                                .clickable {
+                                    sectionDurationMinutes = d
+                                    if (fixedDuration) {
+                                        recalculateAllEndTimes(d)
+                                    }
+                                    showDurationDialog = false
+                                }
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "$d 分钟",
+                                fontSize = 14.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                            )
+                            if (isSelected) {
+                                Icon(
+                                    Icons.Default.Check,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showDurationDialog = false }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
+
     // Direct Time Input Dialog for any section
     editingSection?.let { sec ->
         var startInput by remember { mutableStateOf(sec.startTime) }
@@ -118,13 +365,18 @@ fun SectionTimesDialog(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        text = "支持直接键盘输入具体时间 (格式: 08:00)",
+                        text = if (fixedDuration) "固定上课时长已开启，修改上课时间会自动联动下课时间" else "直接输入上课与下课时间 (格式: 08:00)",
                         fontSize = 11.5.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     OutlinedTextField(
                         value = startInput,
-                        onValueChange = { startInput = it },
+                        onValueChange = {
+                            startInput = it
+                            if (fixedDuration) {
+                                endInput = computeEndTime(it.trim(), sectionDurationMinutes)
+                            }
+                        },
                         label = { Text("上课时间 (HH:mm)") },
                         singleLine = true,
                         shape = RoundedCornerShape(10.dp),
@@ -136,6 +388,7 @@ fun SectionTimesDialog(
                         label = { Text("下课时间 (HH:mm)") },
                         singleLine = true,
                         shape = RoundedCornerShape(10.dp),
+                        enabled = !fixedDuration,
                         modifier = Modifier.fillMaxWidth()
                     )
                 }

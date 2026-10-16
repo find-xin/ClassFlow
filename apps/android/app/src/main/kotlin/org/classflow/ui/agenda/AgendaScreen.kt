@@ -41,10 +41,10 @@ import org.classflow.ui.components.GoogleCalendarColorPicker
 import java.text.SimpleDateFormat
 import java.util.*
 
-enum class AgendaFilter(val label: String) {
+enum class AgendaTaskFilter(val label: String) {
+    IN_PROGRESS("待办中"),
     ALL("全部"),
-    SCHEDULE("课程与日程"),
-    TASK("待办清单")
+    COMPLETED("已完成")
 }
 
 @Composable
@@ -56,6 +56,7 @@ fun AgendaScreen(
     currentWeek: Int = 1,
     onCourseClick: (TimelineItem) -> Unit = {},
     onScheduleClick: (CalendarEvent) -> Unit = {},
+    onNavigateToTimetable: () -> Unit = {},
     onStartFocus: (title: String, courseName: String?) -> Unit = { _, _ -> }
 ) {
     var selectedWeek by remember { mutableIntStateOf(currentWeek) }
@@ -65,7 +66,7 @@ fun AgendaScreen(
         if (w == Calendar.SUNDAY) 7 else w - 1
     }
     var selectedDayOfWeek by remember { mutableIntStateOf(todayWeekday) }
-    var selectedFilter by remember { mutableStateOf(AgendaFilter.ALL) }
+    var taskFilter by remember { mutableStateOf(AgendaTaskFilter.IN_PROGRESS) }
     var showCreateDialog by remember { mutableStateOf(false) }
     var showWeekPicker by remember { mutableStateOf(false) }
 
@@ -381,159 +382,62 @@ fun AgendaScreen(
             }
         }
 
-        // 3. Segmented Filter Tabs [全部 | 课程与日程 | 待办清单] (macOS Segmented Style pinned below Day Selector)
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 3.dp)
-                .background(
-                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                    shape = RoundedCornerShape(10.dp)
-                )
-                .padding(3.dp),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            AgendaFilter.values().forEach { filter ->
-                val isSelected = (selectedFilter == filter)
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(
-                            if (isSelected) MaterialTheme.colorScheme.surface else Color.Transparent
-                        )
-                        .then(
-                            if (isSelected) {
-                                Modifier.border(
-                                    0.5.dp,
-                                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
-                                    shape = RoundedCornerShape(8.dp)
-                                )
-                            } else Modifier
-                        )
-                        .clickable { selectedFilter = filter }
-                        .padding(vertical = 5.5.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = filter.label,
-                        fontSize = 12.sp,
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                        color = if (isSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-        }
+        Spacer(modifier = Modifier.height(10.dp))
 
-        Spacer(modifier = Modifier.height(6.dp))
-
-        // 4. Scrollable Content Area
+        // 3. Scrollable Content Area matching macOS TodayAgendaTimelineView 1:1
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-            contentPadding = PaddingValues(bottom = 24.dp)
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            contentPadding = PaddingValues(bottom = 28.dp)
         ) {
-            // Next Upcoming Class Hero Card (Shown only when viewing all or schedule, hidden in task mode)
-            if (selectedFilter != AgendaFilter.TASK) {
-                item {
-                    if (nextUpcomingCourse != null && selectedWeek == currentWeek && selectedDayOfWeek == todayWeekday) {
-                        NextClassHeroCard(
-                            item = nextUpcomingCourse,
-                            onStartFocus = { onStartFocus(nextUpcomingCourse.title, nextUpcomingCourse.title) },
-                            onClick = { onCourseClick(nextUpcomingCourse) }
-                        )
-                    } else {
-                        NoUpcomingHeroCard(
-                            dayName = dayNames[selectedDayOfWeek - 1],
-                            dateStr = if (selectedDayOfWeek - 1 in dayDates.indices) dayDates[selectedDayOfWeek - 1] else ""
-                        )
-                    }
-                }
-            }
-
-            // Courses for the selected day
-            if (selectedFilter == AgendaFilter.ALL || selectedFilter == AgendaFilter.SCHEDULE) {
-                if (selectedDayCourses.isNotEmpty()) {
-                    item {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "当日课程 (${selectedDayCourses.size} 节)",
-                                fontSize = 13.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                    }
-
-                    items(selectedDayCourses, key = { it.id }) { item ->
-                        AgendaCourseCard(
-                            item = item,
-                            onClick = { onCourseClick(item) }
-                        )
-                    }
-                }
-
-                // Schedules (Calendar Events)
-                if (calendarEvents.isNotEmpty()) {
-                    item {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "当日日程 (${calendarEvents.size} 项)",
-                                fontSize = 13.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                    }
-
-                    items(calendarEvents, key = { it.id }) { event ->
-                        AgendaEventCard(
-                            event = event,
-                            onDelete = { calendarEvents.remove(event) }
-                        )
-                    }
-                }
-            }
-
-            // Checklist Tasks
-            if (selectedFilter == AgendaFilter.ALL || selectedFilter == AgendaFilter.TASK) {
-                item {
-                    val incompletedCount = taskItems.count { !it.isCompleted }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "待办事项 (未完成 $incompletedCount / 共 ${taskItems.size})",
-                            fontSize = 13.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                }
-
-                items(taskItems, key = { it.id }) { task ->
-                    TaskChecklistItem(
-                        task = task,
-                        onToggle = {
-                            val idx = taskItems.indexOf(task)
-                            if (idx >= 0) {
-                                taskItems[idx] = task.copy(isCompleted = !task.isCompleted)
-                            }
-                        },
-                        onDelete = { taskItems.remove(task) },
-                        onStartFocus = { onStartFocus(task.title, null) }
+            // Next Upcoming Class Hero Card
+            item {
+                if (nextUpcomingCourse != null && selectedWeek == currentWeek && selectedDayOfWeek == todayWeekday) {
+                    NextClassHeroCard(
+                        item = nextUpcomingCourse,
+                        onStartFocus = { onStartFocus(nextUpcomingCourse.title, nextUpcomingCourse.title) },
+                        onClick = { onCourseClick(nextUpcomingCourse) }
+                    )
+                } else {
+                    NoUpcomingHeroCard(
+                        dayName = dayNames[selectedDayOfWeek - 1],
+                        dateStr = if (selectedDayOfWeek - 1 in dayDates.indices) dayDates[selectedDayOfWeek - 1] else "",
+                        onAddNew = { showCreateDialog = true }
                     )
                 }
+            }
+
+            // Section 1: Course Schedule for Day Card (macOS dayCourseScheduleColumn)
+            item {
+                DayCourseScheduleCard(
+                    dayName = dayNames[selectedDayOfWeek - 1],
+                    selectedDayCourses = selectedDayCourses,
+                    calendarEvents = calendarEvents,
+                    onCourseClick = onCourseClick,
+                    onScheduleClick = onScheduleClick,
+                    onDeleteEvent = { calendarEvents.remove(it) },
+                    onNavigateToTimetable = onNavigateToTimetable
+                )
+            }
+
+            // Section 2: Study Tasks Card for Day (macOS dayTasksColumn with segmented filter)
+            item {
+                DayTasksCard(
+                    taskItems = taskItems,
+                    taskFilter = taskFilter,
+                    onFilterChange = { taskFilter = it },
+                    onToggle = { task ->
+                        val idx = taskItems.indexOf(task)
+                        if (idx >= 0) {
+                            taskItems[idx] = task.copy(isCompleted = !task.isCompleted)
+                        }
+                    },
+                    onDelete = { taskItems.remove(it) },
+                    onStartFocus = { task ->
+                        onStartFocus(task.title, task.courseName)
+                    },
+                    onNewTask = { showCreateDialog = true }
+                )
             }
         }
     }
@@ -566,116 +470,375 @@ fun AgendaScreen(
 }
 
 @Composable
+private fun DayCourseScheduleCard(
+    dayName: String,
+    selectedDayCourses: List<TimelineItem>,
+    calendarEvents: List<CalendarEvent>,
+    onCourseClick: (TimelineItem) -> Unit,
+    onScheduleClick: (CalendarEvent) -> Unit,
+    onDeleteEvent: (CalendarEvent) -> Unit,
+    onNavigateToTimetable: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = androidx.compose.foundation.BorderStroke(
+            0.5.dp,
+            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+        ),
+        shadowElevation = 1.dp,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            // Header
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "$dayName 课程日程",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .clickable { onNavigateToTimetable() }
+                        .padding(horizontal = 6.dp, vertical = 3.dp)
+                ) {
+                    Text(
+                        text = "全周课表",
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Icon(
+                        Icons.Default.ChevronRight,
+                        contentDescription = null,
+                        modifier = Modifier.size(13.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+
+            if (selectedDayCourses.isEmpty() && calendarEvents.isEmpty()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        Icons.Default.FreeBreakfast,
+                        contentDescription = null,
+                        modifier = Modifier.size(36.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
+                    )
+                    Text(
+                        text = "这一天没有课表课程安排",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "享受自习与休息时光，或在下方安排待办",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    )
+                }
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    selectedDayCourses.forEach { item ->
+                        AgendaCourseCard(
+                            item = item,
+                            onClick = { onCourseClick(item) }
+                        )
+                    }
+                    calendarEvents.forEach { event ->
+                        AgendaEventCard(
+                            event = event,
+                            onClick = { onScheduleClick(event) },
+                            onDelete = { onDeleteEvent(event) }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DayTasksCard(
+    taskItems: List<CalendarEvent>,
+    taskFilter: AgendaTaskFilter,
+    onFilterChange: (AgendaTaskFilter) -> Unit,
+    onToggle: (CalendarEvent) -> Unit,
+    onDelete: (CalendarEvent) -> Unit,
+    onStartFocus: (CalendarEvent) -> Unit,
+    onNewTask: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = androidx.compose.foundation.BorderStroke(
+            0.5.dp,
+            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+        ),
+        shadowElevation = 1.dp,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            // Header
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "今日待办",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+
+                // Segmented Filter [待办中 | 全部 | 已完成] matching macOS
+                Row(
+                    modifier = Modifier
+                        .background(
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                            shape = RoundedCornerShape(8.dp)
+                        )
+                        .padding(2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    AgendaTaskFilter.values().forEach { filter ->
+                        val isSelected = (taskFilter == filter)
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (isSelected) MaterialTheme.colorScheme.surface else Color.Transparent)
+                                .clickable { onFilterChange(filter) }
+                                .padding(horizontal = 7.dp, vertical = 3.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = filter.label,
+                                fontSize = 10.5.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+
+            val filteredTasks = remember(taskItems.toList(), taskFilter) {
+                when (taskFilter) {
+                    AgendaTaskFilter.IN_PROGRESS -> taskItems.filter { !it.isCompleted }
+                    AgendaTaskFilter.COMPLETED -> taskItems.filter { it.isCompleted }
+                    AgendaTaskFilter.ALL -> taskItems
+                }
+            }
+
+            if (filteredTasks.isEmpty()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Checklist,
+                        contentDescription = null,
+                        modifier = Modifier.size(36.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
+                    )
+                    Text(
+                        text = if (taskFilter == AgendaTaskFilter.COMPLETED) "暂无已完成的任务" else "今日暂无待办任务",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Surface(
+                        onClick = onNewTask,
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(13.dp))
+                            Text("新建待办目标", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                }
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    filteredTasks.forEach { task ->
+                        TaskChecklistItem(
+                            task = task,
+                            onToggle = { onToggle(task) },
+                            onDelete = { onDelete(task) },
+                            onStartFocus = { onStartFocus(task) }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun NextClassHeroCard(
     item: TimelineItem,
     onStartFocus: () -> Unit,
     onClick: () -> Unit
 ) {
+    val themeColor = try {
+        Color(android.graphics.Color.parseColor(item.color))
+    } catch (e: Throwable) {
+        Color(0xFF4F46E5)
+    }
+
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = androidx.compose.foundation.BorderStroke(
-            0.5.dp,
-            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-        ),
-        shadowElevation = 2.dp,
+        shape = RoundedCornerShape(18.dp),
+        color = themeColor,
+        shadowElevation = 3.dp,
         modifier = Modifier.fillMaxWidth()
     ) {
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+                .background(
+                    Brush.linearGradient(
+                        listOf(themeColor, themeColor.copy(alpha = 0.85f))
+                    )
+                )
+                .padding(18.dp)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Surface(
-                    shape = CircleShape,
-                    color = Color(0xFF2563EB).copy(alpha = 0.12f)
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(6.dp)
-                                .background(Color(0xFF2563EB), CircleShape)
+                                .size(7.dp)
+                                .background(Color.White, CircleShape)
                         )
                         Text(
-                            text = "下一节课",
-                            fontSize = 11.sp,
+                            text = "今日即将开始 / 正在进行",
+                            fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF2563EB)
+                            color = Color.White.copy(alpha = 0.95f)
                         )
                     }
+
+                    val timeSpan = if (!item.startTime.isNullOrBlank()) {
+                        "开课: ${item.startTime}"
+                    } else {
+                        "第${item.startSection}节"
+                    }
+                    Text(
+                        text = timeSpan,
+                        fontSize = 11.5.sp,
+                        fontFamily = FontFamily.Monospace,
+                        color = Color.White.copy(alpha = 0.85f)
+                    )
                 }
 
-                val timeSpan = if (!item.startTime.isNullOrBlank() && !item.endTime.isNullOrBlank()) {
-                    "${item.startTime} - ${item.endTime}"
-                } else {
-                    "第 ${item.startSection}-${item.endSection} 节"
-                }
-
-                Text(
-                    text = timeSpan,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            Text(
-                text = item.title,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    if (!item.location.isNullOrBlank()) {
-                        Text(
-                            text = "@${item.location}",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    if (!item.teacher.isNullOrBlank()) {
-                        Text(
-                            text = item.teacher,
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
-                        )
-                    }
-                }
-
-                Surface(
-                    onClick = onStartFocus,
-                    shape = CircleShape,
-                    color = Color(0xFF2563EB)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.size(13.dp))
-                        Text("进入专注", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        Text(
+                            text = item.title,
+                            fontSize = 19.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (!item.location.isNullOrBlank()) {
+                                Text(
+                                    text = "@${item.location}",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = Color.White.copy(alpha = 0.9f)
+                                )
+                            }
+                            if (!item.teacher.isNullOrBlank()) {
+                                Text(
+                                    text = item.teacher,
+                                    fontSize = 12.sp,
+                                    color = Color.White.copy(alpha = 0.85f)
+                                )
+                            }
+                            if (item.startSection > 0) {
+                                Text(
+                                    text = "第${item.startSection}-${item.endSection}节",
+                                    fontSize = 11.5.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = Color.White.copy(alpha = 0.8f)
+                                )
+                            }
+                        }
+                    }
+
+                    Surface(
+                        onClick = onStartFocus,
+                        shape = CircleShape,
+                        color = Color.White,
+                        shadowElevation = 2.dp
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.PlayArrow,
+                                contentDescription = null,
+                                tint = themeColor,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Text(
+                                text = "专注",
+                                fontSize = 12.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = themeColor
+                            )
+                        }
                     }
                 }
             }
@@ -686,14 +849,15 @@ private fun NextClassHeroCard(
 @Composable
 private fun NoUpcomingHeroCard(
     dayName: String,
-    dateStr: String
+    dateStr: String,
+    onAddNew: () -> Unit = {}
 ) {
     Surface(
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(18.dp),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
         border = androidx.compose.foundation.BorderStroke(
             0.5.dp,
-            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
         ),
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -702,35 +866,56 @@ private fun NoUpcomingHeroCard(
                 .fillMaxWidth()
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp)
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Surface(
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
-                modifier = Modifier.size(42.dp)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        Icons.Default.CheckCircleOutline,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(22.dp)
+                Surface(
+                    shape = CircleShape,
+                    color = Color(0xFF56A3A6).copy(alpha = 0.15f),
+                    modifier = Modifier.size(40.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            Icons.Default.AutoAwesome,
+                            contentDescription = null,
+                            tint = Color(0xFF56A3A6),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        text = "$dayName · 无剩余待上课程",
+                        fontSize = 14.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "把握课余时光，高效完成待办！",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
                     )
                 }
             }
 
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    text = "$dayName · 无剩余待上课程",
-                    fontSize = 14.5.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = "自律给自由，专注致远方。把握课余时间完成学业目标！",
-                    fontSize = 11.5.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
-                )
+            Surface(
+                onClick = onAddNew,
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                border = androidx.compose.foundation.BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(3.dp)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(12.dp), tint = MaterialTheme.colorScheme.onSurface)
+                    Text("加安排", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                }
             }
         }
     }
@@ -746,26 +931,26 @@ fun TaskChecklistItem(
     Surface(
         onClick = onToggle,
         shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surface,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
         border = androidx.compose.foundation.BorderStroke(
             0.5.dp,
-            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
         ),
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 11.dp),
+                .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Circular toggle button matching macOS
             Box(
                 modifier = Modifier
-                    .size(22.dp)
+                    .size(20.dp)
                     .clip(CircleShape)
                     .background(
-                        if (task.isCompleted) Color(0xFF2563EB) else Color.Transparent
+                        if (task.isCompleted) Color(0xFF56A3A6) else Color.Transparent
                     )
                     .border(
                         width = if (task.isCompleted) 0.dp else 1.5.dp,
@@ -780,64 +965,86 @@ fun TaskChecklistItem(
                         Icons.Default.Check,
                         contentDescription = null,
                         tint = Color.White,
-                        modifier = Modifier.size(14.dp)
+                        modifier = Modifier.size(13.dp)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(10.dp))
 
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = task.title,
-                    fontSize = 13.5.sp,
-                    fontWeight = FontWeight.Medium,
-                    textDecoration = if (task.isCompleted) TextDecoration.LineThrough else TextDecoration.None,
-                    color = if (task.isCompleted) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f) else MaterialTheme.colorScheme.onSurface
-                )
-                if (!task.courseName.isNullOrBlank() || task.priority == "high" || task.priority == "medium") {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(top = 2.dp)
-                    ) {
-                        task.courseName?.let { cName ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = task.title,
+                        fontSize = 13.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        textDecoration = if (task.isCompleted) TextDecoration.LineThrough else TextDecoration.None,
+                        color = if (task.isCompleted) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f) else MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(top = 2.dp)
+                ) {
+                    task.courseName?.let { cName ->
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
+                        ) {
                             Text(
                                 text = cName,
-                                fontSize = 10.sp,
+                                fontSize = 9.5.sp,
+                                fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier
-                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f), RoundedCornerShape(4.dp))
-                                    .padding(horizontal = 4.dp, vertical = 1.dp)
-                            )
-                        }
-                        if (task.priority == "high") {
-                            Text(
-                                text = "紧急",
-                                fontSize = 10.sp,
-                                color = Color(0xFFFF5A5F),
-                                modifier = Modifier
-                                    .background(Color(0xFFFF5A5F).copy(alpha = 0.1f), RoundedCornerShape(4.dp))
-                                    .padding(horizontal = 4.dp, vertical = 1.dp)
-                            )
-                        } else if (task.priority == "medium") {
-                            Text(
-                                text = "重要",
-                                fontSize = 10.sp,
-                                color = Color(0xFFF59E0B),
-                                modifier = Modifier
-                                    .background(Color(0xFFF59E0B).copy(alpha = 0.1f), RoundedCornerShape(4.dp))
-                                    .padding(horizontal = 4.dp, vertical = 1.dp)
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
                             )
                         }
                     }
-                }
-                if (!task.description.isNullOrBlank()) {
-                    Text(
-                        text = task.description,
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f)
-                    )
+
+                    if (task.priority == "high") {
+                        Surface(
+                            shape = CircleShape,
+                            color = Color(0xFFFF5A5F).copy(alpha = 0.12f)
+                        ) {
+                            Text(
+                                text = "紧急",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFFF5A5F),
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                            )
+                        }
+                    } else if (task.priority == "medium") {
+                        Surface(
+                            shape = CircleShape,
+                            color = Color(0xFFF59E0B).copy(alpha = 0.12f)
+                        ) {
+                            Text(
+                                text = "重要",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFF59E0B),
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                            )
+                        }
+                    }
+
+                    if (!task.description.isNullOrBlank()) {
+                        Text(
+                            text = task.description,
+                            fontSize = 10.5.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
             }
 
@@ -867,7 +1074,7 @@ fun TaskChecklistItem(
                     Icons.Default.Close,
                     contentDescription = "删除",
                     tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                    modifier = Modifier.size(15.dp)
+                    modifier = Modifier.size(14.dp)
                 )
             }
         }
@@ -877,29 +1084,59 @@ fun TaskChecklistItem(
 @Composable
 fun AgendaEventCard(
     event: CalendarEvent,
+    onClick: () -> Unit = {},
     onDelete: () -> Unit
 ) {
     val barColor = try {
         Color(android.graphics.Color.parseColor(event.color))
     } catch (e: Throwable) {
-        MaterialTheme.colorScheme.primary
+        Color(0xFF34C759)
     }
 
     Surface(
+        onClick = onClick,
         shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surface,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
         border = androidx.compose.foundation.BorderStroke(
             0.5.dp,
-            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
         ),
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
+            // Left Time range column
+            Column(
+                modifier = Modifier.width(46.dp),
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(1.dp)
+            ) {
+                val s = if (event.isAllDay) "全天" else (event.startTime ?: "--:--")
+                val e = if (event.isAllDay) "" else (event.endTime ?: "")
+                Text(
+                    text = s,
+                    fontSize = 11.5.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                if (e.isNotEmpty()) {
+                    Text(
+                        text = e,
+                        fontSize = 9.5.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            // Vertical indicator
             Box(
                 modifier = Modifier
                     .width(4.dp)
@@ -908,38 +1145,48 @@ fun AgendaEventCard(
                     .background(barColor)
             )
 
-            Spacer(modifier = Modifier.width(12.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = event.title,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Spacer(modifier = Modifier.height(2.dp))
+            // Content
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    val timeText = if (event.isAllDay) "全天日程" else "${event.startTime} - ${event.endTime}"
                     Text(
-                        text = timeText,
-                        fontSize = 11.5.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        text = event.title,
+                        fontSize = 13.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
+                    Surface(
+                        shape = CircleShape,
+                        color = Color(0xFF34C759).copy(alpha = 0.12f)
+                    ) {
+                        Text(
+                            text = "日程",
+                            fontSize = 9.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF34C759),
+                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                        )
+                    }
                     if (event.frequency != "none" && event.frequency.isNotBlank()) {
                         Text(
-                            text = "· ${event.frequency}",
-                            fontSize = 11.5.sp,
-                            color = MaterialTheme.colorScheme.primary
+                            text = event.frequency,
+                            fontSize = 9.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                         )
                     }
                 }
+
                 if (!event.location.isNullOrBlank()) {
                     Text(
                         text = "@${event.location}",
-                        fontSize = 11.5.sp,
+                        fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
                     )
                 }
@@ -953,7 +1200,7 @@ fun AgendaEventCard(
                     Icons.Default.Close,
                     contentDescription = "删除",
                     tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                    modifier = Modifier.size(15.dp)
+                    modifier = Modifier.size(14.dp)
                 )
             }
         }
@@ -974,19 +1221,43 @@ fun AgendaCourseCard(
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surface,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
         border = androidx.compose.foundation.BorderStroke(
             0.5.dp,
-            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
         ),
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
+            // Left Time range column matching macOS
+            Column(
+                modifier = Modifier.width(46.dp),
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(1.dp)
+            ) {
+                Text(
+                    text = item.startTime ?: "--:--",
+                    fontSize = 12.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = item.endTime ?: "--:--",
+                    fontSize = 9.5.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            // Vertical indicator
             Box(
                 modifier = Modifier
                     .width(4.dp)
@@ -995,34 +1266,67 @@ fun AgendaCourseCard(
                     .background(barColor)
             )
 
-            Spacer(modifier = Modifier.width(12.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = item.title,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                val timeSpan = if (!item.startTime.isNullOrBlank() && !item.endTime.isNullOrBlank()) {
-                    "${item.startTime} - ${item.endTime} (第${item.startSection}-${item.endSection}节)"
-                } else {
-                    "第${item.startSection}-${item.endSection}节"
-                }
-                Text(
-                    text = timeSpan,
-                    fontSize = 11.5.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                if (!item.location.isNullOrBlank()) {
+            // Content
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
                     Text(
-                        text = "@${item.location}",
-                        fontSize = 11.5.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                        text = item.title,
+                        fontSize = 13.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
+                    if (item.startSection > 0) {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+                        ) {
+                            Text(
+                                text = "第${item.startSection}-${item.endSection}节",
+                                fontSize = 9.sp,
+                                fontFamily = FontFamily.Monospace,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                            )
+                        }
+                    }
+                }
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (!item.location.isNullOrBlank()) {
+                        Text(
+                            text = "@${item.location}",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    if (!item.teacher.isNullOrBlank()) {
+                        Text(
+                            text = item.teacher,
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                        )
+                    }
                 }
             }
+
+            Icon(
+                Icons.Default.ChevronRight,
+                contentDescription = null,
+                modifier = Modifier.size(14.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
+            )
         }
     }
 }

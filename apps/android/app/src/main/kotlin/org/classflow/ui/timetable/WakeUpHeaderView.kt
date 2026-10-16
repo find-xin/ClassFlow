@@ -3,9 +3,12 @@ package org.classflow.ui.timetable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Input
 import androidx.compose.material.icons.filled.*
@@ -19,6 +22,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import org.classflow.data.model.Semester
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -45,6 +49,7 @@ fun WakeUpHeaderView(
     isWallpaperDark: Boolean = true,
     onWeekChange: (Int) -> Unit,
     onToggleDisplayMode: (String) -> Unit = {},
+    onSemesterChange: (String) -> Unit = {},
     onAddCourseClick: () -> Unit,
     onAddScheduleClick: () -> Unit,
     onImportClick: (ImportType) -> Unit,
@@ -56,6 +61,16 @@ fun WakeUpHeaderView(
     var showAddMenu by remember { mutableStateOf(false) }
     var showImportMenu by remember { mutableStateOf(false) }
     var showExportMenu by remember { mutableStateOf(false) }
+    var showCreateSemesterDialog by remember { mutableStateOf(false) }
+    var showManageSemestersDialog by remember { mutableStateOf(false) }
+
+    val semesters = remember {
+        mutableStateListOf(
+            Semester(id = "sem_main", name = semesterName.ifEmpty { "大四上学期" }, startDate = "2026-09-01", endDate = "2027-01-20", totalWeeks = totalWeeks),
+            Semester(id = "sem_prev", name = "大三下学期", startDate = "2026-02-25", endDate = "2026-07-15", totalWeeks = 20)
+        )
+    }
+    var activeSemesterId by remember { mutableStateOf("sem_main") }
 
     val textPrimary = if (isWallpaperDark) Color.White else Color(0xFF1F2937)
     val textSecondary = if (isWallpaperDark) Color.White.copy(alpha = 0.85f) else Color(0xFF6B7280)
@@ -384,59 +399,78 @@ fun WakeUpHeaderView(
                     ) {
                         Text("课表", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = if (isDark) Color.White else Color(0xFF1F2937))
                         Row {
-                            TextButton(onClick = { /* New Semester */ }) {
+                            TextButton(onClick = { showCreateSemesterDialog = true }) {
                                 Text("新建课表", fontSize = 12.sp, color = Color(0xFF4F46E5))
                             }
-                            TextButton(onClick = { /* Manage */ }) {
+                            TextButton(onClick = { showManageSemestersDialog = true }) {
                                 Text("管理", fontSize = 12.sp, color = if (isDark) Color.White.copy(alpha = 0.7f) else Color(0xFF6B7280))
                             }
                         }
                     }
 
-                    // Semester Cards Thumbnail List
+                    // Semester Cards Thumbnail List (Horizontal scrollable)
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        // Card 1
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(80.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(if (isDark) Color(0xFF262838) else Color(0xFFF3F4F8))
-                                .border(1.dp, if (isDark) Color.White.copy(alpha = 0.12f) else Color(0xFFE5E7EB), RoundedCornerShape(12.dp))
-                                .padding(10.dp)
-                        ) {
-                            Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
-                                Text("大三下", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = if (isDark) Color.White.copy(alpha = 0.8f) else Color(0xFF1F2937))
-                            }
-                        }
-
-                        // Card 2 (Active)
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(80.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(if (isDark) Color(0xFF2C2250) else Color(0xFFEEF2FF))
-                                .border(2.dp, Color(0xFF4F46E5), RoundedCornerShape(12.dp))
-                                .padding(10.dp)
-                        ) {
-                            Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
+                        semesters.forEach { sem ->
+                            val isSelected = (sem.id == activeSemesterId)
+                            Box(
+                                modifier = Modifier
+                                    .width(135.dp)
+                                    .height(84.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(
+                                        if (isSelected) {
+                                            if (isDark) Color(0xFF2C2250) else Color(0xFFEEF2FF)
+                                        } else {
+                                            if (isDark) Color(0xFF262838) else Color(0xFFF3F4F8)
+                                        }
+                                    )
+                                    .border(
+                                        if (isSelected) 2.dp else 1.dp,
+                                        if (isSelected) Color(0xFF4F46E5) else (if (isDark) Color.White.copy(alpha = 0.12f) else Color(0xFFE5E7EB)),
+                                        RoundedCornerShape(12.dp)
+                                    )
+                                    .clickable {
+                                        activeSemesterId = sem.id
+                                        onSemesterChange(sem.name)
+                                    }
+                                    .padding(10.dp)
+                            ) {
+                                Column(
+                                    modifier = Modifier.fillMaxSize(),
+                                    verticalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    Text("大四上", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (isDark) Color.White else Color(0xFF1F2937))
-                                    Icon(
-                                        Icons.Default.Check,
-                                        contentDescription = null,
-                                        tint = Color(0xFF4F46E5),
-                                        modifier = Modifier.size(16.dp)
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = sem.name,
+                                            fontSize = 12.5.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                            color = if (isDark) Color.White else Color(0xFF1F2937),
+                                            maxLines = 1
+                                        )
+                                        if (isSelected) {
+                                            Icon(
+                                                Icons.Default.Check,
+                                                contentDescription = null,
+                                                tint = Color(0xFF4F46E5),
+                                                modifier = Modifier.size(15.dp)
+                                            )
+                                        }
+                                    }
+                                    Text(
+                                        text = if (isSelected) "当前主课表 · 共${sem.totalWeeks}周" else "共${sem.totalWeeks}周",
+                                        fontSize = 10.sp,
+                                        color = if (isSelected) Color(0xFF4F46E5) else (if (isDark) Color.White.copy(alpha = 0.6f) else Color(0xFF6B7280))
                                     )
                                 }
-                                Text("当前主课表", fontSize = 10.sp, color = if (isDark) Color.White.copy(alpha = 0.7f) else Color(0xFF4F46E5))
                             }
                         }
                     }
@@ -449,6 +483,150 @@ fun WakeUpHeaderView(
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4F46E5))
                 ) {
                     Text("完成", fontWeight = FontWeight.Bold)
+                }
+            }
+        )
+    }
+
+    // Create Semester Dialog
+    if (showCreateSemesterDialog) {
+        var semNameInput by remember { mutableStateOf("") }
+        var semWeeksInput by remember { mutableStateOf("20") }
+        AlertDialog(
+            onDismissRequest = { showCreateSemesterDialog = false },
+            title = { Text("新建课表", fontWeight = FontWeight.Bold, fontSize = 16.sp) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = semNameInput,
+                        onValueChange = { semNameInput = it },
+                        label = { Text("课表名称") },
+                        placeholder = { Text("例如：大四下学期") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = semWeeksInput,
+                        onValueChange = { semWeeksInput = it.filter { ch -> ch.isDigit() }.take(2) },
+                        label = { Text("总周数 (1-30)") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val name = semNameInput.trim().ifEmpty { "新课表" }
+                        val weeks = semWeeksInput.toIntOrNull()?.coerceIn(1, 30) ?: 20
+                        val newSem = Semester(id = UUID.randomUUID().toString(), name = name, startDate = "2026-09-01", endDate = "2027-01-20", totalWeeks = weeks)
+                        semesters.add(newSem)
+                        activeSemesterId = newSem.id
+                        onSemesterChange(newSem.name)
+                        showCreateSemesterDialog = false
+                    },
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text("创建")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCreateSemesterDialog = false }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
+
+    // Manage Semesters Dialog
+    if (showManageSemestersDialog) {
+        AlertDialog(
+            onDismissRequest = { showManageSemestersDialog = false },
+            title = { Text("课表管理", fontWeight = FontWeight.Bold, fontSize = 16.sp) },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 350.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    semesters.forEach { sem ->
+                        val isCurrent = (sem.id == activeSemesterId)
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                            border = androidx.compose.foundation.BorderStroke(
+                                if (isCurrent) 1.5.dp else 0.5.dp,
+                                if (isCurrent) Color(0xFF4F46E5) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = sem.name,
+                                        fontSize = 14.sp,
+                                        fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = if (isCurrent) "当前主课表 · 共${sem.totalWeeks}周" else "共${sem.totalWeeks}周",
+                                        fontSize = 11.5.sp,
+                                        color = if (isCurrent) Color(0xFF4F46E5) else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    if (!isCurrent) {
+                                        TextButton(onClick = {
+                                            activeSemesterId = sem.id
+                                            onSemesterChange(sem.name)
+                                        }) {
+                                            Text("设为主课表", fontSize = 12.sp)
+                                        }
+
+                                        if (semesters.size > 1) {
+                                            IconButton(
+                                                onClick = { semesters.remove(sem) },
+                                                modifier = Modifier.size(28.dp)
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.DeleteOutline,
+                                                    contentDescription = "删除",
+                                                    tint = MaterialTheme.colorScheme.error,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            }
+                                        }
+                                    } else {
+                                        Icon(
+                                            Icons.Default.CheckCircle,
+                                            contentDescription = "当前主课表",
+                                            tint = Color(0xFF4F46E5),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { showManageSemestersDialog = false },
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text("完成")
                 }
             }
         )

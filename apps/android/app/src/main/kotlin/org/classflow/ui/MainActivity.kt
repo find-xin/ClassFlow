@@ -200,7 +200,11 @@ fun MainScreenHost(
     val currentWeek = 1
     var selectedWeek by remember { mutableIntStateOf(1) }
     val totalWeeks = 16
-    val semesterName = "2026-2027 秋季学期"
+    var semesterName by remember { mutableStateOf("2026-2027 秋季学期") }
+
+    var focusTargetTitle by remember { mutableStateOf<String?>(null) }
+    var focusTargetCourse by remember { mutableStateOf<String?>(null) }
+    var autoStartFocus by remember { mutableStateOf(false) }
 
     var selectedOccurrence by remember { mutableStateOf<TimelineItem?>(null) }
     var selectedScheduleEvent by remember { mutableStateOf<CalendarEvent?>(null) }
@@ -371,7 +375,11 @@ fun MainScreenHost(
                     currentWeek = currentWeek,
                     onCourseClick = { selectedOccurrence = it },
                     onScheduleClick = { selectedScheduleEvent = it },
-                    onStartFocus = { _, _ ->
+                    onNavigateToTimetable = { selectedTab = NavigationTab.TIMETABLE },
+                    onStartFocus = { title, course ->
+                        focusTargetTitle = title
+                        focusTargetCourse = course
+                        autoStartFocus = true
                         selectedTab = NavigationTab.STUDY
                     }
                 )
@@ -389,6 +397,7 @@ fun MainScreenHost(
                     isWallpaperDark = isWallpaperDark,
                     appSettings = appSettings,
                     onWeekChange = { selectedWeek = it },
+                    onSemesterChange = { semesterName = it },
                     onCourseClick = { selectedOccurrence = it },
                     onScheduleClick = { selectedScheduleEvent = it },
                     onAddCourseClick = {
@@ -433,7 +442,12 @@ fun MainScreenHost(
                     onOpenThreeDotsMenu = { showThreeDotsMenu = true }
                 )
 
-                NavigationTab.STUDY -> StudyScreen()
+                NavigationTab.STUDY -> StudyScreen(
+                    initialTaskTitle = focusTargetTitle,
+                    initialCourseName = focusTargetCourse,
+                    autoStart = autoStartFocus,
+                    onFocusConsumed = { autoStartFocus = false }
+                )
             }
         }
 
