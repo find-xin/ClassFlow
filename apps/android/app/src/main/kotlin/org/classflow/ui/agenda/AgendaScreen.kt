@@ -38,6 +38,7 @@ import org.classflow.data.model.Course
 import org.classflow.data.model.SectionTime
 import org.classflow.data.model.TimelineItem
 import org.classflow.ui.components.GoogleCalendarColorPicker
+import org.classflow.ui.timetable.ScheduleAddDialog
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -54,6 +55,7 @@ fun AgendaScreen(
     courses: List<Course> = emptyList(),
     sectionTimes: List<SectionTime> = emptyList(),
     currentWeek: Int = 1,
+    isDark: Boolean = false,
     onCourseClick: (TimelineItem) -> Unit = {},
     onScheduleClick: (CalendarEvent) -> Unit = {},
     onNavigateToTimetable: () -> Unit = {},
@@ -453,11 +455,12 @@ fun AgendaScreen(
     }
 
     if (showCreateDialog) {
-        CreateAgendaItemDialog(
+        ScheduleAddDialog(
             courses = availableCourses,
-            sectionTimes = availableSections,
+            availableSections = availableSections,
+            isDark = isDark,
             onDismiss = { showCreateDialog = false },
-            onCreate = { event ->
+            onSaveSchedule = { event ->
                 if (event.isTask) {
                     taskItems.add(0, event)
                 } else {
@@ -1484,7 +1487,7 @@ fun CreateAgendaItemDialog(
     var startTimeStr by remember { mutableStateOf("09:00") }
     var endTimeStr by remember { mutableStateOf("10:30") }
 
-    val frequencyLabels = listOf("不重复", "每天", "工作日 (周一至周五)", "自定义每周某几天", "每周", "每两周", "每月", "学期指定周次")
+    val frequencyLabels = listOf("不重复", "每天", "工作日 (周一至周五)", "每周", "每月", "自定义每周某几天")
     var selectedFrequencyIndex by remember { mutableIntStateOf(0) }
     var showFrequencyDropdown by remember { mutableStateOf(false) }
     var customDaysOfWeek by remember { mutableStateOf(setOf(1, 2, 3, 4, 5)) }

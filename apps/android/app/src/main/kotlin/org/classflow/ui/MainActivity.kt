@@ -374,6 +374,7 @@ fun MainScreenHost(
                     courses = sampleCourses,
                     sectionTimes = sectionTimes,
                     currentWeek = currentWeek,
+                    isDark = isDark,
                     onCourseClick = { selectedOccurrence = it },
                     onScheduleClick = { selectedScheduleEvent = it },
                     onNavigateToTimetable = { selectedTab = NavigationTab.TIMETABLE },

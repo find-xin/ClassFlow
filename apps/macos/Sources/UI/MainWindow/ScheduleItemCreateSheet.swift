@@ -23,12 +23,10 @@ public struct ScheduleItemCreateSheet: View {
     public enum EventFrequency: String, CaseIterable, Identifiable {
         case none = "不重复"
         case daily = "每天"
-        case workdays = "工作日 (周一至周五)"
-        case customDays = "自定义每周某几天"
+        case workdays = "工作日"
         case weekly = "每周"
-        case biweekly = "每两周"
         case monthly = "每月"
-        case customWeeks = "学期指定周次"
+        case customDays = "自定义每周某几天"
         public var id: String { rawValue }
 
         public var internalCode: String {
@@ -36,11 +34,9 @@ public struct ScheduleItemCreateSheet: View {
             case .none: return "none"
             case .daily: return "daily"
             case .workdays: return "workdays"
-            case .customDays: return "customDays"
             case .weekly: return "weekly"
-            case .biweekly: return "biweekly"
             case .monthly: return "monthly"
-            case .customWeeks: return "customWeeks"
+            case .customDays: return "customDays"
             }
         }
     }
@@ -354,24 +350,10 @@ public struct ScheduleItemCreateSheet: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
 
-                if frequency == .customDays || frequency == .weekly || frequency == .biweekly {
+                if frequency == .customDays {
                     Divider()
                     VStack(alignment: .leading, spacing: 10) {
-                        // 每 N 周 (matching macOS Calendar Image 5)
-                        HStack(spacing: 8) {
-                            Text("每")
-                                .font(.system(size: 13))
-                            TextField("1", value: $intervalWeeks, format: .number)
-                                .textFieldStyle(.roundedBorder)
-                                .frame(width: 44)
-                                .multilineTextAlignment(.center)
-                            Text("周:")
-                                .font(.system(size: 13))
-                            Stepper("", value: $intervalWeeks, in: 1...10)
-                                .labelsHidden()
-                        }
-
-                        // 生效星期 (日..六 segmented strip matching Image 5)
+                        // 生效星期 (日..六 segmented strip)
                         VStack(alignment: .leading, spacing: 6) {
                             Text("生效星期")
                                 .font(.system(size: 11))
@@ -407,14 +389,20 @@ public struct ScheduleItemCreateSheet: View {
                             }
                         }
 
-                        // 学期生效周次 (进一步自定义周次，彻底解决组合自定义诉求)
+                        // 学期生效周次 (仅在自定义时显示，彻底避免设计冲突与冗余)
                         VStack(alignment: .leading, spacing: 6) {
                             Text("学期生效周次")
                                 .font(.system(size: 11))
                                 .foregroundColor(.secondary)
                             WeekMatrixPickerView(selectedWeeks: $customWeeks, maxWeeks: 25, accentColor: Color(hex: eventColor))
                         }
+                    }
+                    .padding(12)
+                }
 
+                if frequency != .none {
+                    Divider()
+                    VStack(alignment: .leading, spacing: 10) {
                         // 结束重复设置
                         HStack {
                             Text("结束重复")
@@ -449,17 +437,6 @@ public struct ScheduleItemCreateSheet: View {
                                     .font(.system(size: 12))
                             }
                         }
-                    }
-                    .padding(12)
-                }
-
-                if frequency == .customWeeks {
-                    Divider()
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("选择活动周次")
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
-                        WeekMatrixPickerView(selectedWeeks: $customWeeks, maxWeeks: 25, accentColor: Color(hex: eventColor))
                     }
                     .padding(12)
                 }
@@ -693,11 +670,11 @@ public struct ScheduleItemCreateSheet: View {
             endSection: resolvedEndSec,
             alertMinutesBefore: alertOption.minutesBefore,
             frequency: frequency.internalCode,
-            customWeeks: (frequency == .customWeeks || frequency == .customDays || frequency == .weekly || frequency == .biweekly) ? customWeeks : nil,
-            customDaysOfWeek: (frequency == .customDays || frequency == .weekly || frequency == .biweekly) ? customDaysOfWeek : nil,
+            customWeeks: (frequency == .customDays) ? customWeeks : nil,
+            customDaysOfWeek: (frequency == .customDays) ? customDaysOfWeek : nil,
             startDate: datePart,
             endDate: df.string(from: eventEndDate),
-            intervalWeeks: intervalWeeks,
+            intervalWeeks: nil,
             endRepeatType: endRepeatType,
             endRepeatUntil: df.string(from: endRepeatUntil),
             endRepeatCount: endRepeatCount

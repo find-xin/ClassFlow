@@ -110,11 +110,9 @@ fun ScheduleAddDialog(
         "不重复",
         "每天",
         "工作日 (周一至周五)",
-        "自定义每周某几天",
         "每周",
-        "每两周",
         "每月",
-        "学期指定周次"
+        "自定义每周某几天"
     )
 
     val alertOptions = listOf(
@@ -247,9 +245,9 @@ fun ScheduleAddDialog(
                                         startSection = resolvedStartSec,
                                         endSection = resolvedEndSec,
                                         frequency = frequency,
-                                        intervalWeeks = intervalWeeks,
-                                        customDaysOfWeek = customDaysOfWeek.toList(),
-                                        customWeeks = customWeeks.toList(),
+                                        intervalWeeks = 1,
+                                        customDaysOfWeek = if (frequency == "自定义每周某几天") customDaysOfWeek.toList() else emptyList(),
+                                        customWeeks = if (frequency == "自定义每周某几天") customWeeks.toList() else emptyList(),
                                         endRepeatType = endRepeatType,
                                         endRepeatUntil = endRepeatUntil,
                                         endRepeatCount = endRepeatCount,
@@ -599,8 +597,8 @@ fun ScheduleAddDialog(
                                 }
                             }
 
-                            // If 自定义每周某几天 or 每周 (macOS Calendar Image 5 style)
-                            if (frequency == "自定义每周某几天" || frequency == "每周" || frequency == "每两周") {
+                            // If 自定义每周某几天
+                            if (frequency == "自定义每周某几天") {
                                 HorizontalDivider(color = dividerColor, modifier = Modifier.padding(start = 14.dp))
 
                                 Column(
@@ -609,22 +607,8 @@ fun ScheduleAddDialog(
                                         .padding(14.dp),
                                     verticalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
-                                    // 每 [ 1 ] 周:
-                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                        Text("每", fontSize = 13.sp, color = textPrimary)
-                                        OutlinedTextField(
-                                            value = intervalWeeks.toString(),
-                                            onValueChange = {
-                                                intervalWeeks = it.filter { ch -> ch.isDigit() }.toIntOrNull()?.coerceIn(1, 10) ?: 1
-                                            },
-                                            singleLine = true,
-                                            shape = RoundedCornerShape(8.dp),
-                                            modifier = Modifier.width(55.dp)
-                                        )
-                                        Text("周:", fontSize = 13.sp, color = textPrimary)
-                                    }
-
                                     // Weekday Selection Row [日 一 二 三 四 五 六]
+                                    Text("生效星期", fontSize = 12.sp, color = textSecondary)
                                     val weekDays = listOf(
                                         7 to "日", 1 to "一", 2 to "二", 3 to "三",
                                         4 to "四", 5 to "五", 6 to "六"
@@ -664,7 +648,7 @@ fun ScheduleAddDialog(
                                         }
                                     }
 
-                                    // 学期生效周次 (进一步自定义周次，彻底补足漏洞)
+                                    // 学期生效周次 (仅在自定义时显示，彻底避免冲突)
                                     Text("学期生效周次", fontSize = 12.sp, color = textSecondary)
                                     WeekMatrixPicker(
                                         selectedWeeks = customWeeks,
@@ -673,8 +657,19 @@ fun ScheduleAddDialog(
                                         accentColor = parseHexColor(eventColor),
                                         isDark = isDark
                                     )
+                                }
+                            }
 
-                                    // 结束重复设置
+                            // 结束重复设置 (只要不是不重复，均可设置结束条件)
+                            if (frequency != "不重复") {
+                                HorizontalDivider(color = dividerColor, modifier = Modifier.padding(start = 14.dp))
+
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(14.dp),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -745,21 +740,6 @@ fun ScheduleAddDialog(
                                             Text("次后停止", fontSize = 12.sp, color = textSecondary)
                                         }
                                     }
-                                }
-                            }
-
-                            // If 学期指定周次
-                            if (frequency == "学期指定周次") {
-                                HorizontalDivider(color = dividerColor, modifier = Modifier.padding(start = 14.dp))
-                                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Text("选择活动周次", fontSize = 12.sp, color = textSecondary)
-                                    WeekMatrixPicker(
-                                        selectedWeeks = customWeeks,
-                                        onWeeksChange = { customWeeks = it },
-                                        maxWeeks = 25,
-                                        accentColor = parseHexColor(eventColor),
-                                        isDark = isDark
-                                    )
                                 }
                             }
 
