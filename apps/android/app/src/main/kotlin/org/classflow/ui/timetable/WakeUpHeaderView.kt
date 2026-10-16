@@ -192,16 +192,34 @@ fun WakeUpHeaderView(
                 }
             }
 
-            // (+) Add Action (macOS popover menu)
-            IconButton(
-                onClick = { showAddMenu = true },
-                modifier = Modifier.size(36.dp)
-            ) {
-                Icon(
-                    Icons.Default.Add,
-                    contentDescription = "添加",
-                    tint = iconTint,
-                    modifier = Modifier.size(22.dp)
+            // (+) Add Action (macOS popover menu anchored to button)
+            Box {
+                IconButton(
+                    onClick = { showAddMenu = true },
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Add,
+                        contentDescription = "添加",
+                        tint = iconTint,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+
+                SlotActionMenu(
+                    expanded = showAddMenu,
+                    dayOfWeek = 1,
+                    section = 1,
+                    isDark = isDark,
+                    onDismiss = { showAddMenu = false },
+                    onAddCourse = { _, _ ->
+                        showAddMenu = false
+                        onAddCourseClick()
+                    },
+                    onAddSchedule = { _, _ ->
+                        showAddMenu = false
+                        onAddScheduleClick()
+                    }
                 )
             }
 
@@ -303,24 +321,6 @@ fun WakeUpHeaderView(
                 )
             }
         }
-    }
-
-    // macOS Popover Style Action Card (Add Course / Add Schedule)
-    if (showAddMenu) {
-        SlotActionDialog(
-            dayOfWeek = 1,
-            section = 1,
-            isDark = isDark,
-            onDismiss = { showAddMenu = false },
-            onAddCourse = { _, _ ->
-                showAddMenu = false
-                onAddCourseClick()
-            },
-            onAddSchedule = { _, _ ->
-                showAddMenu = false
-                onAddScheduleClick()
-            }
-        )
     }
 
     // WakeUp Style Floating Week Slider & Timetable Card Drawer (matching Image 3)

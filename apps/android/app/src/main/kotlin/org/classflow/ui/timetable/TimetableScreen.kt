@@ -144,28 +144,21 @@ fun TimetableScreen(
                 appSettings = appSettings,
                 isDark = isDark,
                 isWallpaperDark = isWallpaperDark,
+                activeSlotForAction = activeSlotForAction,
+                onDismissSlotAction = { activeSlotForAction = null },
                 onCourseClick = onCourseClick,
                 onScheduleClick = onScheduleClick,
-                onAddAtSlot = { day, sec -> activeSlotForAction = day to sec }
+                onAddAtSlot = { day, sec -> activeSlotForAction = day to sec },
+                onAddCourseAtSlot = { d, s ->
+                    activeSlotForAction = null
+                    onAddCourseAtSlot(d, s)
+                },
+                onAddScheduleAtSlot = { d, s ->
+                    activeSlotForAction = null
+                    onAddScheduleAtSlot(d, s)
+                }
             )
         }
-    }
-
-    activeSlotForAction?.let { (day, sec) ->
-        SlotActionDialog(
-            dayOfWeek = day,
-            section = sec,
-            isDark = isDark,
-            onDismiss = { activeSlotForAction = null },
-            onAddCourse = { d, s ->
-                activeSlotForAction = null
-                onAddCourseAtSlot(d, s)
-            },
-            onAddSchedule = { d, s ->
-                activeSlotForAction = null
-                onAddScheduleAtSlot(d, s)
-            }
-        )
     }
 }
 
@@ -306,9 +299,13 @@ fun TimetableCanvas(
     appSettings: AppSettings = AppSettings(),
     isDark: Boolean = false,
     isWallpaperDark: Boolean = true,
+    activeSlotForAction: Pair<Int, Int>? = null,
+    onDismissSlotAction: () -> Unit = {},
     onCourseClick: (TimelineItem) -> Unit,
     onScheduleClick: (CalendarEvent) -> Unit,
-    onAddAtSlot: (dayOfWeek: Int, section: Int) -> Unit
+    onAddAtSlot: (dayOfWeek: Int, section: Int) -> Unit,
+    onAddCourseAtSlot: (dayOfWeek: Int, section: Int) -> Unit = { _, _ -> },
+    onAddScheduleAtSlot: (dayOfWeek: Int, section: Int) -> Unit = { _, _ -> }
 ) {
     val totalSections = 12
     val sectionHeight = appSettings.gridHeight.dp
@@ -398,6 +395,7 @@ fun TimetableCanvas(
                     // Empty grid slot click targets & guidelines
                     Column(modifier = Modifier.fillMaxSize()) {
                         for (sec in 1..totalSections) {
+                            val isSlotActive = (activeSlotForAction == (dayIdx to sec))
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -416,6 +414,17 @@ fun TimetableCanvas(
                                             )
                                     )
                                 }
+
+                                // Anchored popover right at the clicked slot
+                                SlotActionMenu(
+                                    expanded = isSlotActive,
+                                    dayOfWeek = dayIdx,
+                                    section = sec,
+                                    isDark = isDark,
+                                    onDismiss = onDismissSlotAction,
+                                    onAddCourse = onAddCourseAtSlot,
+                                    onAddSchedule = onAddScheduleAtSlot
+                                )
                             }
                         }
                     }

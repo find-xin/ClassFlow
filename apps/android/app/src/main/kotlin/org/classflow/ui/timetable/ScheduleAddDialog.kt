@@ -1,5 +1,6 @@
 package org.classflow.ui.timetable
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -7,16 +8,20 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Notes
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.Notes
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -29,6 +34,9 @@ import org.classflow.data.model.SectionTime
 import org.classflow.ui.components.GoogleCalendarColorPicker
 import org.classflow.ui.components.WeekMatrixPicker
 import org.classflow.ui.components.parseHexColor
+import org.classflow.ui.components.showDatePicker
+import org.classflow.ui.components.showDateTimePicker
+import org.classflow.ui.components.showTimePicker
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -38,15 +46,12 @@ enum class ScheduleItemMode {
 }
 
 /**
- * 1:1 Parity of macOS ScheduleItemCreateSheet & macOS Native Calendar:
- * - Top bar: 取消 | [日程 | 待办] segmented pill | 添加
- * - Comprehensive Date & Time: 开始日期 + 结束日期, 全天日程, [按作息节次 | 按具体时间]
- * - macOS Calendar Advanced Recurrence (Image 4 & 5):
- *   - 重复频次: 不重复, 每天, 工作日 (周一至周五), 自定义每周某几天, 每周, 每两周, 每月, 学期指定周次, 自定义重复...
- *   - 每 N 周, [日 一 二 三 四 五 六] 星期几多选
- *   - 生效周次矩阵 1..25 自由组合 (覆盖周几与周次联合过滤)
- *   - 结束重复: 永不 / 于指定日期结束 / 达到指定次数
- * - Reminder, Location, Notes, and Task Course Linkage
+ * Unified Schedule & Task Creation Dialog with macOS-grade modal aesthetics:
+ * - Surface(RoundedCornerShape(20.dp), heightIn(max = 680.dp))
+ * - Inset rounded cards (RoundedCornerShape(12.dp), surfaceVariant)
+ * - BasicTextField with placeholder (no thick box borders)
+ * - Clickable date & time pills with native DatePickerDialog / TimePickerDialog
+ * - Complete macOS Calendar Recurrence & Task Parity
  */
 @Composable
 fun ScheduleAddDialog(
@@ -59,6 +64,7 @@ fun ScheduleAddDialog(
     onDismiss: () -> Unit,
     onSaveSchedule: (CalendarEvent) -> Unit
 ) {
+    val context = LocalContext.current
     var mode by remember { mutableStateOf(ScheduleItemMode.EVENT) }
 
     // MARK: - Event States
@@ -74,7 +80,6 @@ fun ScheduleAddDialog(
 
     // Recurrence states
     var frequency by remember { mutableStateOf("不重复") }
-    var intervalWeeks by remember { mutableIntStateOf(1) }
     var customDaysOfWeek by remember { mutableStateOf(setOf(initialDayOfWeek)) }
     var customWeeks by remember { mutableStateOf((1..16).toSet()) }
     var endRepeatType by remember { mutableStateOf("never") } // "never", "until_date", "count"
@@ -91,7 +96,7 @@ fun ScheduleAddDialog(
     var selectedCourseId by remember { mutableStateOf<String?>(null) }
     var taskPriority by remember { mutableStateOf("medium") } // "low", "medium", "high"
     var hasDueDate by remember { mutableStateOf(true) }
-    var taskDueDate by remember { mutableStateOf(initialDate) }
+    var taskDueDateStr by remember { mutableStateOf("$initialDate 18:00") }
     var targetMinutes by remember { mutableIntStateOf(45) }
     var taskNotes by remember { mutableStateOf("") }
 
@@ -125,13 +130,6 @@ fun ScheduleAddDialog(
         "提前 1 天"
     )
 
-    val bg = if (isDark) Color(0xFF14151B) else Color(0xFFF7F8FA)
-    val cardBg = if (isDark) Color(0xFF1F212A) else Color.White
-    val textPrimary = if (isDark) Color(0xFFF5F5F7) else Color(0xFF1F2937)
-    val textSecondary = if (isDark) Color(0xFFA1A3AC) else Color(0xFF6B7280)
-    val dividerColor = if (isDark) Color.White.copy(alpha = 0.08f) else Color(0xFFE5E7EB)
-    val accentRed = Color(0xFFFF5A5F)
-
     val canSave = if (mode == ScheduleItemMode.EVENT) {
         eventTitle.trim().isNotBlank()
     } else {
@@ -150,68 +148,74 @@ fun ScheduleAddDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
-        Box(
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(
+                0.5.dp,
+                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
+            ),
+            shadowElevation = 8.dp,
             modifier = Modifier
-                .fillMaxWidth(0.96f)
-                .fillMaxHeight(0.92f)
-                .clip(RoundedCornerShape(18.dp))
-                .background(bg)
+                .fillMaxWidth(0.92f)
+                .heightIn(max = 680.dp)
         ) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                // 1. Navigation Header Bar with [日程 | 待办] segmented pill
+            Column(modifier = Modifier.fillMaxWidth()) {
+                // 1. Navigation Header Bar matching macOS: [ 取消 | (日程/待办) | 添加 ]
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(cardBg)
                         .padding(horizontal = 16.dp, vertical = 12.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    TextButton(onClick = onDismiss) {
-                        Text("取消", fontSize = 15.sp, color = textSecondary)
-                    }
+                    Text(
+                        text = "取消",
+                        fontSize = 14.5.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable { onDismiss() }
+                            .padding(horizontal = 6.dp, vertical = 4.dp)
+                    )
 
-                    // Mode Segmented Pill [日程 | 待办]
+                    // Mode Segmented Capsule [日程 | 待办]
                     Row(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(if (isDark) Color(0xFF282B3C) else Color(0xFFE5E7EB))
-                            .padding(2.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                            .background(
+                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                CircleShape
+                            )
+                            .padding(2.5.dp)
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(if (mode == ScheduleItemMode.EVENT) (if (isDark) Color(0xFF383C52) else Color.White) else Color.Transparent)
-                            .clickable { mode = ScheduleItemMode.EVENT }
-                            .padding(horizontal = 14.dp, vertical = 4.dp)
-                        ) {
-                            Text(
-                                text = "日程",
-                                fontSize = 13.sp,
-                                fontWeight = if (mode == ScheduleItemMode.EVENT) FontWeight.Bold else FontWeight.Normal,
-                                color = textPrimary
-                            )
-                        }
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(if (mode == ScheduleItemMode.TASK) (if (isDark) Color(0xFF383C52) else Color.White) else Color.Transparent)
-                                .clickable { mode = ScheduleItemMode.TASK }
-                                .padding(horizontal = 14.dp, vertical = 4.dp)
-                        ) {
-                            Text(
-                                text = "待办",
-                                fontSize = 13.sp,
-                                fontWeight = if (mode == ScheduleItemMode.TASK) FontWeight.Bold else FontWeight.Normal,
-                                color = textPrimary
-                            )
+                        listOf(ScheduleItemMode.EVENT to "日程", ScheduleItemMode.TASK to "待办").forEach { (m, label) ->
+                            val isSelected = (mode == m)
+                            Box(
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .background(if (isSelected) MaterialTheme.colorScheme.surface else Color.Transparent)
+                                    .clickable { mode = m }
+                                    .padding(horizontal = 14.dp, vertical = 4.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = label,
+                                    fontSize = 12.5.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
 
-                    TextButton(
-                        onClick = {
-                            if (canSave) {
+                    Text(
+                        text = "添加",
+                        fontSize = 14.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (canSave) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable(enabled = canSave) {
                                 if (mode == ScheduleItemMode.EVENT) {
                                     val resolvedStartSec = if (isAllDay) 1 else startSection
                                     val resolvedEndSec = if (isAllDay) effectiveSections.size else endSection
@@ -257,12 +261,13 @@ fun ScheduleAddDialog(
                                     onSaveSchedule(event)
                                 } else {
                                     val matchedCourse = courses.find { it.id == selectedCourseId }
+                                    val dueDate = if (hasDueDate) taskDueDateStr else null
                                     val taskEvent = CalendarEvent(
                                         title = taskTitle.trim(),
-                                        startTime = "$taskDueDate 09:00",
-                                        endTime = "$taskDueDate 10:00",
-                                        startDate = taskDueDate,
-                                        endDate = taskDueDate,
+                                        startTime = if (hasDueDate) taskDueDateStr else "$initialDate 09:00",
+                                        endTime = if (hasDueDate) taskDueDateStr else "$initialDate 10:00",
+                                        startDate = if (hasDueDate) taskDueDateStr.substringBefore(" ") else initialDate,
+                                        endDate = if (hasDueDate) taskDueDateStr.substringBefore(" ") else initialDate,
                                         isAllDay = false,
                                         color = "#3F51B5",
                                         isTask = true,
@@ -270,152 +275,76 @@ fun ScheduleAddDialog(
                                         courseId = selectedCourseId,
                                         courseName = matchedCourse?.name,
                                         priority = taskPriority,
-                                        dueDate = if (hasDueDate) "$taskDueDate 23:59" else null,
+                                        dueDate = dueDate,
                                         targetMinutes = targetMinutes,
                                         description = taskNotes.trim().ifEmpty { null }
                                     )
                                     onSaveSchedule(taskEvent)
                                 }
                             }
-                        },
-                        enabled = canSave
-                    ) {
-                        Text(
-                            text = "添加",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (canSave) accentRed else textSecondary.copy(alpha = 0.4f)
-                        )
-                    }
+                            .padding(horizontal = 6.dp, vertical = 4.dp)
+                    )
                 }
 
-                HorizontalDivider(color = dividerColor, thickness = 0.8.dp)
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
 
                 // 2. Scrollable Body
                 Column(
                     modifier = Modifier
-                        .fillMaxSize()
+                        .fillMaxWidth()
+                        .weight(1f, fill = false)
                         .verticalScroll(rememberScrollState())
                         .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     if (mode == ScheduleItemMode.EVENT) {
                         // ==================== EVENT MODE ====================
-                        // Card 1: 标题与标记颜色
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(cardBg)
+                        // Card 1: Title and Color
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                TextField(
-                                    value = eventTitle,
-                                    onValueChange = { eventTitle = it },
-                                    placeholder = { Text("日程标题 (如：学院例会 / 期中考试)", fontSize = 14.sp, color = textSecondary.copy(alpha = 0.7f)) },
-                                    singleLine = true,
-                                    colors = TextFieldDefaults.colors(
-                                        focusedContainerColor = Color.Transparent,
-                                        unfocusedContainerColor = Color.Transparent,
-                                        disabledContainerColor = Color.Transparent,
-                                        focusedIndicatorColor = Color.Transparent,
-                                        unfocusedIndicatorColor = Color.Transparent
-                                    ),
-                                    modifier = Modifier.weight(1f)
-                                )
-
-                                Box(
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                Row(
                                     modifier = Modifier
-                                        .size(18.dp)
-                                        .clip(CircleShape)
-                                        .background(parseHexColor(eventColor))
-                                )
-                            }
-
-                            HorizontalDivider(color = dividerColor, modifier = Modifier.padding(start = 14.dp))
-
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text("标记颜色", fontSize = 13.sp, color = textSecondary)
-                                GoogleCalendarColorPicker(
-                                    selectedHex = eventColor,
-                                    onColorSelected = { eventColor = it }
-                                )
-                            }
-                        }
-
-                        // Card 2: 日期与时间 (覆盖完整开始日期与结束日期)
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(cardBg)
-                        ) {
-                            // 开始日期 + 全天日程复选框
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Text("开始日期", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = textPrimary)
-                                    OutlinedTextField(
-                                        value = startDateStr,
-                                        onValueChange = { startDateStr = it },
-                                        placeholder = { Text("2026-10-16", fontSize = 12.sp) },
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    BasicTextField(
+                                        value = eventTitle,
+                                        onValueChange = { eventTitle = it },
                                         singleLine = true,
-                                        shape = RoundedCornerShape(8.dp),
-                                        modifier = Modifier.width(120.dp)
+                                        textStyle = TextStyle(
+                                            fontSize = 15.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        ),
+                                        decorationBox = { innerTextField ->
+                                            if (eventTitle.isEmpty()) {
+                                                Text(
+                                                    text = "日程标题 (如：学院例会 / 期中考试)",
+                                                    fontSize = 14.5.sp,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                                )
+                                            }
+                                            innerTextField()
+                                        },
+                                        modifier = Modifier.weight(1f)
+                                    )
+
+                                    Box(
+                                        modifier = Modifier
+                                            .size(16.dp)
+                                            .clip(CircleShape)
+                                            .background(parseHexColor(eventColor))
                                     )
                                 }
 
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Checkbox(
-                                        checked = isAllDay,
-                                        onCheckedChange = { isAllDay = it },
-                                        colors = CheckboxDefaults.colors(checkedColor = accentRed)
-                                    )
-                                    Text("全天日程", fontSize = 13.sp, color = textPrimary)
-                                }
-                            }
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
 
-                            HorizontalDivider(color = dividerColor, modifier = Modifier.padding(start = 14.dp))
-
-                            // 结束日期
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Text("结束日期", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = textPrimary)
-                                OutlinedTextField(
-                                    value = endDateStr,
-                                    onValueChange = { endDateStr = it },
-                                    placeholder = { Text("2026-10-16", fontSize = 12.sp) },
-                                    singleLine = true,
-                                    shape = RoundedCornerShape(8.dp),
-                                    modifier = Modifier.width(120.dp)
-                                )
-                            }
-
-                            if (!isAllDay) {
-                                HorizontalDivider(color = dividerColor, modifier = Modifier.padding(start = 14.dp))
-
-                                // 时间模式: 按作息节次 vs 按具体时间
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -423,635 +352,960 @@ fun ScheduleAddDialog(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    Text("时间模式", fontSize = 13.sp, color = textSecondary)
-
-                                    Row(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(if (isDark) Color(0xFF282B3C) else Color(0xFFF3F4F6))
-                                            .padding(2.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(6.dp))
-                                                .background(if (timeMode == "bySection") (if (isDark) Color(0xFF383C52) else Color.White) else Color.Transparent)
-                                                .clickable { timeMode = "bySection" }
-                                                .padding(horizontal = 10.dp, vertical = 4.dp)
-                                        ) {
-                                            Text(
-                                                text = "按作息节次",
-                                                fontSize = 12.sp,
-                                                fontWeight = if (timeMode == "bySection") FontWeight.Bold else FontWeight.Normal,
-                                                color = textPrimary
-                                            )
-                                        }
-                                        Box(
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(6.dp))
-                                                .background(if (timeMode == "byTime") (if (isDark) Color(0xFF383C52) else Color.White) else Color.Transparent)
-                                                .clickable { timeMode = "byTime" }
-                                                .padding(horizontal = 10.dp, vertical = 4.dp)
-                                        ) {
-                                            Text(
-                                                text = "按具体时间",
-                                                fontSize = 12.sp,
-                                                fontWeight = if (timeMode == "byTime") FontWeight.Bold else FontWeight.Normal,
-                                                color = textPrimary
-                                            )
-                                        }
-                                    }
-                                }
-
-                                HorizontalDivider(color = dividerColor, modifier = Modifier.padding(start = 14.dp))
-
-                                // 节次范围 or 具体时间
-                                if (timeMode == "bySection") {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 14.dp, vertical = 10.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        Text("节次范围", fontSize = 13.sp, color = textPrimary)
-                                        Spacer(modifier = Modifier.weight(1f))
-
-                                        // Start Section
-                                        Box {
-                                            Surface(
-                                                shape = RoundedCornerShape(8.dp),
-                                                color = if (isDark) Color(0xFF282B3C) else Color(0xFFF3F4F6),
-                                                modifier = Modifier.clickable { showStartSecMenu = true }
-                                            ) {
-                                                val curSec = effectiveSections.find { it.section == startSection }
-                                                Text("第 $startSection 节 (${curSec?.startTime ?: "08:00"}) ▾", fontSize = 12.sp, color = textPrimary, modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp))
-                                            }
-                                            DropdownMenu(expanded = showStartSecMenu, onDismissRequest = { showStartSecMenu = false }) {
-                                                effectiveSections.forEach { s ->
-                                                    DropdownMenuItem(
-                                                        text = { Text("第 ${s.section} 节 (${s.startTime})", fontSize = 12.sp) },
-                                                        onClick = {
-                                                            showStartSecMenu = false
-                                                            startSection = s.section
-                                                            endSection = maxOf(s.section, endSection)
-                                                        }
-                                                    )
-                                                }
-                                            }
-                                        }
-
-                                        Text("至", fontSize = 12.sp, color = textSecondary)
-
-                                        // End Section
-                                        Box {
-                                            Surface(
-                                                shape = RoundedCornerShape(8.dp),
-                                                color = if (isDark) Color(0xFF282B3C) else Color(0xFFF3F4F6),
-                                                modifier = Modifier.clickable { showEndSecMenu = true }
-                                            ) {
-                                                val curSec = effectiveSections.find { it.section == endSection }
-                                                Text("第 $endSection 节 (${curSec?.endTime ?: "09:35"}) ▾", fontSize = 12.sp, color = textPrimary, modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp))
-                                            }
-                                            DropdownMenu(expanded = showEndSecMenu, onDismissRequest = { showEndSecMenu = false }) {
-                                                effectiveSections.filter { it.section >= startSection }.forEach { s ->
-                                                    DropdownMenuItem(
-                                                        text = { Text("第 ${s.section} 节 (${s.endTime})", fontSize = 12.sp) },
-                                                        onClick = {
-                                                            showEndSecMenu = false
-                                                            endSection = s.section
-                                                        }
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-                                } else {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 14.dp, vertical = 10.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        Text("具体时间", fontSize = 13.sp, color = textPrimary)
-                                        Spacer(modifier = Modifier.weight(1f))
-                                        OutlinedTextField(
-                                            value = startTimeStr,
-                                            onValueChange = { startTimeStr = it },
-                                            placeholder = { Text("09:00", fontSize = 12.sp) },
-                                            singleLine = true,
-                                            shape = RoundedCornerShape(8.dp),
-                                            modifier = Modifier.width(82.dp)
-                                        )
-                                        Text("至", fontSize = 12.sp, color = textSecondary)
-                                        OutlinedTextField(
-                                            value = endTimeStr,
-                                            onValueChange = { endTimeStr = it },
-                                            placeholder = { Text("10:30", fontSize = 12.sp) },
-                                            singleLine = true,
-                                            shape = RoundedCornerShape(8.dp),
-                                            modifier = Modifier.width(82.dp)
-                                        )
-                                    }
+                                    Text(
+                                        text = "标记颜色",
+                                        fontSize = 13.5.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    GoogleCalendarColorPicker(
+                                        selectedHex = eventColor,
+                                        onColorSelected = { eventColor = it }
+                                    )
                                 }
                             }
                         }
 
-                        // Card 3: 重复规则与高级自定义 (macOS 日历高级重复)
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(cardBg)
+                        // Card 2: Date & Time
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            // 重复频次下拉选择
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text("重复频次", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = textPrimary)
-
-                                Box {
-                                    Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = if (isDark) Color(0xFF282B3C) else Color(0xFFF3F4F6),
-                                        modifier = Modifier.clickable { showFreqMenu = true }
-                                    ) {
-                                        Text("$frequency ▾", fontSize = 13.sp, color = textPrimary, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
-                                    }
-                                    DropdownMenu(expanded = showFreqMenu, onDismissRequest = { showFreqMenu = false }) {
-                                        frequencies.forEach { freq ->
-                                            DropdownMenuItem(
-                                                text = { Text(freq, fontSize = 13.sp) },
-                                                onClick = {
-                                                    frequency = freq
-                                                    showFreqMenu = false
-                                                }
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-
-                            // If 自定义每周某几天
-                            if (frequency == "自定义每周某几天") {
-                                HorizontalDivider(color = dividerColor, modifier = Modifier.padding(start = 14.dp))
-
-                                Column(
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                // Start date
+                                Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(14.dp),
-                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    // Weekday Selection Row [日 一 二 三 四 五 六]
-                                    Text("生效星期", fontSize = 12.sp, color = textSecondary)
-                                    val weekDays = listOf(
-                                        7 to "日", 1 to "一", 2 to "二", 3 to "三",
-                                        4 to "四", 5 to "五", 6 to "六"
+                                    Text(
+                                        text = "开始日期",
+                                        fontSize = 13.5.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.onSurface
                                     )
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = MaterialTheme.colorScheme.surface,
+                                        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                                        modifier = Modifier.clickable {
+                                            showDatePicker(context, startDateStr) { picked ->
+                                                startDateStr = picked
+                                                if (endDateStr < picked) endDateStr = picked
+                                            }
+                                        }
+                                    ) {
+                                        Text(
+                                            text = startDateStr,
+                                            fontSize = 12.5.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                        )
+                                    }
+                                }
+
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
+
+                                // All-day switch
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = "全天日程",
+                                        fontSize = 13.5.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Switch(
+                                        checked = isAllDay,
+                                        onCheckedChange = { isAllDay = it }
+                                    )
+                                }
+
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
+
+                                // End date
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = "结束日期",
+                                        fontSize = 13.5.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = MaterialTheme.colorScheme.surface,
+                                        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                                        modifier = Modifier.clickable {
+                                            showDatePicker(context, endDateStr) { picked ->
+                                                endDateStr = picked
+                                            }
+                                        }
+                                    ) {
+                                        Text(
+                                            text = endDateStr,
+                                            fontSize = 12.5.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                        )
+                                    }
+                                }
+
+                                if (!isAllDay) {
+                                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
+
+                                    // Time Mode: bySection vs byTime
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .border(0.8.dp, dividerColor, RoundedCornerShape(8.dp)),
+                                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
-                                        weekDays.forEach { (dVal, dName) ->
-                                            val isSel = customDaysOfWeek.contains(dVal)
-                                            Box(
-                                                modifier = Modifier
-                                                    .weight(1f)
-                                                    .background(if (isSel) (if (isDark) Color(0xFF3B4058) else Color(0xFFD1D5DB)) else Color.Transparent)
-                                                    .clickable {
-                                                        val next = customDaysOfWeek.toMutableSet()
-                                                        if (isSel) {
-                                                            if (next.size > 1) next.remove(dVal)
-                                                        } else {
-                                                            next.add(dVal)
+                                        Text(
+                                            text = "时间模式",
+                                            fontSize = 13.5.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+
+                                        Row(
+                                            modifier = Modifier
+                                                .background(
+                                                    MaterialTheme.colorScheme.surface,
+                                                    CircleShape
+                                                )
+                                                .border(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f), CircleShape)
+                                                .padding(2.5.dp)
+                                        ) {
+                                            listOf("bySection" to "按作息节次", "byTime" to "按具体时间").forEach { (tKey, tLabel) ->
+                                                val isSelected = (timeMode == tKey)
+                                                Box(
+                                                    modifier = Modifier
+                                                        .clip(CircleShape)
+                                                        .background(if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else Color.Transparent)
+                                                        .clickable { timeMode = tKey }
+                                                        .padding(horizontal = 10.dp, vertical = 3.5.dp),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Text(
+                                                        text = tLabel,
+                                                        fontSize = 11.5.sp,
+                                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
+
+                                    if (timeMode == "bySection") {
+                                        // Section range
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text(
+                                                text = "节次范围",
+                                                fontSize = 13.5.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Box {
+                                                    Surface(
+                                                        shape = RoundedCornerShape(8.dp),
+                                                        color = MaterialTheme.colorScheme.surface,
+                                                        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                                                        modifier = Modifier.clickable { showStartSecMenu = true }
+                                                    ) {
+                                                        Text("第 $startSection 节 ▾", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+                                                    }
+                                                    DropdownMenu(expanded = showStartSecMenu, onDismissRequest = { showStartSecMenu = false }) {
+                                                        effectiveSections.forEach { sec ->
+                                                            DropdownMenuItem(
+                                                                text = { Text("第 ${sec.section} 节 (${sec.startTime})", fontSize = 12.5.sp) },
+                                                                onClick = {
+                                                                    startSection = sec.section
+                                                                    if (endSection < sec.section) endSection = sec.section
+                                                                    showStartSecMenu = false
+                                                                }
+                                                            )
                                                         }
-                                                        customDaysOfWeek = next
                                                     }
-                                                    .padding(vertical = 8.dp),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                Text(
-                                                    text = dName,
-                                                    fontSize = 13.sp,
-                                                    fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
-                                                    color = textPrimary
-                                                )
-                                            }
-                                        }
-                                    }
-
-                                    // 学期生效周次 (仅在自定义时显示，彻底避免冲突)
-                                    Text("学期生效周次", fontSize = 12.sp, color = textSecondary)
-                                    WeekMatrixPicker(
-                                        selectedWeeks = customWeeks,
-                                        onWeeksChange = { customWeeks = it },
-                                        maxWeeks = 25,
-                                        accentColor = parseHexColor(eventColor),
-                                        isDark = isDark
-                                    )
-                                }
-                            }
-
-                            // 结束重复设置 (只要不是不重复，均可设置结束条件)
-                            if (frequency != "不重复") {
-                                HorizontalDivider(color = dividerColor, modifier = Modifier.padding(start = 14.dp))
-
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(14.dp),
-                                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                                ) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text("结束重复", fontSize = 12.sp, color = textSecondary)
-                                        Box {
-                                            Surface(
-                                                shape = RoundedCornerShape(8.dp),
-                                                color = if (isDark) Color(0xFF282B3C) else Color(0xFFF3F4F6),
-                                                modifier = Modifier.clickable { showEndRepeatMenu = true }
-                                            ) {
-                                                val label = when (endRepeatType) {
-                                                    "until_date" -> "于指定日期终止"
-                                                    "count" -> "达到指定次数终止"
-                                                    else -> "永不终止"
                                                 }
-                                                Text("$label ▾", fontSize = 12.sp, color = textPrimary, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
-                                            }
-                                            DropdownMenu(expanded = showEndRepeatMenu, onDismissRequest = { showEndRepeatMenu = false }) {
-                                                DropdownMenuItem(
-                                                    text = { Text("永不终止", fontSize = 12.5.sp) },
-                                                    onClick = {
-                                                        endRepeatType = "never"
-                                                        showEndRepeatMenu = false
-                                                    }
-                                                )
-                                                DropdownMenuItem(
-                                                    text = { Text("于指定日期终止", fontSize = 12.5.sp) },
-                                                    onClick = {
-                                                        endRepeatType = "until_date"
-                                                        showEndRepeatMenu = false
-                                                    }
-                                                )
-                                                DropdownMenuItem(
-                                                    text = { Text("达到指定次数终止", fontSize = 12.5.sp) },
-                                                    onClick = {
-                                                        endRepeatType = "count"
-                                                        showEndRepeatMenu = false
-                                                    }
-                                                )
-                                            }
-                                        }
-                                    }
 
-                                    if (endRepeatType == "until_date") {
-                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            Text("截止日期:", fontSize = 12.sp, color = textSecondary)
-                                            OutlinedTextField(
-                                                value = endRepeatUntil,
-                                                onValueChange = { endRepeatUntil = it },
-                                                placeholder = { Text("2026-12-31", fontSize = 12.sp) },
-                                                singleLine = true,
-                                                shape = RoundedCornerShape(8.dp),
-                                                modifier = Modifier.width(120.dp)
-                                            )
-                                        }
-                                    } else if (endRepeatType == "count") {
-                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            Text("重复发生:", fontSize = 12.sp, color = textSecondary)
-                                            OutlinedTextField(
-                                                value = endRepeatCount.toString(),
-                                                onValueChange = { endRepeatCount = it.filter { ch -> ch.isDigit() }.toIntOrNull() ?: 10 },
-                                                singleLine = true,
-                                                shape = RoundedCornerShape(8.dp),
-                                                modifier = Modifier.width(60.dp)
-                                            )
-                                            Text("次后停止", fontSize = 12.sp, color = textSecondary)
-                                        }
-                                    }
-                                }
-                            }
+                                                Text("至", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
-                            HorizontalDivider(color = dividerColor, modifier = Modifier.padding(start = 14.dp))
-
-                            // 提醒通知
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text("提醒通知", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = textPrimary)
-                                Box {
-                                    Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = if (isDark) Color(0xFF282B3C) else Color(0xFFF3F4F6),
-                                        modifier = Modifier.clickable { showAlertMenu = true }
-                                    ) {
-                                        Text("$alertOption ▾", fontSize = 13.sp, color = textPrimary, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
-                                    }
-                                    DropdownMenu(expanded = showAlertMenu, onDismissRequest = { showAlertMenu = false }) {
-                                        alertOptions.forEach { opt ->
-                                            DropdownMenuItem(
-                                                text = { Text(opt, fontSize = 13.sp) },
-                                                onClick = {
-                                                    alertOption = opt
-                                                    showAlertMenu = false
+                                                Box {
+                                                    Surface(
+                                                        shape = RoundedCornerShape(8.dp),
+                                                        color = MaterialTheme.colorScheme.surface,
+                                                        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                                                        modifier = Modifier.clickable { showEndSecMenu = true }
+                                                    ) {
+                                                        Text("第 $endSection 节 ▾", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+                                                    }
+                                                    DropdownMenu(expanded = showEndSecMenu, onDismissRequest = { showEndSecMenu = false }) {
+                                                        effectiveSections.filter { it.section >= startSection }.forEach { sec ->
+                                                            DropdownMenuItem(
+                                                                text = { Text("第 ${sec.section} 节 (${sec.endTime})", fontSize = 12.5.sp) },
+                                                                onClick = {
+                                                                    endSection = sec.section
+                                                                    showEndSecMenu = false
+                                                                }
+                                                            )
+                                                        }
+                                                    }
                                                 }
+                                            }
+                                        }
+                                    } else {
+                                        // Specific time pickers
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text(
+                                                text = "时间范围",
+                                                fontSize = 13.5.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                color = MaterialTheme.colorScheme.onSurface
                                             )
+
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Surface(
+                                                    shape = RoundedCornerShape(8.dp),
+                                                    color = MaterialTheme.colorScheme.surface,
+                                                    border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                                                    modifier = Modifier.clickable {
+                                                        showTimePicker(context, startTimeStr) { picked ->
+                                                            startTimeStr = picked
+                                                        }
+                                                    }
+                                                ) {
+                                                    Text(
+                                                        text = startTimeStr,
+                                                        fontSize = 12.5.sp,
+                                                        fontFamily = FontFamily.Monospace,
+                                                        color = MaterialTheme.colorScheme.onSurface,
+                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                                    )
+                                                }
+
+                                                Text("至", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+                                                Surface(
+                                                    shape = RoundedCornerShape(8.dp),
+                                                    color = MaterialTheme.colorScheme.surface,
+                                                    border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                                                    modifier = Modifier.clickable {
+                                                        showTimePicker(context, endTimeStr) { picked ->
+                                                            endTimeStr = picked
+                                                        }
+                                                    }
+                                                ) {
+                                                    Text(
+                                                        text = endTimeStr,
+                                                        fontSize = 12.5.sp,
+                                                        fontFamily = FontFamily.Monospace,
+                                                        color = MaterialTheme.colorScheme.onSurface,
+                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                                    )
+                                                }
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
 
-                        // Card 4: 地点与备注
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(cardBg)
+                        // Card 3: macOS Calendar Recurrence & Reminders
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Icon(Icons.Default.LocationOn, contentDescription = null, tint = textSecondary, modifier = Modifier.size(17.dp))
-                                TextField(
-                                    value = location,
-                                    onValueChange = { location = it },
-                                    placeholder = { Text("地点 / 线上会议房间号 (选填)", fontSize = 13.5.sp, color = textSecondary.copy(alpha = 0.7f)) },
-                                    singleLine = true,
-                                    colors = TextFieldDefaults.colors(
-                                        focusedContainerColor = Color.Transparent,
-                                        unfocusedContainerColor = Color.Transparent,
-                                        disabledContainerColor = Color.Transparent,
-                                        focusedIndicatorColor = Color.Transparent,
-                                        unfocusedIndicatorColor = Color.Transparent
-                                    ),
-                                    modifier = Modifier.weight(1f)
-                                )
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                // Frequency
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = "重复频次",
+                                        fontSize = 13.5.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Box {
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = MaterialTheme.colorScheme.surface,
+                                            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                                            modifier = Modifier.clickable { showFreqMenu = true }
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                Text(text = frequency, fontSize = 12.5.sp, color = MaterialTheme.colorScheme.onSurface)
+                                                Icon(Icons.Default.ArrowDropDown, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            }
+                                        }
+                                        DropdownMenu(expanded = showFreqMenu, onDismissRequest = { showFreqMenu = false }) {
+                                            frequencies.forEach { f ->
+                                                DropdownMenuItem(
+                                                    text = { Text(f, fontSize = 13.sp) },
+                                                    onClick = {
+                                                        frequency = f
+                                                        showFreqMenu = false
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                if (frequency == "自定义每周某几天") {
+                                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
+
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(14.dp),
+                                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        Text("生效星期", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        val weekDays = listOf(
+                                            7 to "日", 1 to "一", 2 to "二", 3 to "三",
+                                            4 to "四", 5 to "五", 6 to "六"
+                                        )
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .border(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f), RoundedCornerShape(8.dp)),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            weekDays.forEach { (dVal, dName) ->
+                                                val isSel = customDaysOfWeek.contains(dVal)
+                                                Box(
+                                                    modifier = Modifier
+                                                        .weight(1f)
+                                                        .background(if (isSel) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f) else Color.Transparent)
+                                                        .clickable {
+                                                            val next = customDaysOfWeek.toMutableSet()
+                                                            if (isSel) {
+                                                                if (next.size > 1) next.remove(dVal)
+                                                            } else {
+                                                                next.add(dVal)
+                                                            }
+                                                            customDaysOfWeek = next
+                                                        }
+                                                        .padding(vertical = 8.dp),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Text(
+                                                        text = dName,
+                                                        fontSize = 12.5.sp,
+                                                        fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
+                                                        color = if (isSel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        Text("学期生效周次", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        WeekMatrixPicker(
+                                            selectedWeeks = customWeeks,
+                                            onWeeksChange = { customWeeks = it },
+                                            maxWeeks = 25,
+                                            accentColor = parseHexColor(eventColor),
+                                            isDark = isDark
+                                        )
+                                    }
+                                }
+
+                                if (frequency != "不重复") {
+                                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
+
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(14.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text("结束重复", fontSize = 13.5.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface)
+                                            Box {
+                                                Surface(
+                                                    shape = RoundedCornerShape(8.dp),
+                                                    color = MaterialTheme.colorScheme.surface,
+                                                    border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                                                    modifier = Modifier.clickable { showEndRepeatMenu = true }
+                                                ) {
+                                                    val label = when (endRepeatType) {
+                                                        "until_date" -> "于指定日期终止"
+                                                        "count" -> "达到指定次数终止"
+                                                        else -> "永不终止"
+                                                    }
+                                                    Text("$label ▾", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+                                                }
+                                                DropdownMenu(expanded = showEndRepeatMenu, onDismissRequest = { showEndRepeatMenu = false }) {
+                                                    DropdownMenuItem(
+                                                        text = { Text("永不终止", fontSize = 12.5.sp) },
+                                                        onClick = {
+                                                            endRepeatType = "never"
+                                                            showEndRepeatMenu = false
+                                                        }
+                                                    )
+                                                    DropdownMenuItem(
+                                                        text = { Text("于指定日期终止", fontSize = 12.5.sp) },
+                                                        onClick = {
+                                                            endRepeatType = "until_date"
+                                                            showEndRepeatMenu = false
+                                                        }
+                                                    )
+                                                    DropdownMenuItem(
+                                                        text = { Text("达到指定次数终止", fontSize = 12.5.sp) },
+                                                        onClick = {
+                                                            endRepeatType = "count"
+                                                            showEndRepeatMenu = false
+                                                        }
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        if (endRepeatType == "until_date") {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text("终止日期", fontSize = 12.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                Surface(
+                                                    shape = RoundedCornerShape(8.dp),
+                                                    color = MaterialTheme.colorScheme.surface,
+                                                    border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                                                    modifier = Modifier.clickable {
+                                                        showDatePicker(context, endRepeatUntil) { picked ->
+                                                            endRepeatUntil = picked
+                                                        }
+                                                    }
+                                                ) {
+                                                    Text(
+                                                        text = endRepeatUntil,
+                                                        fontSize = 12.sp,
+                                                        fontFamily = FontFamily.Monospace,
+                                                        color = MaterialTheme.colorScheme.onSurface,
+                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                                    )
+                                                }
+                                            }
+                                        } else if (endRepeatType == "count") {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text("发生次数", fontSize = 12.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                    Surface(
+                                                        shape = RoundedCornerShape(6.dp),
+                                                        color = MaterialTheme.colorScheme.surface,
+                                                        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                                                    ) {
+                                                        BasicTextField(
+                                                            value = endRepeatCount.toString(),
+                                                            onValueChange = { endRepeatCount = it.filter { ch -> ch.isDigit() }.toIntOrNull() ?: 10 },
+                                                            singleLine = true,
+                                                            textStyle = TextStyle(fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface),
+                                                            modifier = Modifier.width(40.dp).padding(horizontal = 6.dp, vertical = 3.dp)
+                                                        )
+                                                    }
+                                                    Text("次后停止", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
+
+                                // Reminder
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = "提醒通知",
+                                        fontSize = 13.5.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Box {
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = MaterialTheme.colorScheme.surface,
+                                            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                                            modifier = Modifier.clickable { showAlertMenu = true }
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                Text(text = alertOption, fontSize = 12.5.sp, color = MaterialTheme.colorScheme.onSurface)
+                                                Icon(Icons.Default.ArrowDropDown, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            }
+                                        }
+                                        DropdownMenu(expanded = showAlertMenu, onDismissRequest = { showAlertMenu = false }) {
+                                            alertOptions.forEach { opt ->
+                                                DropdownMenuItem(
+                                                    text = { Text(opt, fontSize = 13.sp) },
+                                                    onClick = {
+                                                        alertOption = opt
+                                                        showAlertMenu = false
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
                             }
+                        }
 
-                            HorizontalDivider(color = dividerColor, modifier = Modifier.padding(start = 14.dp))
+                        // Card 4: Location & Notes
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Icon(Icons.Default.LocationOn, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(17.dp))
+                                    BasicTextField(
+                                        value = location,
+                                        onValueChange = { location = it },
+                                        singleLine = true,
+                                        textStyle = TextStyle(fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface),
+                                        decorationBox = { inner ->
+                                            if (location.isEmpty()) {
+                                                Text("地点 (选填)", fontSize = 13.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
+                                            }
+                                            inner()
+                                        },
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
 
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Icon(Icons.Default.Notes, contentDescription = null, tint = textSecondary, modifier = Modifier.size(17.dp))
-                                TextField(
-                                    value = eventNotes,
-                                    onValueChange = { eventNotes = it },
-                                    placeholder = { Text("备注说明 (选填)", fontSize = 13.5.sp, color = textSecondary.copy(alpha = 0.7f)) },
-                                    singleLine = true,
-                                    colors = TextFieldDefaults.colors(
-                                        focusedContainerColor = Color.Transparent,
-                                        unfocusedContainerColor = Color.Transparent,
-                                        disabledContainerColor = Color.Transparent,
-                                        focusedIndicatorColor = Color.Transparent,
-                                        unfocusedIndicatorColor = Color.Transparent
-                                    ),
-                                    modifier = Modifier.weight(1f)
-                                )
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
+
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Icon(Icons.AutoMirrored.Filled.Notes, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(17.dp))
+                                    BasicTextField(
+                                        value = eventNotes,
+                                        onValueChange = { eventNotes = it },
+                                        singleLine = true,
+                                        textStyle = TextStyle(fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface),
+                                        decorationBox = { inner ->
+                                            if (eventNotes.isEmpty()) {
+                                                Text("备注说明 (选填)", fontSize = 13.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
+                                            }
+                                            inner()
+                                        },
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
                             }
                         }
                     } else {
                         // ==================== TASK MODE ====================
-                        // Card 1: 待办标题
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(cardBg)
-                                .padding(horizontal = 14.dp, vertical = 10.dp)
+                        // Card 1: Task Title
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            TextField(
-                                value = taskTitle,
-                                onValueChange = { taskTitle = it },
-                                placeholder = { Text("待办事项名称 (如：完成编译原理大作业)", fontSize = 14.sp, color = textSecondary.copy(alpha = 0.7f)) },
-                                singleLine = true,
-                                colors = TextFieldDefaults.colors(
-                                    focusedContainerColor = Color.Transparent,
-                                    unfocusedContainerColor = Color.Transparent,
-                                    disabledContainerColor = Color.Transparent,
-                                    focusedIndicatorColor = Color.Transparent,
-                                    unfocusedIndicatorColor = Color.Transparent
-                                ),
-                                modifier = Modifier.fillMaxWidth()
-                            )
+                            Box(modifier = Modifier.padding(14.dp)) {
+                                BasicTextField(
+                                    value = taskTitle,
+                                    onValueChange = { taskTitle = it },
+                                    singleLine = true,
+                                    textStyle = TextStyle(
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    ),
+                                    decorationBox = { innerTextField ->
+                                        if (taskTitle.isEmpty()) {
+                                            Text(
+                                                text = "待办事项名称 (如：完成编译原理大作业)",
+                                                fontSize = 14.5.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                            )
+                                        }
+                                        innerTextField()
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
                         }
 
-                        // Card 2: 关联课程与优先级
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(cardBg)
+                        // Card 2: Course Linkage & Priority & Deadline
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            // 关联课程
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text("关联课程", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = textPrimary)
-                                Box {
-                                    Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = if (isDark) Color(0xFF282B3C) else Color(0xFFF3F4F6),
-                                        modifier = Modifier.clickable { showCourseMenu = true }
-                                    ) {
-                                        val selName = courses.find { it.id == selectedCourseId }?.name ?: "无关联课程"
-                                        Text("$selName ▾", fontSize = 13.sp, color = textPrimary, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
-                                    }
-                                    DropdownMenu(expanded = showCourseMenu, onDismissRequest = { showCourseMenu = false }) {
-                                        DropdownMenuItem(
-                                            text = { Text("无关联课程", fontSize = 13.sp) },
-                                            onClick = {
-                                                selectedCourseId = null
-                                                showCourseMenu = false
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                // Course Linkage
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 14.dp, vertical = 11.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "关联课程",
+                                        fontSize = 13.5.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+
+                                    Box {
+                                        Surface(
+                                            onClick = { showCourseMenu = true },
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = MaterialTheme.colorScheme.surface,
+                                            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                val selCourse = courses.find { it.id == selectedCourseId }
+                                                selCourse?.let { c ->
+                                                    val cColor = parseHexColor(c.color)
+                                                    Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(cColor))
+                                                }
+                                                Text(
+                                                    text = selCourse?.name ?: "无关联课程",
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = if (selCourse != null) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                                Icon(Icons.Default.ArrowDropDown, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                                             }
-                                        )
-                                        courses.forEach { c ->
+                                        }
+
+                                        DropdownMenu(expanded = showCourseMenu, onDismissRequest = { showCourseMenu = false }) {
                                             DropdownMenuItem(
-                                                text = { Text(c.name, fontSize = 13.sp) },
+                                                text = { Text("无关联课程", fontSize = 13.sp) },
                                                 onClick = {
-                                                    selectedCourseId = c.id
+                                                    selectedCourseId = null
                                                     showCourseMenu = false
                                                 }
                                             )
+                                            courses.forEach { c ->
+                                                DropdownMenuItem(
+                                                    text = {
+                                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                            Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(parseHexColor(c.color)))
+                                                            Text(c.name, fontSize = 13.sp)
+                                                        }
+                                                    },
+                                                    onClick = {
+                                                        selectedCourseId = c.id
+                                                        showCourseMenu = false
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
+
+                                // Priority
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 14.dp, vertical = 11.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "优先级",
+                                        fontSize = 13.5.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+
+                                    Row(
+                                        modifier = Modifier
+                                            .background(MaterialTheme.colorScheme.surface, CircleShape)
+                                            .border(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f), CircleShape)
+                                            .padding(2.5.dp)
+                                    ) {
+                                        listOf("low" to "普通", "medium" to "重要", "high" to "紧急").forEach { (pCode, pLabel) ->
+                                            val isSelected = (taskPriority == pCode)
+                                            val activeColor = when (pCode) {
+                                                "high" -> Color(0xFFFF5A5F)
+                                                "medium" -> Color(0xFFE8A87C)
+                                                else -> MaterialTheme.colorScheme.primary
+                                            }
+                                            Box(
+                                                modifier = Modifier
+                                                    .clip(CircleShape)
+                                                    .background(if (isSelected) activeColor.copy(alpha = 0.15f) else Color.Transparent)
+                                                    .clickable { taskPriority = pCode }
+                                                    .padding(horizontal = 10.dp, vertical = 3.5.dp),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Text(
+                                                    text = pLabel,
+                                                    fontSize = 11.5.sp,
+                                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                    color = if (isSelected) activeColor else MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
+
+                                // Deadline Date & Time Picker (Interactive click to invoke DateTimePicker)
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 14.dp, vertical = 9.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Checkbox(
+                                            checked = hasDueDate,
+                                            onCheckedChange = { hasDueDate = it },
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                        Text(
+                                            text = "设置截止时间",
+                                            fontSize = 13.5.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+
+                                    if (hasDueDate) {
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = MaterialTheme.colorScheme.surface,
+                                            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                                            modifier = Modifier.clickable {
+                                                showDateTimePicker(context, taskDueDateStr) { picked ->
+                                                    taskDueDateStr = picked
+                                                }
+                                            }
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                Text(
+                                                    text = taskDueDateStr,
+                                                    fontSize = 12.sp,
+                                                    fontFamily = FontFamily.Monospace,
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                    fontWeight = FontWeight.Medium
+                                                )
+                                                Icon(
+                                                    Icons.Default.ArrowDropDown,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(15.dp),
+                                                    tint = MaterialTheme.colorScheme.primary
+                                                )
+                                            }
                                         }
                                     }
                                 }
                             }
+                        }
 
-                            HorizontalDivider(color = dividerColor, modifier = Modifier.padding(start = 14.dp))
-
-                            // 优先级
-                            Row(
+                        // Card 3: Target Minutes
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
+                                    .padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                Text("优先级", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = textPrimary)
-
                                 Row(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(if (isDark) Color(0xFF282B3C) else Color(0xFFF3F4F6))
-                                        .padding(2.dp),
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    listOf("low" to "普通", "medium" to "重要", "high" to "紧急").forEach { (priCode, priLabel) ->
-                                        val isSel = (taskPriority == priCode)
+                                    Text(
+                                        text = "预计专注时长",
+                                        fontSize = 13.5.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Surface(
+                                            shape = RoundedCornerShape(6.dp),
+                                            color = MaterialTheme.colorScheme.surface,
+                                            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                                        ) {
+                                            BasicTextField(
+                                                value = targetMinutes.toString(),
+                                                onValueChange = { targetMinutes = it.filter { ch -> ch.isDigit() }.toIntOrNull() ?: 45 },
+                                                singleLine = true,
+                                                textStyle = TextStyle(
+                                                    fontSize = 12.5.sp,
+                                                    fontFamily = FontFamily.Monospace,
+                                                    color = MaterialTheme.colorScheme.onSurface
+                                                ),
+                                                modifier = Modifier
+                                                    .width(42.dp)
+                                                    .padding(horizontal = 6.dp, vertical = 3.dp)
+                                            )
+                                        }
+                                        Text("分钟", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                }
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    listOf(15, 30, 45, 60, 90, 120).forEach { mins ->
+                                        val isSel = (targetMinutes == mins)
                                         Box(
                                             modifier = Modifier
-                                                .clip(RoundedCornerShape(6.dp))
-                                                .background(if (isSel) (if (isDark) Color(0xFF383C52) else Color.White) else Color.Transparent)
-                                                .clickable { taskPriority = priCode }
-                                                .padding(horizontal = 12.dp, vertical = 4.dp)
+                                                .clip(CircleShape)
+                                                .background(if (isSel) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surface)
+                                                .border(0.5.dp, if (isSel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f), CircleShape)
+                                                .clickable { targetMinutes = mins }
+                                                .padding(horizontal = 10.dp, vertical = 4.dp)
                                         ) {
                                             Text(
-                                                text = priLabel,
-                                                fontSize = 12.sp,
+                                                text = "${mins}m",
+                                                fontSize = 11.5.sp,
                                                 fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
-                                                color = if (isSel && priCode == "high") Color.Red else textPrimary
+                                                color = if (isSel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                                             )
                                         }
                                     }
                                 }
                             }
+                        }
 
-                            HorizontalDivider(color = dividerColor, modifier = Modifier.padding(start = 14.dp))
-
-                            // 截止时间
+                        // Card 4: Task Notes
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(horizontal = 14.dp, vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Checkbox(
-                                        checked = hasDueDate,
-                                        onCheckedChange = { hasDueDate = it },
-                                        colors = CheckboxDefaults.colors(checkedColor = accentRed)
-                                    )
-                                    Text("设置截止时间", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = textPrimary)
-                                }
-
-                                if (hasDueDate) {
-                                    OutlinedTextField(
-                                        value = taskDueDate,
-                                        onValueChange = { taskDueDate = it },
-                                        placeholder = { Text("2026-10-16", fontSize = 12.sp) },
-                                        singleLine = true,
-                                        shape = RoundedCornerShape(8.dp),
-                                        modifier = Modifier.width(120.dp)
-                                    )
-                                }
+                                Icon(Icons.AutoMirrored.Filled.Notes, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(17.dp))
+                                BasicTextField(
+                                    value = taskNotes,
+                                    onValueChange = { taskNotes = it },
+                                    singleLine = true,
+                                    textStyle = TextStyle(fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface),
+                                    decorationBox = { inner ->
+                                        if (taskNotes.isEmpty()) {
+                                            Text("备注说明 (选填)", fontSize = 13.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
+                                        }
+                                        inner()
+                                    },
+                                    modifier = Modifier.weight(1f)
+                                )
                             }
-                        }
-
-                        // Card 3: 预计专注时长
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(cardBg)
-                                .padding(14.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text("预计专注时长", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = textPrimary)
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    OutlinedTextField(
-                                        value = targetMinutes.toString(),
-                                        onValueChange = { targetMinutes = it.filter { ch -> ch.isDigit() }.toIntOrNull() ?: 45 },
-                                        singleLine = true,
-                                        shape = RoundedCornerShape(8.dp),
-                                        modifier = Modifier.width(55.dp)
-                                    )
-                                    Text("分钟", fontSize = 12.5.sp, color = textSecondary)
-                                }
-                            }
-
-                            // Quick minutes pills
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                listOf(15, 30, 45, 60, 90, 120).forEach { mins ->
-                                    val isSel = (targetMinutes == mins)
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(CircleShape)
-                                            .background(if (isSel) textPrimary else (if (isDark) Color(0xFF282B3C) else Color(0xFFF3F4F6)))
-                                            .clickable { targetMinutes = mins }
-                                            .padding(horizontal = 10.dp, vertical = 4.dp)
-                                    ) {
-                                        Text(
-                                            text = "${mins}m",
-                                            fontSize = 11.5.sp,
-                                            fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
-                                            color = if (isSel) (if (isDark) Color.Black else Color.White) else textPrimary
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        // Card 4: 待办备忘
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(cardBg)
-                                .padding(horizontal = 14.dp, vertical = 10.dp)
-                        ) {
-                            TextField(
-                                value = taskNotes,
-                                onValueChange = { taskNotes = it },
-                                placeholder = { Text("待办详情与备忘说明 (选填)", fontSize = 13.5.sp, color = textSecondary.copy(alpha = 0.7f)) },
-                                singleLine = false,
-                                maxLines = 3,
-                                colors = TextFieldDefaults.colors(
-                                    focusedContainerColor = Color.Transparent,
-                                    unfocusedContainerColor = Color.Transparent,
-                                    disabledContainerColor = Color.Transparent,
-                                    focusedIndicatorColor = Color.Transparent,
-                                    unfocusedIndicatorColor = Color.Transparent
-                                ),
-                                modifier = Modifier.fillMaxWidth()
-                            )
                         }
                     }
                 }
