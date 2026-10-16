@@ -28,12 +28,16 @@ data class Semester(
 
 data class CourseSchedule(
     val id: String = UUID.randomUUID().toString(),
+    val courseId: String? = null,
     val dayOfWeek: Int, // 1 (Mon) - 7 (Sun)
     val startSection: Int,
     val endSection: Int,
     val classroom: String? = null,
+    val teacher: String? = null,
     val weekPattern: WeekPatternType = WeekPatternType.ALL,
-    val customWeeks: List<Int> = emptyList()
+    val customWeeks: List<Int> = emptyList(),
+    val customStartTime: String? = null,
+    val customEndTime: String? = null
 )
 
 data class Course(
@@ -137,7 +141,13 @@ data class CalendarEvent(
     val dueDate: String? = null,
     val targetMinutes: Int? = null,
     val customWeeks: List<Int> = emptyList(),
-    val alertMinutes: Int? = null
+    val alertMinutes: Int? = null,
+    val startDate: String? = null,
+    val endDate: String? = null,
+    val intervalWeeks: Int = 1,
+    val endRepeatType: String = "never",
+    val endRepeatUntil: String? = null,
+    val endRepeatCount: Int? = null
 )
 
 data class StudyTask(

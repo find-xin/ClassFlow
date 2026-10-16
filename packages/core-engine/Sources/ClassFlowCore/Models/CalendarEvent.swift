@@ -28,6 +28,12 @@ public struct CalendarEvent: Codable, Sendable, Identifiable, Equatable, Hashabl
     public var customWeeks: Set<Int>?
     /// Specific days of week if frequency == "customDays" (1 = Monday ... 7 = Sunday)
     public var customDaysOfWeek: Set<Int>?
+    public var startDate: String?
+    public var endDate: String?
+    public var intervalWeeks: Int?
+    public var endRepeatType: String?
+    public var endRepeatUntil: String?
+    public var endRepeatCount: Int?
 
     public init(
         id: UUID = UUID(),
@@ -45,7 +51,13 @@ public struct CalendarEvent: Codable, Sendable, Identifiable, Equatable, Hashabl
         alertMinutesBefore: Int? = nil,
         frequency: String? = "none",
         customWeeks: Set<Int>? = nil,
-        customDaysOfWeek: Set<Int>? = nil
+        customDaysOfWeek: Set<Int>? = nil,
+        startDate: String? = nil,
+        endDate: String? = nil,
+        intervalWeeks: Int? = 1,
+        endRepeatType: String? = "never",
+        endRepeatUntil: String? = nil,
+        endRepeatCount: Int? = nil
     ) {
         self.id = id
         self.calendarId = calendarId
@@ -63,6 +75,12 @@ public struct CalendarEvent: Codable, Sendable, Identifiable, Equatable, Hashabl
         self.frequency = frequency
         self.customWeeks = customWeeks
         self.customDaysOfWeek = customDaysOfWeek
+        self.startDate = startDate
+        self.endDate = endDate
+        self.intervalWeeks = intervalWeeks
+        self.endRepeatType = endRepeatType
+        self.endRepeatUntil = endRepeatUntil
+        self.endRepeatCount = endRepeatCount
     }
 
     public init(from decoder: Decoder) throws {
@@ -83,5 +101,11 @@ public struct CalendarEvent: Codable, Sendable, Identifiable, Equatable, Hashabl
         self.frequency = try container.decodeIfPresent(String.self, forKey: .frequency) ?? "none"
         self.customWeeks = try container.decodeIfPresent(Set<Int>.self, forKey: .customWeeks)
         self.customDaysOfWeek = try container.decodeIfPresent(Set<Int>.self, forKey: .customDaysOfWeek)
+        self.startDate = try container.decodeIfPresent(String.self, forKey: .startDate)
+        self.endDate = try container.decodeIfPresent(String.self, forKey: .endDate)
+        self.intervalWeeks = try container.decodeIfPresent(Int.self, forKey: .intervalWeeks)
+        self.endRepeatType = try container.decodeIfPresent(String.self, forKey: .endRepeatType)
+        self.endRepeatUntil = try container.decodeIfPresent(String.self, forKey: .endRepeatUntil)
+        self.endRepeatCount = try container.decodeIfPresent(Int.self, forKey: .endRepeatCount)
     }
 }

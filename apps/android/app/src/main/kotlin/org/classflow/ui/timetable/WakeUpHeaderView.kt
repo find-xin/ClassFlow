@@ -192,42 +192,17 @@ fun WakeUpHeaderView(
                 }
             }
 
-            // (+) Add Menu
-            Box {
-                IconButton(
-                    onClick = { showAddMenu = true },
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Icon(
-                        Icons.Default.Add,
-                        contentDescription = "添加",
-                        tint = iconTint,
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
-
-                DropdownMenu(
-                    expanded = showAddMenu,
-                    onDismissRequest = { showAddMenu = false },
-                    modifier = Modifier.background(menuBg)
-                ) {
-                    DropdownMenuItem(
-                        text = { Text("添加课程...", fontSize = 13.5.sp) },
-                        leadingIcon = { Icon(Icons.Default.Book, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                        onClick = {
-                            showAddMenu = false
-                            onAddCourseClick()
-                        }
-                    )
-                    DropdownMenuItem(
-                        text = { Text("添加日程 / 待办...", fontSize = 13.5.sp) },
-                        leadingIcon = { Icon(Icons.Default.CalendarMonth, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                        onClick = {
-                            showAddMenu = false
-                            onAddScheduleClick()
-                        }
-                    )
-                }
+            // (+) Add Action (macOS popover menu)
+            IconButton(
+                onClick = { showAddMenu = true },
+                modifier = Modifier.size(36.dp)
+            ) {
+                Icon(
+                    Icons.Default.Add,
+                    contentDescription = "添加",
+                    tint = iconTint,
+                    modifier = Modifier.size(22.dp)
+                )
             }
 
             // (↓) Import Menu
@@ -328,6 +303,24 @@ fun WakeUpHeaderView(
                 )
             }
         }
+    }
+
+    // macOS Popover Style Action Card (Add Course / Add Schedule)
+    if (showAddMenu) {
+        SlotActionDialog(
+            dayOfWeek = 1,
+            section = 1,
+            isDark = isDark,
+            onDismiss = { showAddMenu = false },
+            onAddCourse = { _, _ ->
+                showAddMenu = false
+                onAddCourseClick()
+            },
+            onAddSchedule = { _, _ ->
+                showAddMenu = false
+                onAddScheduleClick()
+            }
+        )
     }
 
     // WakeUp Style Floating Week Slider & Timetable Card Drawer (matching Image 3)

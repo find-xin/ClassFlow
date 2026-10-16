@@ -73,6 +73,7 @@ public struct ScheduleItemCreateSheet: View {
     // MARK: - Event Fields
     @State private var eventTitle: String = ""
     @State private var eventDate: Date = Date()
+    @State private var eventEndDate: Date = Date()
     @State private var isAllDay: Bool = false
     @State private var timeMode: EventTimeMode = .bySection
     @State private var startSection: Int = 1
@@ -80,8 +81,12 @@ public struct ScheduleItemCreateSheet: View {
     @State private var startTimeStr: String = "09:00"
     @State private var endTimeStr: String = "10:30"
     @State private var frequency: EventFrequency = .none
+    @State private var intervalWeeks: Int = 1
     @State private var customDaysOfWeek: Set<Int> = [1, 2, 3, 4, 5]
     @State private var customWeeks: Set<Int> = Set(1...16)
+    @State private var endRepeatType: String = "never" // "never", "untilDate", "count"
+    @State private var endRepeatUntil: Date = Calendar.current.date(byAdding: .month, value: 3, to: Date()) ?? Date()
+    @State private var endRepeatCount: Int = 10
     @State private var location: String = ""
     @State private var alertOption: AlertOption = .min15
     @State private var eventColor: String = "#FF5A5F"
@@ -132,6 +137,7 @@ public struct ScheduleItemCreateSheet: View {
                 df.dateFormat = "yyyy-MM-dd"
                 if let targetDate = df.date(from: weekDates[dow - 1]) {
                     self._eventDate = State(initialValue: targetDate)
+                    self._eventEndDate = State(initialValue: targetDate)
                 }
             }
         }
@@ -231,7 +237,7 @@ public struct ScheduleItemCreateSheet: View {
             VStack(spacing: 0) {
                 // Date & All-Day Checkbox on same line (Native macOS Calendar style)
                 HStack {
-                    Text("日期")
+                    Text("开始")
                         .font(.system(size: 13, weight: .medium))
                     DatePicker("", selection: $eventDate, displayedComponents: .date)
                         .labelsHidden()
@@ -241,7 +247,19 @@ public struct ScheduleItemCreateSheet: View {
                         .font(.system(size: 13))
                 }
                 .padding(.horizontal, 14)
-                .padding(.vertical, 10)
+                .padding(.vertical, 8)
+
+                Divider()
+
+                HStack {
+                    Text("结束")
+                        .font(.system(size: 13, weight: .medium))
+                    DatePicker("", selection: $eventEndDate, displayedComponents: .date)
+                        .labelsHidden()
+                    Spacer()
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
 
                 if !isAllDay {
                     Divider()
@@ -336,39 +354,99 @@ public struct ScheduleItemCreateSheet: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
 
-                if frequency == .customDays {
+                if frequency == .customDays || frequency == .weekly || frequency == .biweekly {
                     Divider()
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("生效星期")
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
-                        HStack(spacing: 6) {
-                            let dayLabels = [
-                                (1, "周一"), (2, "周二"), (3, "周三"), (4, "周四"),
-                                (5, "周五"), (6, "周六"), (7, "周日")
-                            ]
-                            ForEach(dayLabels, id: \.0) { day, name in
-                                let isSelected = customDaysOfWeek.contains(day)
-                                Button(action: {
-                                    if isSelected {
-                                        if customDaysOfWeek.count > 1 {
-                                            customDaysOfWeek.remove(day)
+                    VStack(alignment: .leading, spacing: 10) {
+                        // 每 N 周 (matching macOS Calendar Image 5)
+                        HStack(spacing: 8) {
+                            Text("每")
+                                .font(.system(size: 13))
+                            TextField("1", value: $intervalWeeks, format: .number)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 44)
+                                .multilineTextAlignment(.center)
+                            Text("周:")
+                                .font(.system(size: 13))
+                            Stepper("", value: $intervalWeeks, in: 1...10)
+                                .labelsHidden()
+                        }
+
+                        // 生效星期 (日..六 segmented strip matching Image 5)
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("生效星期")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                            HStack(spacing: 4) {
+                                let dayLabels = [
+                                    (7, "日"), (1, "一"), (2, "二"), (3, "三"),
+                                    (4, "四"), (5, "五"), (6, "六")
+                                ]
+                                ForEach(dayLabels, id: \.0) { day, name in
+                                    let isSelected = customDaysOfWeek.contains(day)
+                                    Button(action: {
+                                        if isSelected {
+                                            if customDaysOfWeek.count > 1 {
+                                                customDaysOfWeek.remove(day)
+                                            }
+                                        } else {
+                                            customDaysOfWeek.insert(day)
                                         }
-                                    } else {
-                                        customDaysOfWeek.insert(day)
+                                    }) {
+                                        Text(name)
+                                            .font(.system(size: 12, weight: isSelected ? .bold : .regular))
+                                            .frame(maxWidth: .infinity)
+                                            .padding(.vertical, 6)
+                                            .background(
+                                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                                    .fill(isSelected ? Color(nsColor: .selectedControlColor).opacity(0.8) : Color(nsColor: .textBackgroundColor).opacity(0.6))
+                                            )
+                                            .foregroundColor(isSelected ? .white : .primary)
                                     }
-                                }) {
-                                    Text(name)
-                                        .font(.system(size: 12, weight: isSelected ? .bold : .regular))
-                                        .padding(.horizontal, 10)
-                                        .padding(.vertical, 5)
-                                        .background(
-                                            Capsule()
-                                                .fill(isSelected ? Color(hex: eventColor) : Color(nsColor: .textBackgroundColor).opacity(0.6))
-                                        )
-                                        .foregroundColor(isSelected ? .white : .primary)
+                                    .buttonStyle(.plain)
                                 }
-                                .buttonStyle(.plain)
+                            }
+                        }
+
+                        // 学期生效周次 (进一步自定义周次，彻底解决组合自定义诉求)
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("学期生效周次")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                            WeekMatrixPickerView(selectedWeeks: $customWeeks, maxWeeks: 25, accentColor: Color(hex: eventColor))
+                        }
+
+                        // 结束重复设置
+                        HStack {
+                            Text("结束重复")
+                                .font(.system(size: 12))
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Picker("", selection: $endRepeatType) {
+                                Text("永不").tag("never")
+                                Text("于指定日期").tag("untilDate")
+                                Text("达到次数").tag("count")
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.menu)
+                        }
+
+                        if endRepeatType == "untilDate" {
+                            HStack {
+                                Text("截止日期:")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.secondary)
+                                Spacer()
+                                DatePicker("", selection: $endRepeatUntil, displayedComponents: .date)
+                                    .labelsHidden()
+                            }
+                        } else if endRepeatType == "count" {
+                            HStack {
+                                Text("重复次数:")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.secondary)
+                                Spacer()
+                                Stepper("\(endRepeatCount) 次后结束", value: $endRepeatCount, in: 1...100)
+                                    .font(.system(size: 12))
                             }
                         }
                     }
@@ -615,8 +693,14 @@ public struct ScheduleItemCreateSheet: View {
             endSection: resolvedEndSec,
             alertMinutesBefore: alertOption.minutesBefore,
             frequency: frequency.internalCode,
-            customWeeks: frequency == .customWeeks ? customWeeks : nil,
-            customDaysOfWeek: frequency == .customDays ? customDaysOfWeek : nil
+            customWeeks: (frequency == .customWeeks || frequency == .customDays || frequency == .weekly || frequency == .biweekly) ? customWeeks : nil,
+            customDaysOfWeek: (frequency == .customDays || frequency == .weekly || frequency == .biweekly) ? customDaysOfWeek : nil,
+            startDate: datePart,
+            endDate: df.string(from: eventEndDate),
+            intervalWeeks: intervalWeeks,
+            endRepeatType: endRepeatType,
+            endRepeatUntil: df.string(from: endRepeatUntil),
+            endRepeatCount: endRepeatCount
         )
 
         appState.addCalendarEvent(newEvent)

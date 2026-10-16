@@ -27,9 +27,9 @@ import androidx.compose.ui.unit.sp
 fun SearchSuggestionTextField(
     value: String,
     onValueChange: (String) -> Unit,
-    label: String,
     placeholder: String,
     suggestions: List<String>,
+    label: String = "",
     modifier: Modifier = Modifier,
     leadingIcon: ImageVector? = null,
     singleLine: Boolean = true,
@@ -58,7 +58,7 @@ fun SearchSuggestionTextField(
                 onValueChange(it)
                 expanded = true
             },
-            label = { Text(label) },
+            label = if (label.isNotEmpty()) { { Text(label) } } else null,
             placeholder = { Text(placeholder) },
             colors = colors ?: OutlinedTextFieldDefaults.colors(),
             leadingIcon = leadingIcon?.let {

@@ -228,12 +228,13 @@ fun MainScreenHost(
         }
     }
 
-    // Dialogs
     var showAddCourseDialog by remember { mutableStateOf(false) }
     var addCourseSlotDay by remember { mutableIntStateOf(1) }
     var addCourseSlotSection by remember { mutableIntStateOf(1) }
 
     var showAddScheduleDialog by remember { mutableStateOf(false) }
+    var addScheduleSlotDay by remember { mutableIntStateOf(1) }
+    var addScheduleSlotSection by remember { mutableIntStateOf(1) }
 
     // Sample Section Times
     val sectionTimes = remember {
@@ -405,11 +406,20 @@ fun MainScreenHost(
                         addCourseSlotSection = 1
                         showAddCourseDialog = true
                     },
-                    onAddScheduleClick = { showAddScheduleDialog = true },
+                    onAddScheduleClick = {
+                        addScheduleSlotDay = 1
+                        addScheduleSlotSection = 1
+                        showAddScheduleDialog = true
+                    },
                     onAddCourseAtSlot = { day, sec ->
                         addCourseSlotDay = day
                         addCourseSlotSection = sec
                         showAddCourseDialog = true
+                    },
+                    onAddScheduleAtSlot = { day, sec ->
+                        addScheduleSlotDay = day
+                        addScheduleSlotSection = sec
+                        showAddScheduleDialog = true
                     },
                     onImportClick = { type ->
                         when (type) {
@@ -580,6 +590,7 @@ fun MainScreenHost(
                 initialDayOfWeek = addCourseSlotDay,
                 initialStartSection = addCourseSlotSection,
                 initialEndSection = maxOf(addCourseSlotSection + 1, 2),
+                availableSections = sectionTimes,
                 existingCourseNames = existingNames,
                 existingTeachers = existingTeachers,
                 existingClassrooms = existingClassrooms,
@@ -589,9 +600,11 @@ fun MainScreenHost(
                     sampleCourses.add(newCourse)
                     // Project occurrences
                     newCourse.schedules.forEach { sched ->
+                        val startT = sched.customStartTime ?: sectionTimes.find { it.section == sched.startSection }?.startTime ?: "08:00"
+                        val endT = sched.customEndTime ?: sectionTimes.find { it.section == sched.endSection }?.endTime ?: "09:35"
                         sampleOccurrences.add(
                             TimelineItem(
-                                id = "occ_${System.currentTimeMillis()}",
+                                id = "occ_${System.currentTimeMillis()}_${sched.id}",
                                 courseId = newCourse.id,
                                 scheduleId = sched.id,
                                 title = newCourse.name,
@@ -600,11 +613,11 @@ fun MainScreenHost(
                                 dayOfWeek = sched.dayOfWeek,
                                 startSection = sched.startSection,
                                 endSection = sched.endSection,
-                                startTime = "08:00",
-                                endTime = "09:35",
+                                startTime = startT,
+                                endTime = endT,
                                 weekNumber = selectedWeek,
                                 color = newCourse.color,
-                                teacher = newCourse.teacher
+                                teacher = sched.teacher ?: newCourse.teacher
                             )
                         )
                     }
@@ -616,6 +629,10 @@ fun MainScreenHost(
         // Add Schedule Dialog
         if (showAddScheduleDialog) {
             ScheduleAddDialog(
+                initialDayOfWeek = addScheduleSlotDay,
+                initialSection = addScheduleSlotSection,
+                availableSections = sectionTimes,
+                courses = sampleCourses,
                 isDark = isDark,
                 onDismiss = { showAddScheduleDialog = false },
                 onSaveSchedule = { newSchedule ->

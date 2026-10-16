@@ -19,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -64,11 +65,13 @@ fun TimetableScreen(
     onAddCourseClick: () -> Unit,
     onAddScheduleClick: () -> Unit,
     onAddCourseAtSlot: (dayOfWeek: Int, section: Int) -> Unit = { _, _ -> },
+    onAddScheduleAtSlot: (dayOfWeek: Int, section: Int) -> Unit = { _, _ -> },
     onImportClick: (ImportType) -> Unit = {},
     onExportClick: (ExportType) -> Unit = {},
     onOpenThreeDotsMenu: () -> Unit
 ) {
     var displayMode by remember { mutableStateOf("week") } // "week" or "day"
+    var activeSlotForAction by remember { mutableStateOf<Pair<Int, Int>?>(null) }
 
     // Calculate dates for the 7 days of the selected week
     val weekDates = remember(selectedWeek) {
@@ -143,9 +146,26 @@ fun TimetableScreen(
                 isWallpaperDark = isWallpaperDark,
                 onCourseClick = onCourseClick,
                 onScheduleClick = onScheduleClick,
-                onAddAtSlot = onAddCourseAtSlot
+                onAddAtSlot = { day, sec -> activeSlotForAction = day to sec }
             )
         }
+    }
+
+    activeSlotForAction?.let { (day, sec) ->
+        SlotActionDialog(
+            dayOfWeek = day,
+            section = sec,
+            isDark = isDark,
+            onDismiss = { activeSlotForAction = null },
+            onAddCourse = { d, s ->
+                activeSlotForAction = null
+                onAddCourseAtSlot(d, s)
+            },
+            onAddSchedule = { d, s ->
+                activeSlotForAction = null
+                onAddScheduleAtSlot(d, s)
+            }
+        )
     }
 }
 
@@ -211,19 +231,17 @@ fun WakeUpDayHeaderRow(
             val day = dayNames.getOrElse(index) { "" }
             val dateStr = if (index < dateStrings.size) dateStrings[index] else ""
             val isToday = (dateStr == todayDateString)
-            val dateSubtext = remember(dateStr) {
+            val dayNumber = remember(dateStr) {
                 val parts = dateStr.split("-")
                 if (parts.size == 3) {
-                    val m = parts[1].toIntOrNull() ?: 10
-                    val d = parts[2].toIntOrNull() ?: 1
-                    "$m/$d"
-                } else ""
+                    parts[2].toIntOrNull()?.toString() ?: parts[2]
+                } else dateStr
             }
 
             Column(
                 modifier = Modifier.weight(1f),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(2.dp)
+                verticalArrangement = Arrangement.spacedBy(3.dp)
             ) {
                 Text(
                     text = day,
@@ -236,16 +254,38 @@ fun WakeUpDayHeaderRow(
                     }
                 )
 
-                Text(
-                    text = dateSubtext,
-                    fontSize = 10.sp,
-                    fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal,
-                    color = if (isWallpaperDark) {
-                        if (isToday) Color.White else Color.White.copy(alpha = 0.65f)
-                    } else {
-                        if (isToday) Color(0xFF111827) else Color(0xFF9CA3AF)
+                if (isToday) {
+                    Box(
+                        modifier = Modifier
+                            .size(22.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color(0xFFFF5A5F)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = dayNumber,
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
                     }
-                )
+                } else {
+                    Box(
+                        modifier = Modifier.size(22.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = dayNumber,
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = if (isWallpaperDark) {
+                                Color.White.copy(alpha = 0.70f)
+                            } else {
+                                Color(0xFF6B7280)
+                            }
+                        )
+                    }
+                }
             }
         }
     }
@@ -317,15 +357,20 @@ fun TimetableCanvas(
                         color = if (isWallpaperDark) Color.White.copy(alpha = 0.85f) else Color(0xFF1F2937).copy(alpha = 0.85f)
                     )
                     if (appSettings.showSectionTimeInAxis) {
+                        Spacer(modifier = Modifier.height(1.dp))
                         Text(
                             text = startT,
                             fontSize = 8.5.sp,
+                            lineHeight = 9.sp,
+                            fontFamily = FontFamily.Monospace,
                             fontWeight = FontWeight.Medium,
                             color = if (isWallpaperDark) Color.White.copy(alpha = 0.70f) else Color(0xFF6B7280)
                         )
                         Text(
                             text = endT,
                             fontSize = 8.sp,
+                            lineHeight = 8.5.sp,
+                            fontFamily = FontFamily.Monospace,
                             color = if (isWallpaperDark) Color.White.copy(alpha = 0.50f) else Color(0xFF9CA3AF)
                         )
                     }
