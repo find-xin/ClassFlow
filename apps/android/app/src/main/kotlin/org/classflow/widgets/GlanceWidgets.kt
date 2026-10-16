@@ -1,6 +1,7 @@
 package org.classflow.widgets
 
 import android.content.Context
+import android.content.res.Configuration
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -8,6 +9,7 @@ import androidx.compose.ui.unit.sp
 import androidx.glance.*
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.GlanceAppWidgetReceiver
+import androidx.glance.appwidget.SizeMode
 import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.provideContent
 import androidx.glance.layout.*
@@ -19,18 +21,31 @@ import org.classflow.R
 
 /**
  * 2x2 Glance AppWidget matching WakeUp's Next Class Widget:
- * - Frosted dark glass container with 16dp rounded corners
+ * - Dynamic Day/Night mode: clean light card in Day mode, frosted dark card in Night mode
  * - "下节课" pill badge with start time
  * - Large bold course title, classroom tag (@东上 101), and teacher
  */
 class NextClassGlanceWidget : GlanceAppWidget() {
+    override val sizeMode: SizeMode = SizeMode.Exact
+
     override suspend fun provideGlance(context: Context, id: GlanceId) {
+        val isDark = (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+
         provideContent {
+            val cardBg = if (isDark) Color(0xF0181A24) else Color(0xF8FFFFFF)
+            val pillBg = if (isDark) Color(0xFF3F51B5) else Color(0xFF4F46E5)
+            val pillTextColor = Color.White
+            val timeColor = if (isDark) Color(0xFFB0B3C2) else Color(0xFF6B7280)
+            val titleColor = if (isDark) Color.White else Color(0xFF111827)
+            val classroomColor = if (isDark) Color(0xFF818CF8) else Color(0xFF4F46E5)
+            val teacherColor = if (isDark) Color(0xFFB0B3C2) else Color(0xFF4B5563)
+            val countdownColor = if (isDark) Color(0xFF9094A6) else Color(0xFF6B7280)
+
             Box(
                 modifier = GlanceModifier
                     .fillMaxSize()
                     .cornerRadius(18.dp)
-                    .background(Color(0xF0181A24))
+                    .background(cardBg)
                     .padding(14.dp)
             ) {
                 Column(
@@ -46,7 +61,7 @@ class NextClassGlanceWidget : GlanceAppWidget() {
                         Box(
                             modifier = GlanceModifier
                                 .cornerRadius(6.dp)
-                                .background(Color(0xFF3F51B5))
+                                .background(pillBg)
                                 .padding(horizontal = 6.dp, vertical = 2.dp)
                         ) {
                             Text(
@@ -54,7 +69,7 @@ class NextClassGlanceWidget : GlanceAppWidget() {
                                 style = TextStyle(
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = ColorProvider(Color.White)
+                                    color = ColorProvider(pillTextColor)
                                 )
                             )
                         }
@@ -66,7 +81,7 @@ class NextClassGlanceWidget : GlanceAppWidget() {
                             style = TextStyle(
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Medium,
-                                color = ColorProvider(Color(0xFFB0B3C2))
+                                color = ColorProvider(timeColor)
                             )
                         )
                     }
@@ -79,7 +94,7 @@ class NextClassGlanceWidget : GlanceAppWidget() {
                         style = TextStyle(
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Bold,
-                            color = ColorProvider(Color.White)
+                            color = ColorProvider(titleColor)
                         )
                     )
 
@@ -92,14 +107,14 @@ class NextClassGlanceWidget : GlanceAppWidget() {
                             style = TextStyle(
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = ColorProvider(Color(0xFF818CF8))
+                                color = ColorProvider(classroomColor)
                             )
                         )
                         Text(
                             text = " · 张教授",
                             style = TextStyle(
                                 fontSize = 12.sp,
-                                color = ColorProvider(Color(0xFFB0B3C2))
+                                color = ColorProvider(teacherColor)
                             )
                         )
                     }
@@ -111,7 +126,7 @@ class NextClassGlanceWidget : GlanceAppWidget() {
                         text = "第 3-4 节 · 距上课 25 分钟",
                         style = TextStyle(
                             fontSize = 10.sp,
-                            color = ColorProvider(Color(0xFF9094A6))
+                            color = ColorProvider(countdownColor)
                         )
                     )
                 }
@@ -121,19 +136,63 @@ class NextClassGlanceWidget : GlanceAppWidget() {
 }
 
 /**
- * 4x2 Glance AppWidget matching WakeUp's Today Classes Widget:
- * - Frosted dark glass container with 18dp rounded corners
- * - Header row with today date, weekday, and total courses count
- * - Linear list with left colored indicator bars, time, section, and location
+ * 4x2 / 4x3 / 4x4 Glance AppWidget for Today's Classes:
+ * - Dynamic Day/Night mode: clean light card in Day mode, frosted dark card in Night mode
+ * - Adaptive stretching: automatically calculates visible courses count based on height
+ *   (4x2 -> 2 courses, 4x3 -> 3 courses, 4x4 -> 4 courses, 4x5 -> 5 courses, 4x6 -> 6 courses)
+ *   instead of stretching 2 courses into distorted boxes!
  */
 class TodayClassesGlanceWidget : GlanceAppWidget() {
+    override val sizeMode: SizeMode = SizeMode.Exact
+
     override suspend fun provideGlance(context: Context, id: GlanceId) {
+        val isDark = (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+
         provideContent {
+            val size = LocalSize.current
+            val heightDp = size.height.value
+
+            val cardBg = if (isDark) Color(0xF0181A24) else Color(0xF8FFFFFF)
+            val headerColor = if (isDark) Color.White else Color(0xFF111827)
+            val badgeBg = if (isDark) Color(0xFF2A2D3D) else Color(0xFFEEF2FF)
+            val badgeTextColor = if (isDark) Color(0xFF818CF8) else Color(0xFF4F46E5)
+            val titleColor = if (isDark) Color.White else Color(0xFF1F2937)
+            val timeColor = if (isDark) Color(0xFFB0B3C2) else Color(0xFF6B7280)
+            val locColor = if (isDark) Color(0xFF818CF8) else Color(0xFF4F46E5)
+
+            // Dynamic course pool for today
+            data class TodayCourse(
+                val title: String,
+                val time: String,
+                val location: String,
+                val accentColor: Color
+            )
+
+            val allCourses = listOf(
+                TodayCourse("高等数学", "08:00 - 09:35 (第 1-2 节)", "@东上 101", Color(0xFF4F46E5)),
+                TodayCourse("数据结构与算法", "10:00 - 11:35 (第 3-4 节)", "@信息楼 302", Color(0xFF0B8043)),
+                TodayCourse("计算机网络", "14:00 - 15:35 (第 5-6 节)", "@实验楼 204", Color(0xFFD97706)),
+                TodayCourse("操作系统", "16:00 - 17:35 (第 7-8 节)", "@东下 205", Color(0xFFDC2626)),
+                TodayCourse("人工智能导论", "19:00 - 20:35 (第 9-10 节)", "@科研楼 501", Color(0xFF7C3AED)),
+                TodayCourse("移动应用开发", "20:45 - 22:15 (第 11-12 节)", "@信软大楼 402", Color(0xFF0284C7))
+            )
+
+            // Adaptive count based on widget stretched height
+            val visibleCount = when {
+                heightDp < 145f -> 2 // 4x2 standard
+                heightDp < 205f -> 3 // 4x3 stretched
+                heightDp < 265f -> 4 // 4x4 stretched
+                heightDp < 320f -> 5 // 4x5 stretched
+                else -> 6           // 4x6+ stretched
+            }
+
+            val displayedCourses = allCourses.take(visibleCount)
+
             Box(
                 modifier = GlanceModifier
                     .fillMaxSize()
                     .cornerRadius(18.dp)
-                    .background(Color(0xF0181A24))
+                    .background(cardBg)
                     .padding(14.dp)
             ) {
                 Column(
@@ -151,7 +210,7 @@ class TodayClassesGlanceWidget : GlanceAppWidget() {
                             style = TextStyle(
                                 fontSize = 13.5.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = ColorProvider(Color.White)
+                                color = ColorProvider(headerColor)
                             )
                         )
 
@@ -160,39 +219,42 @@ class TodayClassesGlanceWidget : GlanceAppWidget() {
                         Box(
                             modifier = GlanceModifier
                                 .cornerRadius(6.dp)
-                                .background(Color(0xFF2A2D3D))
+                                .background(badgeBg)
                                 .padding(horizontal = 6.dp, vertical = 2.dp)
                         ) {
                             Text(
-                                text = "共 2 节",
+                                text = "共 ${displayedCourses.size} 节",
                                 style = TextStyle(
                                     fontSize = 10.5.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = ColorProvider(Color(0xFF818CF8))
+                                    color = ColorProvider(badgeTextColor)
                                 )
                             )
                         }
                     }
 
-                    Spacer(modifier = GlanceModifier.height(10.dp))
-
-                    // Course Item 1
-                    GlanceCourseRow(
-                        title = "高等数学",
-                        time = "08:00 - 09:35 (第 1-2 节)",
-                        location = "@东上 101",
-                        accentColor = Color(0xFF4F46E5)
-                    )
-
                     Spacer(modifier = GlanceModifier.height(8.dp))
 
-                    // Course Item 2
-                    GlanceCourseRow(
-                        title = "数据结构与算法",
-                        time = "10:00 - 11:35 (第 3-4 节)",
-                        location = "@信息楼 302",
-                        accentColor = Color(0xFF0B8043)
-                    )
+                    // Adaptive Course Rows List
+                    Column(
+                        modifier = GlanceModifier.fillMaxWidth().defaultWeight(),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        displayedCourses.forEachIndexed { index, course ->
+                            GlanceCourseRow(
+                                title = course.title,
+                                time = course.time,
+                                location = course.location,
+                                accentColor = course.accentColor,
+                                titleColor = titleColor,
+                                timeColor = timeColor,
+                                locColor = locColor
+                            )
+                            if (index < displayedCourses.size - 1) {
+                                Spacer(modifier = GlanceModifier.height(6.dp))
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -204,7 +266,10 @@ private fun GlanceCourseRow(
     title: String,
     time: String,
     location: String,
-    accentColor: Color
+    accentColor: Color,
+    titleColor: Color,
+    timeColor: Color,
+    locColor: Color
 ) {
     Row(
         modifier = GlanceModifier.fillMaxWidth(),
@@ -214,7 +279,7 @@ private fun GlanceCourseRow(
         Box(
             modifier = GlanceModifier
                 .width(4.dp)
-                .height(32.dp)
+                .height(30.dp)
                 .cornerRadius(2.dp)
                 .background(accentColor)
         ) {}
@@ -225,26 +290,27 @@ private fun GlanceCourseRow(
             Text(
                 text = title,
                 style = TextStyle(
-                    fontSize = 13.sp,
+                    fontSize = 12.5.sp,
                     fontWeight = FontWeight.Bold,
-                    color = ColorProvider(Color.White)
-                )
+                    color = ColorProvider(titleColor)
+                ),
+                maxLines = 1
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = time,
                     style = TextStyle(
-                        fontSize = 10.5.sp,
-                        color = ColorProvider(Color(0xFFB0B3C2))
+                        fontSize = 10.sp,
+                        color = ColorProvider(timeColor)
                     )
                 )
                 Spacer(modifier = GlanceModifier.width(6.dp))
                 Text(
                     text = location,
                     style = TextStyle(
-                        fontSize = 10.5.sp,
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.Medium,
-                        color = ColorProvider(Color(0xFF818CF8))
+                        color = ColorProvider(locColor)
                     )
                 )
             }
@@ -253,20 +319,58 @@ private fun GlanceCourseRow(
 }
 
 /**
- * 4x2 / 4x4 Glance AppWidget precisely matching WakeUp's Week Timetable Overview (Reference Image 2):
- * - Pure white container with 24dp rounded corners
- * - Top Header: Left month indicator ("10\n月") + 7 day columns ("一/12", "二/13", ... "五/16" bold)
- * - Left Section Axis: Section number (1..5) with start and end times underneath ("08:30\n09:15")
- * - Elegant pastel course cards (Mint & Peach) with top 3dp accent stripe and "非本周" tags
+ * 4x2 / 4x3 / 4x4 / 4x5 Glance AppWidget matching WakeUp's Week Timetable:
+ * - Dynamic Day/Night mode: clean white card in Day mode, frosted dark card in Night mode
+ * - Adaptive stretching:
+ *   - Height < 160dp (4x2): shows morning 4 sections (1..4)
+ *   - Height 160..230dp (4x3): shows 6 sections (1..6: morning + afternoon)
+ *   - Height 231..300dp (4x4): shows 8 sections (1..8)
+ *   - Height > 300dp (4x5+): shows full 10 sections (1..10: morning, afternoon & evening)
+ *   dynamically displaying afternoon and evening courses instead of stretching empty cells!
  */
 class WeekTimetableGlanceWidget : GlanceAppWidget() {
+    override val sizeMode: SizeMode = SizeMode.Exact
+
     override suspend fun provideGlance(context: Context, id: GlanceId) {
+        val isDark = (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+
         provideContent {
+            val size = LocalSize.current
+            val heightDp = size.height.value
+
+            // Adaptive visible section count based on widget stretched height
+            val visibleSections = when {
+                heightDp < 160f -> 4
+                heightDp < 230f -> 6
+                heightDp < 300f -> 8
+                else -> 10
+            }
+
+            val containerBg = if (isDark) Color(0xF0181A24) else Color.White
+            val headerMonthColor = if (isDark) Color(0xFFF3F4F6) else Color(0xFF1F2937)
+            val secNumColor = if (isDark) Color(0xFFE5E7EB) else Color(0xFF1F2937)
+            val secTimeColor = if (isDark) Color(0xFF9CA3AF) else Color(0xFF6B7280)
+
+            // Section time definitions (1..10)
+            val allSectionTimes = listOf(
+                "1" to "08:30\n09:15",
+                "2" to "09:20\n10:05",
+                "3" to "10:15\n11:00",
+                "4" to "11:05\n11:50",
+                "5" to "14:30\n15:15",
+                "6" to "15:20\n16:05",
+                "7" to "16:20\n17:05",
+                "8" to "17:10\n17:55",
+                "9" to "19:00\n19:45",
+                "10" to "19:55\n20:40"
+            )
+            val activeSectionTimes = allSectionTimes.take(visibleSections)
+
             Box(
                 modifier = GlanceModifier
                     .fillMaxSize()
                     .cornerRadius(24.dp)
-                    .background(Color.White)
+                    .background(containerBg)
                     .padding(8.dp)
             ) {
                 Column(modifier = GlanceModifier.fillMaxSize()) {
@@ -286,7 +390,7 @@ class WeekTimetableGlanceWidget : GlanceAppWidget() {
                                 style = TextStyle(
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = ColorProvider(Color(0xFF1F2937))
+                                    color = ColorProvider(headerMonthColor)
                                 )
                             )
                             Text(
@@ -294,7 +398,7 @@ class WeekTimetableGlanceWidget : GlanceAppWidget() {
                                 style = TextStyle(
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = ColorProvider(Color(0xFF1F2937))
+                                    color = ColorProvider(headerMonthColor)
                                 )
                             )
                         }
@@ -305,7 +409,11 @@ class WeekTimetableGlanceWidget : GlanceAppWidget() {
 
                         dayNames.forEachIndexed { idx, name ->
                             val isToday = (idx == 4) // Friday 16 is today in sample
-                            val textColor = if (isToday) Color(0xFF111827) else Color(0xFF6B7280)
+                            val textColor = if (isToday) {
+                                if (isDark) Color.White else Color(0xFF111827)
+                            } else {
+                                if (isDark) Color(0xFF9CA3AF) else Color(0xFF6B7280)
+                            }
                             val fontWeight = if (isToday) FontWeight.Bold else FontWeight.Medium
 
                             Column(
@@ -341,19 +449,11 @@ class WeekTimetableGlanceWidget : GlanceAppWidget() {
                     Row(
                         modifier = GlanceModifier.fillMaxWidth().defaultWeight()
                     ) {
-                        // Left Section Axis (5 sections)
+                        // Left Section Axis
                         Column(
                             modifier = GlanceModifier.width(36.dp).fillMaxHeight()
                         ) {
-                            val sectionTimesList = listOf(
-                                "1" to "08:30\n09:15",
-                                "2" to "09:20\n10:05",
-                                "3" to "10:15\n11:00",
-                                "4" to "11:05\n11:50",
-                                "5" to "14:30\n15:15"
-                            )
-
-                            sectionTimesList.forEach { (secNum, times) ->
+                            activeSectionTimes.forEach { (secNum, times) ->
                                 Column(
                                     modifier = GlanceModifier
                                         .fillMaxWidth()
@@ -364,47 +464,82 @@ class WeekTimetableGlanceWidget : GlanceAppWidget() {
                                     Text(
                                         text = secNum,
                                         style = TextStyle(
-                                            fontSize = 14.sp,
+                                            fontSize = 13.sp,
                                             fontWeight = FontWeight.Bold,
-                                            color = ColorProvider(Color(0xFF1F2937))
+                                            color = ColorProvider(secNumColor)
                                         )
                                     )
                                     Text(
                                         text = times,
                                         style = TextStyle(
-                                            fontSize = 7.5.sp,
-                                            color = ColorProvider(Color(0xFF6B7280))
+                                            fontSize = 7.sp,
+                                            color = ColorProvider(secTimeColor)
                                         )
                                     )
                                 }
                             }
                         }
 
-                        // 7 Columns with pastel cards (Mint & Peach matching Image 2)
-                        // Col 0: Mon (Section 5)
+                        // Colors for course cards depending on day/night
+                        val mintAccent = if (isDark) Color(0xFF34D399) else Color(0xFF86E3C3)
+                        val mintText = if (isDark) Color(0xFFA7F3D0) else Color(0xFF0F5145)
+
+                        val peachAccent = if (isDark) Color(0xFFFB923C) else Color(0xFFFFBD80)
+                        val peachText = if (isDark) Color(0xFFFED7AA) else Color(0xFF7A3E00)
+
+                        val lavenderAccent = if (isDark) Color(0xFF818CF8) else Color(0xFFA5B4FC)
+                        val lavenderText = if (isDark) Color(0xFFC7D2FE) else Color(0xFF3730A3)
+
+                        val skyAccent = if (isDark) Color(0xFF38BDF8) else Color(0xFF7DD3FC)
+                        val skyText = if (isDark) Color(0xFFBAE6FD) else Color(0xFF0369A1)
+
+                        // 7 Columns with pastel cards (Mint, Peach, Lavender, Sky)
+                        // Col 0: Mon
                         Column(modifier = GlanceModifier.defaultWeight().fillMaxHeight().padding(horizontal = 1.dp)) {
-                            repeat(4) { Spacer(modifier = GlanceModifier.defaultWeight()) }
-                            GlancePastelCard(
-                                title = "程序分析与...",
-                                teacher = "文明",
-                                classroom = "",
-                                isNonCurrentWeek = false,
-                                colorTheme = "peach",
-                                accentColor = Color(0xFFFFBD80),
-                                textColor = Color(0xFF7A3E00),
-                                modifier = GlanceModifier.defaultWeight()
-                            )
+                            // Sec 1..4 (Empty)
+                            repeat(minOf(4, visibleSections)) { Spacer(modifier = GlanceModifier.defaultWeight()) }
+                            // Sec 5: Peach course if visible >= 5
+                            if (visibleSections >= 5) {
+                                GlancePastelCard(
+                                    title = "程序分析与...",
+                                    teacher = "文明",
+                                    colorTheme = "peach",
+                                    accentColor = peachAccent,
+                                    textColor = peachText,
+                                    modifier = GlanceModifier.defaultWeight()
+                                )
+                            }
+                            // Sec 6..8
+                            if (visibleSections >= 6) {
+                                repeat(minOf(3, visibleSections - 5)) { Spacer(modifier = GlanceModifier.defaultWeight()) }
+                            }
+                            // Sec 9..10 if visible >= 9
+                            if (visibleSections >= 9) {
+                                GlancePastelCard(
+                                    title = "高级算法",
+                                    teacher = "李教授",
+                                    colorTheme = "sky",
+                                    accentColor = skyAccent,
+                                    textColor = skyText,
+                                    modifier = GlanceModifier.defaultWeight()
+                                )
+                                if (visibleSections >= 10) {
+                                    Spacer(modifier = GlanceModifier.defaultWeight())
+                                }
+                            }
                         }
 
-                        // Col 1: Tue (Section 3-4 Mint card, seamless without dent)
+                        // Col 1: Tue (Sec 3-4 Mint card, Sec 7-8 Lavender card)
                         Column(modifier = GlanceModifier.defaultWeight().fillMaxHeight().padding(horizontal = 1.dp)) {
+                            // Sec 1-2
                             repeat(2) { Spacer(modifier = GlanceModifier.defaultWeight()) }
+                            // Sec 3-4 (Mint card, seamless top & bottom)
                             GlancePastelCard(
                                 title = "认证与访问...",
                                 teacher = "崔永泉",
                                 colorTheme = "mint",
-                                accentColor = Color(0xFF86E3C3),
-                                textColor = Color(0xFF0F5145),
+                                accentColor = mintAccent,
+                                textColor = mintText,
                                 isTopHalf = true,
                                 modifier = GlanceModifier.defaultWeight()
                             )
@@ -412,28 +547,82 @@ class WeekTimetableGlanceWidget : GlanceAppWidget() {
                                 classroom = "@A415",
                                 isNonCurrentWeek = true,
                                 colorTheme = "mint",
-                                accentColor = Color(0xFF86E3C3),
-                                textColor = Color(0xFF0F5145),
+                                accentColor = mintAccent,
+                                textColor = mintText,
                                 isBottomHalf = true,
                                 modifier = GlanceModifier.defaultWeight()
                             )
-                            Spacer(modifier = GlanceModifier.defaultWeight())
+                            // Sec 5-6 (Empty)
+                            if (visibleSections >= 6) {
+                                repeat(minOf(2, visibleSections - 4)) { Spacer(modifier = GlanceModifier.defaultWeight()) }
+                            }
+                            // Sec 7-8 (Lavender card if visible >= 8)
+                            if (visibleSections >= 8) {
+                                GlancePastelCard(
+                                    title = "大学体育",
+                                    classroom = "@体育馆",
+                                    colorTheme = "lavender",
+                                    accentColor = lavenderAccent,
+                                    textColor = lavenderText,
+                                    modifier = GlanceModifier.defaultWeight()
+                                )
+                                Spacer(modifier = GlanceModifier.defaultWeight())
+                            }
+                            // Sec 9-10
+                            if (visibleSections >= 10) {
+                                repeat(visibleSections - 8) { Spacer(modifier = GlanceModifier.defaultWeight()) }
+                            }
                         }
 
-                        // Col 2: Wed (Empty)
+                        // Col 2: Wed (Sec 1-2 Sky card, Sec 5-6 Peach card)
                         Column(modifier = GlanceModifier.defaultWeight().fillMaxHeight().padding(horizontal = 1.dp)) {
-                            repeat(5) { Spacer(modifier = GlanceModifier.defaultWeight()) }
+                            // Sec 1-2
+                            GlancePastelCard(
+                                title = "大学英语",
+                                teacher = "Smith",
+                                colorTheme = "sky",
+                                accentColor = skyAccent,
+                                textColor = skyText,
+                                isTopHalf = true,
+                                modifier = GlanceModifier.defaultWeight()
+                            )
+                            GlancePastelCard(
+                                classroom = "@东中 201",
+                                colorTheme = "sky",
+                                accentColor = skyAccent,
+                                textColor = skyText,
+                                isBottomHalf = true,
+                                modifier = GlanceModifier.defaultWeight()
+                            )
+                            // Sec 3-4
+                            repeat(minOf(2, maxOf(0, visibleSections - 2))) { Spacer(modifier = GlanceModifier.defaultWeight()) }
+                            // Sec 5-6
+                            if (visibleSections >= 6) {
+                                GlancePastelCard(
+                                    title = "大学物理",
+                                    teacher = "陈教授",
+                                    colorTheme = "peach",
+                                    accentColor = peachAccent,
+                                    textColor = peachText,
+                                    modifier = GlanceModifier.defaultWeight()
+                                )
+                                Spacer(modifier = GlanceModifier.defaultWeight())
+                            }
+                            // Sec 7..10
+                            if (visibleSections >= 8) {
+                                repeat(visibleSections - 6) { Spacer(modifier = GlanceModifier.defaultWeight()) }
+                            }
                         }
 
-                        // Col 3: Thu (Section 3-4 Peach card, seamless without dent)
+                        // Col 3: Thu (Sec 3-4 Peach card, Sec 7-8 Lavender card)
                         Column(modifier = GlanceModifier.defaultWeight().fillMaxHeight().padding(horizontal = 1.dp)) {
                             repeat(2) { Spacer(modifier = GlanceModifier.defaultWeight()) }
                             GlancePastelCard(
                                 title = "程序分析与...",
                                 teacher = "文明",
                                 colorTheme = "peach",
-                                accentColor = Color(0xFFFFBD80),
-                                textColor = Color(0xFF7A3E00),
+                                accentColor = peachAccent,
+                                textColor = peachText,
                                 isTopHalf = true,
                                 modifier = GlanceModifier.defaultWeight()
                             )
@@ -441,23 +630,57 @@ class WeekTimetableGlanceWidget : GlanceAppWidget() {
                                 classroom = "@A415",
                                 isNonCurrentWeek = true,
                                 colorTheme = "peach",
-                                accentColor = Color(0xFFFFBD80),
-                                textColor = Color(0xFF7A3E00),
+                                accentColor = peachAccent,
+                                textColor = peachText,
                                 isBottomHalf = true,
                                 modifier = GlanceModifier.defaultWeight()
                             )
-                            Spacer(modifier = GlanceModifier.defaultWeight())
+                            if (visibleSections >= 6) {
+                                repeat(minOf(2, visibleSections - 4)) { Spacer(modifier = GlanceModifier.defaultWeight()) }
+                            }
+                            if (visibleSections >= 8) {
+                                GlancePastelCard(
+                                    title = "思想道德...",
+                                    classroom = "@文科楼",
+                                    colorTheme = "lavender",
+                                    accentColor = lavenderAccent,
+                                    textColor = lavenderText,
+                                    modifier = GlanceModifier.defaultWeight()
+                                )
+                                Spacer(modifier = GlanceModifier.defaultWeight())
+                            }
+                            if (visibleSections >= 10) {
+                                repeat(visibleSections - 8) { Spacer(modifier = GlanceModifier.defaultWeight()) }
+                            }
                         }
 
-                        // Col 4: Fri (Section 3-4 Mint card, seamless without dent)
+                        // Col 4: Fri (Sec 1-2 Sky card, Sec 3-4 Mint card, Sec 5-6 Peach card)
                         Column(modifier = GlanceModifier.defaultWeight().fillMaxHeight().padding(horizontal = 1.dp)) {
-                            repeat(2) { Spacer(modifier = GlanceModifier.defaultWeight()) }
+                            // Sec 1-2
+                            GlancePastelCard(
+                                title = "高等数学",
+                                teacher = "张教授",
+                                colorTheme = "sky",
+                                accentColor = skyAccent,
+                                textColor = skyText,
+                                isTopHalf = true,
+                                modifier = GlanceModifier.defaultWeight()
+                            )
+                            GlancePastelCard(
+                                classroom = "@东上 101",
+                                colorTheme = "sky",
+                                accentColor = skyAccent,
+                                textColor = skyText,
+                                isBottomHalf = true,
+                                modifier = GlanceModifier.defaultWeight()
+                            )
+                            // Sec 3-4
                             GlancePastelCard(
                                 title = "认证与访问...",
                                 teacher = "崔永泉",
                                 colorTheme = "mint",
-                                accentColor = Color(0xFF86E3C3),
-                                textColor = Color(0xFF0F5145),
+                                accentColor = mintAccent,
+                                textColor = mintText,
                                 isTopHalf = true,
                                 modifier = GlanceModifier.defaultWeight()
                             )
@@ -465,22 +688,37 @@ class WeekTimetableGlanceWidget : GlanceAppWidget() {
                                 classroom = "@A415",
                                 isNonCurrentWeek = true,
                                 colorTheme = "mint",
-                                accentColor = Color(0xFF86E3C3),
-                                textColor = Color(0xFF0F5145),
+                                accentColor = mintAccent,
+                                textColor = mintText,
                                 isBottomHalf = true,
                                 modifier = GlanceModifier.defaultWeight()
                             )
-                            Spacer(modifier = GlanceModifier.defaultWeight())
+                            // Sec 5-6
+                            if (visibleSections >= 6) {
+                                GlancePastelCard(
+                                    title = "线性代数",
+                                    teacher = "王教授",
+                                    colorTheme = "peach",
+                                    accentColor = peachAccent,
+                                    textColor = peachText,
+                                    modifier = GlanceModifier.defaultWeight()
+                                )
+                                Spacer(modifier = GlanceModifier.defaultWeight())
+                            }
+                            // Sec 7..10
+                            if (visibleSections >= 8) {
+                                repeat(visibleSections - 6) { Spacer(modifier = GlanceModifier.defaultWeight()) }
+                            }
                         }
 
                         // Col 5: Sat (Empty)
                         Column(modifier = GlanceModifier.defaultWeight().fillMaxHeight().padding(horizontal = 1.dp)) {
-                            repeat(5) { Spacer(modifier = GlanceModifier.defaultWeight()) }
+                            repeat(visibleSections) { Spacer(modifier = GlanceModifier.defaultWeight()) }
                         }
 
                         // Col 6: Sun (Empty)
                         Column(modifier = GlanceModifier.defaultWeight().fillMaxHeight().padding(horizontal = 1.dp)) {
-                            repeat(5) { Spacer(modifier = GlanceModifier.defaultWeight()) }
+                            repeat(visibleSections) { Spacer(modifier = GlanceModifier.defaultWeight()) }
                         }
                     }
                 }
@@ -490,8 +728,8 @@ class WeekTimetableGlanceWidget : GlanceAppWidget() {
 }
 
 /**
- * WakeUp pastel card with top accent stripe and optional "非本周" pill matching Image 2.
- * Uses custom 9-patch style seamless XML drawables to eliminate waist indentations when spanning multiple sections.
+ * WakeUp pastel card with top accent stripe and optional "非本周" pill.
+ * Supports mint, peach, lavender, and sky themes with day/night automatic drawables.
  */
 @Composable
 private fun GlancePastelCard(
@@ -499,7 +737,7 @@ private fun GlancePastelCard(
     teacher: String = "",
     classroom: String = "",
     isNonCurrentWeek: Boolean = false,
-    colorTheme: String = "mint", // "mint" or "peach"
+    colorTheme: String = "mint", // "mint", "peach", "lavender", "sky"
     accentColor: Color,
     textColor: Color,
     modifier: GlanceModifier = GlanceModifier,
@@ -512,10 +750,20 @@ private fun GlancePastelCard(
             isBottomHalf -> R.drawable.bg_widget_card_mint_bottom
             else -> R.drawable.bg_widget_card_mint_single
         }
-        else -> when {
+        "peach" -> when {
             isTopHalf -> R.drawable.bg_widget_card_peach_top
             isBottomHalf -> R.drawable.bg_widget_card_peach_bottom
             else -> R.drawable.bg_widget_card_peach_single
+        }
+        "lavender" -> when {
+            isTopHalf -> R.drawable.bg_widget_card_lavender_top
+            isBottomHalf -> R.drawable.bg_widget_card_lavender_bottom
+            else -> R.drawable.bg_widget_card_lavender_single
+        }
+        else -> when {
+            isTopHalf -> R.drawable.bg_widget_card_sky_top
+            isBottomHalf -> R.drawable.bg_widget_card_sky_bottom
+            else -> R.drawable.bg_widget_card_sky_single
         }
     }
 
@@ -526,7 +774,7 @@ private fun GlancePastelCard(
     ) {
         Column(modifier = GlanceModifier.fillMaxSize()) {
             if (!isBottomHalf) {
-                // Top accent stripe (3dp) with rounded top corners
+                // Top accent stripe (3dp)
                 Box(
                     modifier = GlanceModifier
                         .fillMaxWidth()

@@ -5,4 +5,5 @@
     android:updatePeriodMillis="900000"
     android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen"
+    android:previewImage="@drawable/widget_preview_next_class"
     android:initialLayout="@android:layout/simple_list_item_1" />
