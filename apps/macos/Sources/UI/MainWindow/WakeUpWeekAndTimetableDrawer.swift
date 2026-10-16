@@ -113,17 +113,27 @@ public struct WakeUpWeekAndTimetableDrawer: View {
 
                 Spacer()
 
-                Button(action: {
-                    isPresented = false
-                    appState.isShowingCreateSemester = true
-                }) {
-                    Text("新建课表")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(Color(hex: "#FF5A5F"))
+                HStack(spacing: 10) {
+                    Button(action: {
+                        isPresented = false
+                        appState.isShowingCreateSemester = true
+                    }) {
+                        Text("新建课表")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(Color(hex: "#FF5A5F"))
+                    }
+                    .buttonStyle(.plain)
+
+                    Button(action: {
+                        isPresented = false
+                        appState.isShowingManageSemesters = true
+                    }) {
+                        Text("管理")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
-
-
             }
 
             // 4. Horizontal Scroll of Timetable Cards (Matching WakeUp card styles)
@@ -174,6 +184,22 @@ public struct WakeUpWeekAndTimetableDrawer: View {
                             }
                         }
                         .buttonStyle(.plain)
+                        .contextMenu {
+                            if !isSelected {
+                                Button("设为主课表") {
+                                    appState.selectSemester(id: sem.id)
+                                }
+                            }
+                            Button("课表管理...") {
+                                isPresented = false
+                                appState.isShowingManageSemesters = true
+                            }
+                            if appState.semesters.count > 1 {
+                                Button("删除此课表", role: .destructive) {
+                                    appState.deleteSemester(id: sem.id)
+                                }
+                            }
+                        }
                     }
 
                     // Add Timetable Card Button
@@ -371,17 +397,27 @@ public struct WakeUpWeekPopoverView: View {
 
                 Spacer()
 
-                Button(action: {
-                    isPresented = false
-                    appState.isShowingCreateSemester = true
-                }) {
-                    Text("新建课表")
-                        .font(.system(size: 11.5, weight: .semibold))
-                        .foregroundColor(Color(hex: "#FF5A5F"))
+                HStack(spacing: 8) {
+                    Button(action: {
+                        isPresented = false
+                        appState.isShowingCreateSemester = true
+                    }) {
+                        Text("新建课表")
+                            .font(.system(size: 11.5, weight: .semibold))
+                            .foregroundColor(Color(hex: "#FF5A5F"))
+                    }
+                    .buttonStyle(.plain)
+
+                    Button(action: {
+                        isPresented = false
+                        appState.isShowingManageSemesters = true
+                    }) {
+                        Text("管理")
+                            .font(.system(size: 11.5, weight: .medium))
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
-
-
             }
 
             // 5. Horizontal Scroll of Semester Cards
@@ -429,6 +465,22 @@ public struct WakeUpWeekPopoverView: View {
                             }
                         }
                         .buttonStyle(.plain)
+                        .contextMenu {
+                            if !isSelected {
+                                Button("设为主课表") {
+                                    appState.selectSemester(id: sem.id)
+                                }
+                            }
+                            Button("课表管理...") {
+                                isPresented = false
+                                appState.isShowingManageSemesters = true
+                            }
+                            if appState.semesters.count > 1 {
+                                Button("删除此课表", role: .destructive) {
+                                    appState.deleteSemester(id: sem.id)
+                                }
+                            }
+                        }
                     }
                 }
                 .padding(.vertical, 2)

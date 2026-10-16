@@ -209,6 +209,10 @@ public struct MainWindowView: View {
         .sheet(isPresented: $appState.isShowingCreateSemester) {
             SemesterCreateSheet(appState: appState)
         }
+        // Manage Semesters Sheet
+        .sheet(isPresented: $appState.isShowingManageSemesters) {
+            SemesterManageSheet(appState: appState)
+        }
 
         // Timetable Profiles Sheet ("设置时间表" - Image 1)
         .sheet(isPresented: $appState.isShowingSectionProfiles) {

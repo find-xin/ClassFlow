@@ -11,6 +11,8 @@ import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.GlanceAppWidgetReceiver
 import androidx.glance.appwidget.SizeMode
 import androidx.glance.appwidget.cornerRadius
+import androidx.glance.appwidget.lazy.LazyColumn
+import androidx.glance.appwidget.lazy.items
 import androidx.glance.appwidget.provideContent
 import androidx.glance.layout.*
 import androidx.glance.text.FontWeight
@@ -177,17 +179,6 @@ class TodayClassesGlanceWidget : GlanceAppWidget() {
                 TodayCourse("移动应用开发", "20:45 - 22:15 (第 11-12 节)", "@信软大楼 402", Color(0xFF0284C7))
             )
 
-            // Adaptive count based on widget stretched height
-            val visibleCount = when {
-                heightDp < 145f -> 2 // 4x2 standard
-                heightDp < 205f -> 3 // 4x3 stretched
-                heightDp < 265f -> 4 // 4x4 stretched
-                heightDp < 320f -> 5 // 4x5 stretched
-                else -> 6           // 4x6+ stretched
-            }
-
-            val displayedCourses = allCourses.take(visibleCount)
-
             Box(
                 modifier = GlanceModifier
                     .fillMaxSize()
@@ -223,7 +214,7 @@ class TodayClassesGlanceWidget : GlanceAppWidget() {
                                 .padding(horizontal = 6.dp, vertical = 2.dp)
                         ) {
                             Text(
-                                text = "共 ${displayedCourses.size} 节",
+                                text = "共 ${allCourses.size} 节",
                                 style = TextStyle(
                                     fontSize = 10.5.sp,
                                     fontWeight = FontWeight.Bold,
@@ -235,12 +226,11 @@ class TodayClassesGlanceWidget : GlanceAppWidget() {
 
                     Spacer(modifier = GlanceModifier.height(8.dp))
 
-                    // Adaptive Course Rows List
-                    Column(
-                        modifier = GlanceModifier.fillMaxWidth().defaultWeight(),
-                        verticalAlignment = Alignment.Top
+                    // Scrollable & Adaptive Course Rows List (Glance LazyColumn)
+                    LazyColumn(
+                        modifier = GlanceModifier.fillMaxWidth().defaultWeight()
                     ) {
-                        displayedCourses.forEachIndexed { index, course ->
+                        items(allCourses) { course ->
                             GlanceCourseRow(
                                 title = course.title,
                                 time = course.time,
@@ -250,9 +240,7 @@ class TodayClassesGlanceWidget : GlanceAppWidget() {
                                 timeColor = timeColor,
                                 locColor = locColor
                             )
-                            if (index < displayedCourses.size - 1) {
-                                Spacer(modifier = GlanceModifier.height(6.dp))
-                            }
+                            Spacer(modifier = GlanceModifier.height(6.dp))
                         }
                     }
                 }
@@ -319,14 +307,15 @@ private fun GlanceCourseRow(
 }
 
 /**
- * 4x2 / 4x3 / 4x4 / 4x5 Glance AppWidget matching WakeUp's Week Timetable:
+ * 4x2 / 4x3 / 4x4 / 4x5 / 4x6 Glance AppWidget matching WakeUp's Week Timetable:
  * - Dynamic Day/Night mode: clean white card in Day mode, frosted dark card in Night mode
  * - Adaptive stretching:
- *   - Height < 160dp (4x2): shows morning 4 sections (1..4)
- *   - Height 160..230dp (4x3): shows 6 sections (1..6: morning + afternoon)
- *   - Height 231..300dp (4x4): shows 8 sections (1..8)
- *   - Height > 300dp (4x5+): shows full 10 sections (1..10: morning, afternoon & evening)
- *   dynamically displaying afternoon and evening courses instead of stretching empty cells!
+ *   - Height < 135dp (4x2 standard): shows morning 4 sections (1..4)
+ *   - Height 135..179dp (4x3): shows 6 sections (1..6)
+ *   - Height 180..224dp (4x4): shows 8 sections (1..8)
+ *   - Height 225..264dp (4x5): shows 10 sections (1..10)
+ *   - Height >= 265dp (4x6 / maximum stretch): shows full 12 sections (1..12: morning, afternoon & evening!)
+ *   Dynamically populates afternoon and evening courses instead of stretching empty cells or clipping!
  */
 class WeekTimetableGlanceWidget : GlanceAppWidget() {
     override val sizeMode: SizeMode = SizeMode.Exact
@@ -340,10 +329,11 @@ class WeekTimetableGlanceWidget : GlanceAppWidget() {
 
             // Adaptive visible section count based on widget stretched height
             val visibleSections = when {
-                heightDp < 160f -> 4
-                heightDp < 230f -> 6
-                heightDp < 300f -> 8
-                else -> 10
+                heightDp < 135f -> 4
+                heightDp < 180f -> 6
+                heightDp < 225f -> 8
+                heightDp < 265f -> 10
+                else -> 12
             }
 
             val containerBg = if (isDark) Color(0xF0181A24) else Color.White
@@ -351,7 +341,7 @@ class WeekTimetableGlanceWidget : GlanceAppWidget() {
             val secNumColor = if (isDark) Color(0xFFE5E7EB) else Color(0xFF1F2937)
             val secTimeColor = if (isDark) Color(0xFF9CA3AF) else Color(0xFF6B7280)
 
-            // Section time definitions (1..10)
+            // Section time definitions (1..12: full morning, afternoon, and evening sections)
             val allSectionTimes = listOf(
                 "1" to "08:30\n09:15",
                 "2" to "09:20\n10:05",
@@ -362,9 +352,14 @@ class WeekTimetableGlanceWidget : GlanceAppWidget() {
                 "7" to "16:20\n17:05",
                 "8" to "17:10\n17:55",
                 "9" to "19:00\n19:45",
-                "10" to "19:55\n20:40"
+                "10" to "19:55\n20:40",
+                "11" to "20:45\n21:30",
+                "12" to "21:35\n22:20"
             )
             val activeSectionTimes = allSectionTimes.take(visibleSections)
+
+            val secNumFontSize = if (visibleSections > 8) 11.sp else 13.sp
+            val secTimeFontSize = if (visibleSections > 8) 6.5.sp else 7.sp
 
             Box(
                 modifier = GlanceModifier
@@ -464,7 +459,7 @@ class WeekTimetableGlanceWidget : GlanceAppWidget() {
                                     Text(
                                         text = secNum,
                                         style = TextStyle(
-                                            fontSize = 13.sp,
+                                            fontSize = secNumFontSize,
                                             fontWeight = FontWeight.Bold,
                                             color = ColorProvider(secNumColor)
                                         )
@@ -472,7 +467,7 @@ class WeekTimetableGlanceWidget : GlanceAppWidget() {
                                     Text(
                                         text = times,
                                         style = TextStyle(
-                                            fontSize = 7.sp,
+                                            fontSize = secTimeFontSize,
                                             color = ColorProvider(secTimeColor)
                                         )
                                     )
@@ -527,31 +522,37 @@ class WeekTimetableGlanceWidget : GlanceAppWidget() {
                                     Spacer(modifier = GlanceModifier.defaultWeight())
                                 }
                             }
+                            // Sec 11..12
+                            if (visibleSections >= 11) {
+                                repeat(visibleSections - 10) { Spacer(modifier = GlanceModifier.defaultWeight()) }
+                            }
                         }
 
                         // Col 1: Tue (Sec 3-4 Mint card, Sec 7-8 Lavender card)
                         Column(modifier = GlanceModifier.defaultWeight().fillMaxHeight().padding(horizontal = 1.dp)) {
                             // Sec 1-2
-                            repeat(2) { Spacer(modifier = GlanceModifier.defaultWeight()) }
+                            repeat(minOf(2, visibleSections)) { Spacer(modifier = GlanceModifier.defaultWeight()) }
                             // Sec 3-4 (Mint card, seamless top & bottom)
-                            GlancePastelCard(
-                                title = "认证与访问...",
-                                teacher = "崔永泉",
-                                colorTheme = "mint",
-                                accentColor = mintAccent,
-                                textColor = mintText,
-                                isTopHalf = true,
-                                modifier = GlanceModifier.defaultWeight()
-                            )
-                            GlancePastelCard(
-                                classroom = "@A415",
-                                isNonCurrentWeek = true,
-                                colorTheme = "mint",
-                                accentColor = mintAccent,
-                                textColor = mintText,
-                                isBottomHalf = true,
-                                modifier = GlanceModifier.defaultWeight()
-                            )
+                            if (visibleSections >= 4) {
+                                GlancePastelCard(
+                                    title = "认证与访问...",
+                                    teacher = "崔永泉",
+                                    colorTheme = "mint",
+                                    accentColor = mintAccent,
+                                    textColor = mintText,
+                                    isTopHalf = true,
+                                    modifier = GlanceModifier.defaultWeight()
+                                )
+                                GlancePastelCard(
+                                    classroom = "@A415",
+                                    isNonCurrentWeek = true,
+                                    colorTheme = "mint",
+                                    accentColor = mintAccent,
+                                    textColor = mintText,
+                                    isBottomHalf = true,
+                                    modifier = GlanceModifier.defaultWeight()
+                                )
+                            }
                             // Sec 5-6 (Empty)
                             if (visibleSections >= 6) {
                                 repeat(minOf(2, visibleSections - 4)) { Spacer(modifier = GlanceModifier.defaultWeight()) }
@@ -568,13 +569,13 @@ class WeekTimetableGlanceWidget : GlanceAppWidget() {
                                 )
                                 Spacer(modifier = GlanceModifier.defaultWeight())
                             }
-                            // Sec 9-10
-                            if (visibleSections >= 10) {
+                            // Sec 9..12
+                            if (visibleSections >= 9) {
                                 repeat(visibleSections - 8) { Spacer(modifier = GlanceModifier.defaultWeight()) }
                             }
                         }
 
-                        // Col 2: Wed (Sec 1-2 Sky card, Sec 5-6 Peach card)
+                        // Col 2: Wed (Sec 1-2 Sky card, Sec 5-6 Peach card, Sec 9-10 Mint card)
                         Column(modifier = GlanceModifier.defaultWeight().fillMaxHeight().padding(horizontal = 1.dp)) {
                             // Sec 1-2
                             GlancePastelCard(
@@ -608,33 +609,53 @@ class WeekTimetableGlanceWidget : GlanceAppWidget() {
                                 )
                                 Spacer(modifier = GlanceModifier.defaultWeight())
                             }
-                            // Sec 7..10
+                            // Sec 7..8
                             if (visibleSections >= 8) {
-                                repeat(visibleSections - 6) { Spacer(modifier = GlanceModifier.defaultWeight()) }
+                                repeat(minOf(2, visibleSections - 6)) { Spacer(modifier = GlanceModifier.defaultWeight()) }
+                            }
+                            // Sec 9..10 (Evening class)
+                            if (visibleSections >= 9) {
+                                GlancePastelCard(
+                                    title = "数据库设计",
+                                    teacher = "张老师",
+                                    colorTheme = "mint",
+                                    accentColor = mintAccent,
+                                    textColor = mintText,
+                                    modifier = GlanceModifier.defaultWeight()
+                                )
+                                if (visibleSections >= 10) {
+                                    Spacer(modifier = GlanceModifier.defaultWeight())
+                                }
+                            }
+                            // Sec 11..12
+                            if (visibleSections >= 11) {
+                                repeat(visibleSections - 10) { Spacer(modifier = GlanceModifier.defaultWeight()) }
                             }
                         }
 
                         // Col 3: Thu (Sec 3-4 Peach card, Sec 7-8 Lavender card)
                         Column(modifier = GlanceModifier.defaultWeight().fillMaxHeight().padding(horizontal = 1.dp)) {
-                            repeat(2) { Spacer(modifier = GlanceModifier.defaultWeight()) }
-                            GlancePastelCard(
-                                title = "程序分析与...",
-                                teacher = "文明",
-                                colorTheme = "peach",
-                                accentColor = peachAccent,
-                                textColor = peachText,
-                                isTopHalf = true,
-                                modifier = GlanceModifier.defaultWeight()
-                            )
-                            GlancePastelCard(
-                                classroom = "@A415",
-                                isNonCurrentWeek = true,
-                                colorTheme = "peach",
-                                accentColor = peachAccent,
-                                textColor = peachText,
-                                isBottomHalf = true,
-                                modifier = GlanceModifier.defaultWeight()
-                            )
+                            repeat(minOf(2, visibleSections)) { Spacer(modifier = GlanceModifier.defaultWeight()) }
+                            if (visibleSections >= 4) {
+                                GlancePastelCard(
+                                    title = "程序分析与...",
+                                    teacher = "文明",
+                                    colorTheme = "peach",
+                                    accentColor = peachAccent,
+                                    textColor = peachText,
+                                    isTopHalf = true,
+                                    modifier = GlanceModifier.defaultWeight()
+                                )
+                                GlancePastelCard(
+                                    classroom = "@A415",
+                                    isNonCurrentWeek = true,
+                                    colorTheme = "peach",
+                                    accentColor = peachAccent,
+                                    textColor = peachText,
+                                    isBottomHalf = true,
+                                    modifier = GlanceModifier.defaultWeight()
+                                )
+                            }
                             if (visibleSections >= 6) {
                                 repeat(minOf(2, visibleSections - 4)) { Spacer(modifier = GlanceModifier.defaultWeight()) }
                             }
@@ -649,12 +670,12 @@ class WeekTimetableGlanceWidget : GlanceAppWidget() {
                                 )
                                 Spacer(modifier = GlanceModifier.defaultWeight())
                             }
-                            if (visibleSections >= 10) {
+                            if (visibleSections >= 9) {
                                 repeat(visibleSections - 8) { Spacer(modifier = GlanceModifier.defaultWeight()) }
                             }
                         }
 
-                        // Col 4: Fri (Sec 1-2 Sky card, Sec 3-4 Mint card, Sec 5-6 Peach card)
+                        // Col 4: Fri (Sec 1-2 Sky card, Sec 3-4 Mint card, Sec 5-6 Peach card, Sec 9-10 Sky card)
                         Column(modifier = GlanceModifier.defaultWeight().fillMaxHeight().padding(horizontal = 1.dp)) {
                             // Sec 1-2
                             GlancePastelCard(
@@ -675,24 +696,26 @@ class WeekTimetableGlanceWidget : GlanceAppWidget() {
                                 modifier = GlanceModifier.defaultWeight()
                             )
                             // Sec 3-4
-                            GlancePastelCard(
-                                title = "认证与访问...",
-                                teacher = "崔永泉",
-                                colorTheme = "mint",
-                                accentColor = mintAccent,
-                                textColor = mintText,
-                                isTopHalf = true,
-                                modifier = GlanceModifier.defaultWeight()
-                            )
-                            GlancePastelCard(
-                                classroom = "@A415",
-                                isNonCurrentWeek = true,
-                                colorTheme = "mint",
-                                accentColor = mintAccent,
-                                textColor = mintText,
-                                isBottomHalf = true,
-                                modifier = GlanceModifier.defaultWeight()
-                            )
+                            if (visibleSections >= 4) {
+                                GlancePastelCard(
+                                    title = "认证与访问...",
+                                    teacher = "崔永泉",
+                                    colorTheme = "mint",
+                                    accentColor = mintAccent,
+                                    textColor = mintText,
+                                    isTopHalf = true,
+                                    modifier = GlanceModifier.defaultWeight()
+                                )
+                                GlancePastelCard(
+                                    classroom = "@A415",
+                                    isNonCurrentWeek = true,
+                                    colorTheme = "mint",
+                                    accentColor = mintAccent,
+                                    textColor = mintText,
+                                    isBottomHalf = true,
+                                    modifier = GlanceModifier.defaultWeight()
+                                )
+                            }
                             // Sec 5-6
                             if (visibleSections >= 6) {
                                 GlancePastelCard(
@@ -705,9 +728,27 @@ class WeekTimetableGlanceWidget : GlanceAppWidget() {
                                 )
                                 Spacer(modifier = GlanceModifier.defaultWeight())
                             }
-                            // Sec 7..10
+                            // Sec 7..8
                             if (visibleSections >= 8) {
-                                repeat(visibleSections - 6) { Spacer(modifier = GlanceModifier.defaultWeight()) }
+                                repeat(minOf(2, visibleSections - 6)) { Spacer(modifier = GlanceModifier.defaultWeight()) }
+                            }
+                            // Sec 9..10 (Evening class)
+                            if (visibleSections >= 9) {
+                                GlancePastelCard(
+                                    title = "移动开发实战",
+                                    teacher = "李教授",
+                                    colorTheme = "sky",
+                                    accentColor = skyAccent,
+                                    textColor = skyText,
+                                    modifier = GlanceModifier.defaultWeight()
+                                )
+                                if (visibleSections >= 10) {
+                                    Spacer(modifier = GlanceModifier.defaultWeight())
+                                }
+                            }
+                            // Sec 11..12
+                            if (visibleSections >= 11) {
+                                repeat(visibleSections - 10) { Spacer(modifier = GlanceModifier.defaultWeight()) }
                             }
                         }
 

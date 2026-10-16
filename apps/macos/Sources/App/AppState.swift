@@ -33,6 +33,7 @@ public final class AppState {
     public var importErrorMessage: String? = nil
 
     public var isShowingCreateSemester: Bool = false
+    public var isShowingManageSemesters: Bool = false
     public var isShowingEditSectionTimes: Bool = false
     public var editingSemesterForSections: Semester? = nil
     public var isShowingSectionProfiles: Bool = false
