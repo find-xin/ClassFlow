@@ -50,12 +50,12 @@ import java.util.*
 @Composable
 fun MacSettingsDialog(
     appSettings: AppSettings,
-    sectionTimes: List<SectionTime>,
-    courses: List<Course>,
+    sectionTimes: List<SectionTime> = emptyList(),
+    courses: List<Course> = emptyList(),
     isDark: Boolean,
     onUpdateSettings: (AppSettings) -> Unit,
-    onUpdateSections: (List<SectionTime>) -> Unit,
-    onDeleteCourse: (Course) -> Unit,
+    onUpdateSections: (List<SectionTime>) -> Unit = {},
+    onDeleteCourse: (Course) -> Unit = {},
     onImportRequest: (ImportType) -> Unit,
     onExportRequest: (Boolean) -> Unit, // true for classflow, false for ics
     onDismiss: () -> Unit
@@ -75,10 +75,7 @@ fun MacSettingsDialog(
         "general" to "通用",
         "sync" to "云同步",
         "notifications" to "通知",
-        "calendar" to "日历",
-        "sections" to "作息时间",
         "backup" to "备份导入",
-        "courses" to "已选课程",
         "about" to "关于"
     )
 
@@ -186,17 +183,7 @@ fun MacSettingsDialog(
                             textSecondary = textSecondary,
                             onUpdateSettings = onUpdateSettings,
                             onOpenAppearance = { isShowingAppearance = true },
-                            onOpenSections = { selectedCategory = "sections" },
-                            onOpenBackup = { selectedCategory = "backup" },
-                            onOpenCourses = { selectedCategory = "courses" }
-                        )
-                        "sections" -> SectionsSettingsView(
-                            sectionTimes = sectionTimes,
-                            isDark = isDark,
-                            cardBg = cardBg,
-                            textPrimary = textPrimary,
-                            textSecondary = textSecondary,
-                            onUpdateSections = onUpdateSections
+                            onOpenBackup = { selectedCategory = "backup" }
                         )
                         "sync" -> SyncSettingsView(
                             appSettings = appSettings,
@@ -212,14 +199,6 @@ fun MacSettingsDialog(
                             textPrimary = textPrimary,
                             textSecondary = textSecondary
                         )
-                        "calendar" -> CalendarSettingsView(
-                            appSettings = appSettings,
-                            isDark = isDark,
-                            cardBg = cardBg,
-                            textPrimary = textPrimary,
-                            textSecondary = textSecondary,
-                            onUpdateSettings = onUpdateSettings
-                        )
                         "backup" -> BackupSettingsView(
                             isDark = isDark,
                             cardBg = cardBg,
@@ -227,14 +206,6 @@ fun MacSettingsDialog(
                             textSecondary = textSecondary,
                             onImportRequest = onImportRequest,
                             onExportRequest = onExportRequest
-                        )
-                        "courses" -> CoursesSettingsView(
-                            courses = courses,
-                            isDark = isDark,
-                            cardBg = cardBg,
-                            textPrimary = textPrimary,
-                            textSecondary = textSecondary,
-                            onDeleteCourse = onDeleteCourse
                         )
                         "about" -> AboutSettingsView(
                             isDark = isDark,
@@ -267,9 +238,7 @@ private fun GeneralSettingsView(
     textSecondary: Color,
     onUpdateSettings: (AppSettings) -> Unit,
     onOpenAppearance: () -> Unit,
-    onOpenSections: () -> Unit,
-    onOpenBackup: () -> Unit,
-    onOpenCourses: () -> Unit
+    onOpenBackup: () -> Unit
 ) {
     Text("外观与显示", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = textPrimary)
 
@@ -374,17 +343,6 @@ private fun GeneralSettingsView(
             HorizontalDivider(color = if (isDark) Color.White.copy(alpha = 0.08f) else Color(0xFFF0F0F2))
 
             QuickLinkRow(
-                icon = Icons.Default.AccessTime,
-                title = "作息时间表设置 (节次时长与联动)",
-                subtitle = "直接键盘输入修改全天各节次开始与结束时间",
-                textPrimary = textPrimary,
-                textSecondary = textSecondary,
-                onClick = onOpenSections
-            )
-
-            HorizontalDivider(color = if (isDark) Color.White.copy(alpha = 0.08f) else Color(0xFFF0F0F2))
-
-            QuickLinkRow(
                 icon = Icons.Default.ImportExport,
                 title = "数据备份与导入 / 导出",
                 subtitle = "ClassFlow 备份包、ICS 日历、教务脚本 JSON",
@@ -392,159 +350,7 @@ private fun GeneralSettingsView(
                 textSecondary = textSecondary,
                 onClick = onOpenBackup
             )
-
-            HorizontalDivider(color = if (isDark) Color.White.copy(alpha = 0.08f) else Color(0xFFF0F0F2))
-
-            QuickLinkRow(
-                icon = Icons.Default.MenuBook,
-                title = "已选课程管理",
-                subtitle = "查看、编辑或删除本学期已添加课程",
-                textPrimary = textPrimary,
-                textSecondary = textSecondary,
-                onClick = onOpenCourses
-            )
         }
-    }
-}
-
-@Composable
-private fun QuickLinkRow(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    title: String,
-    subtitle: String,
-    textPrimary: Color,
-    textSecondary: Color,
-    onClick: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .clickable(onClick = onClick)
-            .padding(vertical = 4.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xFFFF5A5F).copy(alpha = 0.12f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(icon, contentDescription = null, tint = Color(0xFFFF5A5F), modifier = Modifier.size(18.dp))
-            }
-            Spacer(modifier = Modifier.width(12.dp))
-            Column {
-                Text(title, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold, color = textPrimary)
-                Text(subtitle, fontSize = 11.sp, color = textSecondary)
-            }
-        }
-        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = textSecondary, modifier = Modifier.size(18.dp))
-    }
-}
-
-@Composable
-private fun SectionsSettingsView(
-    sectionTimes: List<SectionTime>,
-    isDark: Boolean,
-    cardBg: Color,
-    textPrimary: Color,
-    textSecondary: Color,
-    onUpdateSections: (List<SectionTime>) -> Unit
-) {
-    var editingSection by remember { mutableStateOf<SectionTime?>(null) }
-    val currentList = remember { mutableStateListOf<SectionTime>().apply { addAll(sectionTimes) } }
-
-    Text("上课节次与时间", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = textPrimary)
-    Text("支持直接键盘输入具体时间 (时:分)，调整任意节次上下课作息：", fontSize = 11.5.sp, color = textSecondary)
-
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        currentList.forEach { sec ->
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { editingSection = sec },
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = cardBg)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("第 ${sec.section} 节", fontWeight = FontWeight.Bold, fontSize = 13.5.sp, color = textPrimary)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = "${sec.startTime} ~ ${sec.endTime}",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color(0xFF4F46E5)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Icon(Icons.Default.Edit, contentDescription = null, tint = textSecondary, modifier = Modifier.size(16.dp))
-                    }
-                }
-            }
-        }
-    }
-
-    // Direct Time Input Dialog
-    editingSection?.let { sec ->
-        var startInput by remember { mutableStateOf(sec.startTime) }
-        var endInput by remember { mutableStateOf(sec.endTime) }
-
-        AlertDialog(
-            onDismissRequest = { editingSection = null },
-            containerColor = if (isDark) Color(0xFF1E202B) else Color.White,
-            title = {
-                Text("修改第 ${sec.section} 节时间", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = textPrimary)
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("格式为 HH:mm (例如 08:00)", fontSize = 12.sp, color = textSecondary)
-                    OutlinedTextField(
-                        value = startInput,
-                        onValueChange = { startInput = it },
-                        label = { Text("上课时间") },
-                        singleLine = true,
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    OutlinedTextField(
-                        value = endInput,
-                        onValueChange = { endInput = it },
-                        label = { Text("下课时间") },
-                        singleLine = true,
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        val idx = currentList.indexOfFirst { it.section == sec.section }
-                        if (idx >= 0) {
-                            currentList[idx] = sec.copy(startTime = startInput.trim(), endTime = endInput.trim())
-                            onUpdateSections(currentList.toList())
-                        }
-                        editingSection = null
-                    },
-                    shape = RoundedCornerShape(10.dp)
-                ) {
-                    Text("保存")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { editingSection = null }) {
-                    Text("取消")
-                }
-            }
-        )
     }
 }
 
@@ -850,132 +656,7 @@ private fun NotificationsSettingsView(
     }
 }
 
-@Composable
-private fun CalendarSettingsView(
-    appSettings: AppSettings,
-    isDark: Boolean,
-    cardBg: Color,
-    textPrimary: Color,
-    textSecondary: Color,
-    onUpdateSettings: (AppSettings) -> Unit
-) {
-    val context = androidx.compose.ui.platform.LocalContext.current
 
-    Text("系统日历整合与同步", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = textPrimary)
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = cardBg)
-    ) {
-        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            // Target Calendar Name
-            OutlinedTextField(
-                value = appSettings.calendarName,
-                onValueChange = { onUpdateSettings(appSettings.copy(calendarName = it)) },
-                label = { Text("目标日历名称") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            HorizontalDivider(color = if (isDark) Color.White.copy(alpha = 0.08f) else Color(0xFFF0F0F2))
-
-            // Reminder minutes selection
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("上课前提醒", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = textPrimary)
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    val reminderOptions = listOf(
-                        0 to "不提醒",
-                        5 to "提前5分",
-                        10 to "提前10分",
-                        15 to "提前15分",
-                        30 to "提前30分"
-                    )
-                    reminderOptions.forEach { (mins, label) ->
-                        val currentMins = appSettings.calendarReminderMinutes ?: 0
-                        val isSel = (currentMins == mins)
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (isSel) Color(0xFFFF5A5F) else if (isDark) Color(0xFF282B3C) else Color(0xFFF3F4F6))
-                                .clickable {
-                                    onUpdateSettings(appSettings.copy(calendarReminderMinutes = if (mins == 0) null else mins))
-                                }
-                                .padding(vertical = 7.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = label,
-                                fontSize = 10.sp,
-                                fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
-                                color = if (isSel) Color.White else textSecondary
-                            )
-                        }
-                    }
-                }
-            }
-
-            HorizontalDivider(color = if (isDark) Color.White.copy(alpha = 0.08f) else Color(0xFFF0F0F2))
-
-            // Include Notes Switch
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("在日历事件备注中包含教师与节次", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = textPrimary)
-                    Text("同步时将任课教师、节次时间与地点附加到日历说明中", fontSize = 11.sp, color = textSecondary)
-                }
-                Switch(
-                    checked = appSettings.calendarIncludeNotes,
-                    onCheckedChange = { onUpdateSettings(appSettings.copy(calendarIncludeNotes = it)) },
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = Color.White,
-                        checkedTrackColor = Color(0xFFFF5A5F)
-                    )
-                )
-            }
-
-            HorizontalDivider(color = if (isDark) Color.White.copy(alpha = 0.08f) else Color(0xFFF0F0F2))
-
-            // Sync Buttons matching macOS CalendarSettingsTab
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Button(
-                    onClick = {
-                        android.widget.Toast.makeText(context, "已成功将本学期课程同步至系统日历「${appSettings.calendarName}」！", android.widget.Toast.LENGTH_SHORT).show()
-                    },
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(10.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4F46E5))
-                ) {
-                    Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("同步到系统日历", fontSize = 12.sp)
-                }
-
-                OutlinedButton(
-                    onClick = {
-                        android.widget.Toast.makeText(context, "已从系统日历「${appSettings.calendarName}」中清除已同步日程", android.widget.Toast.LENGTH_SHORT).show()
-                    },
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(10.dp)
-                ) {
-                    Icon(Icons.Default.DeleteOutline, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("清空已同步日程", fontSize = 12.sp)
-                }
-            }
-        }
-    }
-}
 
 @Composable
 private fun BackupSettingsView(
@@ -1063,52 +744,7 @@ private fun BackupSettingsView(
     }
 }
 
-@Composable
-private fun CoursesSettingsView(
-    courses: List<Course>,
-    isDark: Boolean,
-    cardBg: Color,
-    textPrimary: Color,
-    textSecondary: Color,
-    onDeleteCourse: (Course) -> Unit
-) {
-    Text("已选课程管理 (${courses.size} 门)", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = textPrimary)
 
-    if (courses.isEmpty()) {
-        Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
-            Text("暂无添加的课程", color = textSecondary)
-        }
-    } else {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            courses.forEach { course ->
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = cardBg)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(course.name, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = textPrimary)
-                            Text(
-                                text = "教师：${course.teacher ?: "未填写"} · ${course.schedules.size} 个安排",
-                                fontSize = 11.5.sp,
-                                color = textSecondary
-                            )
-                        }
-                        IconButton(onClick = { onDeleteCourse(course) }) {
-                            Icon(Icons.Default.Delete, contentDescription = "删除", tint = MaterialTheme.colorScheme.error)
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
 
 @Composable
 private fun AboutSettingsView(
@@ -1143,5 +779,42 @@ private fun AboutSettingsView(
                 Text("检查更新")
             }
         }
+    }
+}
+
+@Composable
+private fun QuickLinkRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String,
+    textPrimary: Color,
+    textSecondary: Color,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(22.dp)
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, fontWeight = FontWeight.SemiBold, fontSize = 13.5.sp, color = textPrimary)
+            Text(subtitle, fontSize = 11.sp, color = textSecondary)
+        }
+        Icon(
+            imageVector = Icons.Default.ChevronRight,
+            contentDescription = null,
+            tint = textSecondary.copy(alpha = 0.5f),
+            modifier = Modifier.size(16.dp)
+        )
     }
 }

@@ -92,6 +92,14 @@ fun TimetableAppearanceDialog(
     val textSecondary = if (isDark) Color(0xFFA1A3AC) else Color(0xFF6B7280)
     val dividerColor = if (isDark) Color.White.copy(alpha = 0.08f) else Color(0xFFF0F0F2)
 
+    val photoPickerLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
+    ) { uri: android.net.Uri? ->
+        if (uri != null) {
+            onUpdateSettings(settings.copy(customWallpaperUri = uri.toString()))
+        }
+    }
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -223,6 +231,48 @@ fun TimetableAppearanceDialog(
                                 textPrimary = textPrimary,
                                 onCheckedChange = { onUpdateSettings(settings.copy(usePureColorBackground = it)) }
                             )
+                            HorizontalDivider(color = dividerColor)
+
+                            // Custom wallpaper picker row matching macOS
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("背景图片", fontSize = 13.5.sp, color = textPrimary)
+                                    Text(
+                                        if (!settings.customWallpaperUri.isNullOrBlank()) "已选择自定义背景壁纸" else "当前使用主题预设背景",
+                                        fontSize = 11.sp,
+                                        color = textSecondary
+                                    )
+                                }
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    if (!settings.customWallpaperUri.isNullOrBlank()) {
+                                        OutlinedButton(
+                                            onClick = { onUpdateSettings(settings.copy(customWallpaperUri = null)) },
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                            shape = RoundedCornerShape(8.dp),
+                                            modifier = Modifier.height(28.dp)
+                                        ) {
+                                            Text("恢复默认", fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
+                                        }
+                                    }
+                                    Button(
+                                        onClick = { photoPickerLauncher.launch("image/*") },
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                                        shape = RoundedCornerShape(8.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF5A5F)),
+                                        modifier = Modifier.height(28.dp)
+                                    ) {
+                                        Text(
+                                            if (!settings.customWallpaperUri.isNullOrBlank()) "更换图片..." else "选择壁纸...",
+                                            fontSize = 11.sp,
+                                            color = Color.White
+                                        )
+                                    }
+                                }
+                            }
                             HorizontalDivider(color = dividerColor)
                             AppearanceSwitchRow(
                                 title = "显示网格辅助线",

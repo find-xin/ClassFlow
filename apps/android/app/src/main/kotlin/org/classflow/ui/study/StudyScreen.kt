@@ -439,7 +439,8 @@ fun StudyScreen() {
                     PomodoroStatisticsCard(
                         dailyMinutesMap = dailyMinutesMap,
                         completedPomodoroCount = completedPomodoroCount,
-                        tasks = tasks
+                        tasks = tasks,
+                        focusRecords = focusRecords
                     )
                 }
             }
@@ -1317,33 +1318,119 @@ private fun RecentFocusRecordsCard(records: List<FocusRecord>) {
 // -------------------------------------------------------------
 // Statistics & Heatmap Card (macOS PomodoroStatisticsView Parity)
 // -------------------------------------------------------------
+enum class TrendPeriod(val label: String) {
+    PAST_7_DAYS("近7天"),
+    WEEKLY("按周趋势"),
+    MONTHLY("按月趋势")
+}
+
+enum class DonutTimeRange(val label: String) {
+    WEEK("近7天"),
+    MONTH("近30天"),
+    YEAR("按年查看"),
+    ALL("全部")
+}
+
+data class DayHeatInfo(
+    val dateKey: String,
+    val minutes: Int,
+    val count: Int
+)
+
+data class TrendPoint(
+    val id: String,
+    val label: String,
+    val minutes: Int,
+    val count: Int,
+    val isCurrent: Boolean
+)
+
+data class DonutSliceData(
+    val id: String,
+    val name: String,
+    val minutes: Int,
+    val percentage: Double,
+    val color: Color
+)
+
 @Composable
 private fun PomodoroStatisticsCard(
     dailyMinutesMap: Map<String, Int>,
     completedPomodoroCount: Int,
-    tasks: List<StudyTask>
+    tasks: List<StudyTask>,
+    focusRecords: List<FocusRecord> = emptyList()
 ) {
-    val totalMinutes = dailyMinutesMap.values.sum()
-    val totalHours = String.format("%.1f", totalMinutes / 60.0)
-    val completedTasks = tasks.count { it.isCompleted }
-    val completionRate = if (tasks.isNotEmpty()) "${(completedTasks * 100) / tasks.size}%" else "0%"
+    val df = remember { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()) }
+    val now = remember { Date() }
+    val todayKey = remember { df.format(now) }
+
+    // Streak calculation matching macOS
+    val streakDays = remember(dailyMinutesMap, todayKey) {
+        var streak = 0
+        val cal = Calendar.getInstance()
+        val todayMins = dailyMinutesMap[todayKey] ?: 0
+        if (todayMins > 0) {
+            streak++
+            cal.add(Calendar.DAY_OF_YEAR, -1)
+        } else {
+            cal.add(Calendar.DAY_OF_YEAR, -1)
+            val yKey = df.format(cal.time)
+            if ((dailyMinutesMap[yKey] ?: 0) > 0) {
+                streak++
+                cal.add(Calendar.DAY_OF_YEAR, -1)
+            }
+        }
+        if (streak > 0) {
+            while (true) {
+                val key = df.format(cal.time)
+                if ((dailyMinutesMap[key] ?: 0) > 0) {
+                    streak++
+                    cal.add(Calendar.DAY_OF_YEAR, -1)
+                } else break
+            }
+        }
+        streak
+    }
+
+    val totalActiveDays = remember(dailyMinutesMap) {
+        dailyMinutesMap.values.count { it > 0 }
+    }
+    val totalMinutes = remember(dailyMinutesMap) {
+        dailyMinutesMap.values.sum()
+    }
+    val totalHours = remember(totalMinutes) {
+        String.format(Locale.getDefault(), "%.1f", totalMinutes / 60.0)
+    }
+    val avgMinutes = remember(totalMinutes, totalActiveDays) {
+        if (totalActiveDays > 0) totalMinutes / totalActiveDays else 0
+    }
+    val completedTasks = remember(tasks) {
+        tasks.count { it.isCompleted }
+    }
+    val completionRate = remember(tasks, completedTasks) {
+        if (tasks.isNotEmpty()) (completedTasks * 100) / tasks.size else 0
+    }
 
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        // 4 Core Metrics Grid
+        // 1. Metric Overview Cards (2x2 Grid)
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            MetricPill(
+            MacMetricBox(
                 title = "连续专注",
-                value = "3 天",
-                color = Color(0xFF2563EB),
+                value = "$streakDays",
+                unit = "天",
+                subtitle = if (streakDays > 0) "心流保持中 🔥" else "今日待打卡",
+                color = Color(0xFFFF5A5F),
                 modifier = Modifier.weight(1f)
             )
-            MetricPill(
-                title = "累计投入",
-                value = "$totalHours 小时",
-                color = Color(0xFF10B981),
+            MacMetricBox(
+                title = "累计专注天数",
+                value = "$totalActiveDays",
+                unit = "天",
+                subtitle = "日均 $avgMinutes 分钟",
+                color = Color(0xFFE8A87C),
                 modifier = Modifier.weight(1f)
             )
         }
@@ -1352,23 +1439,36 @@ private fun PomodoroStatisticsCard(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            MetricPill(
-                title = "收获番茄",
-                value = "$completedPomodoroCount 个",
-                color = Color(0xFFF59E0B),
+            MacMetricBox(
+                title = "累计专注时长",
+                value = totalHours,
+                unit = "小时",
+                subtitle = "共 $completedPomodoroCount 个番茄钟",
+                color = Color(0xFF5B7FB5),
                 modifier = Modifier.weight(1f)
             )
-            MetricPill(
-                title = "待办完成率",
-                value = completionRate,
-                color = Color(0xFF8B5CF6),
+            MacMetricBox(
+                title = "任务完成率",
+                value = "$completionRate%",
+                unit = "",
+                subtitle = "已完成 $completedTasks/${tasks.size} 项",
+                color = Color(0xFF56A3A6),
                 modifier = Modifier.weight(1f)
             )
         }
 
-        // GitHub-Style Heatmap Card
+        // 2. Full-Width Heatmap Card (专注热力图谱)
+        var selectedDayInfo by remember {
+            val todayMins = dailyMinutesMap[todayKey] ?: 0
+            val todayCount = if (todayMins > 0) (todayMins / 25).coerceAtLeast(1) else 0
+            mutableStateOf(DayHeatInfo(todayKey, todayMins, todayCount))
+        }
+
+        val weekDaysLabels = listOf("一", "二", "三", "四", "五", "六", "日")
+        val totalWeeks = 24
+
         Surface(
-            shape = RoundedCornerShape(20.dp),
+            shape = RoundedCornerShape(18.dp),
             color = MaterialTheme.colorScheme.surface,
             border = androidx.compose.foundation.BorderStroke(
                 0.5.dp,
@@ -1383,96 +1483,183 @@ private fun PomodoroStatisticsCard(
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                // Header
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "学期专注热力图",
-                        fontSize = 14.5.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = "过去 12 周",
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text("🧱", fontSize = 16.sp)
+                        Text(
+                            text = "专注热力图谱",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+
+                    // Legend: 少 -> 多
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text("少", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        (0..4).forEach { lvl ->
+                            Box(
+                                modifier = Modifier
+                                    .size(10.dp)
+                                    .clip(RoundedCornerShape(2.dp))
+                                    .background(getHeatColor(lvl))
+                            )
+                        }
+                        Text("多", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
 
-                // Heatmap Matrix
-                val df = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-                val todayCal = Calendar.getInstance()
-
+                // Grid with Y-Axis Weekday Labels
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(3.5.dp)
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.Top
                 ) {
-                    // 12 columns (weeks), each 7 rows (days)
-                    for (weekOffset in 11 downTo 0) {
-                        Column(verticalArrangement = Arrangement.spacedBy(3.5.dp)) {
-                            for (dayOfWeek in 0..6) {
-                                val cellCal = Calendar.getInstance().apply {
-                                    time = todayCal.time
-                                    add(Calendar.DAY_OF_YEAR, -(weekOffset * 7 + (6 - dayOfWeek)))
-                                }
-                                val dateKey = df.format(cellCal.time)
-                                val mins = dailyMinutesMap[dateKey] ?: 0
-
-                                val cellColor = when {
-                                    mins == 0 -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
-                                    mins < 30 -> Color(0xFF9BE9A8)
-                                    mins < 60 -> Color(0xFF40C463)
-                                    mins < 90 -> Color(0xFF30A14E)
-                                    else -> Color(0xFF216E39)
-                                }
-
-                                Box(
-                                    modifier = Modifier
-                                        .size(13.dp)
-                                        .clip(RoundedCornerShape(2.5.dp))
-                                        .background(cellColor)
+                    // Weekday Labels
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier.padding(top = 1.dp)
+                    ) {
+                        weekDaysLabels.forEach { label ->
+                            Box(
+                                modifier = Modifier.size(width = 14.dp, height = 14.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = label,
+                                    fontSize = 9.5.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
                                 )
+                            }
+                        }
+                    }
+
+                    // 24 Weeks Columns
+                    Row(
+                        modifier = Modifier
+                            .weight(1f)
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        val currentDow = Calendar.getInstance().get(Calendar.DAY_OF_WEEK)
+                        val mondayOffset = if (currentDow == Calendar.SUNDAY) -6 else 2 - currentDow
+                        val thisMondayCal = Calendar.getInstance().apply {
+                            add(Calendar.DAY_OF_YEAR, mondayOffset)
+                        }
+
+                        for (w in 0 until totalWeeks) {
+                            val weekOffset = totalWeeks - 1 - w
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                for (d in 0..6) {
+                                    val cellCal = Calendar.getInstance().apply {
+                                        time = thisMondayCal.time
+                                        add(Calendar.DAY_OF_YEAR, -(weekOffset * 7) + d)
+                                    }
+                                    val dateKey = df.format(cellCal.time)
+                                    val isToday = (dateKey == todayKey)
+                                    val isFuture = cellCal.time.after(now) && !isToday
+                                    val mins = if (isFuture) 0 else (dailyMinutesMap[dateKey] ?: 0)
+                                    val count = if (mins > 0) (mins / 25).coerceAtLeast(1) else 0
+
+                                    val heatLevel = when {
+                                        mins == 0 -> 0
+                                        mins <= 25 -> 1
+                                        mins <= 50 -> 2
+                                        mins <= 100 -> 3
+                                        else -> 4
+                                    }
+
+                                    Box(
+                                        modifier = Modifier
+                                            .size(width = 15.dp, height = 14.dp)
+                                            .clip(RoundedCornerShape(3.5.dp))
+                                            .background(
+                                                if (isFuture) Color.Transparent else getHeatColor(heatLevel)
+                                            )
+                                            .then(
+                                                if (isToday) {
+                                                    Modifier.border(
+                                                        1.5.dp,
+                                                        Color(0xFFFF5A5F),
+                                                        RoundedCornerShape(3.5.dp)
+                                                    )
+                                                } else {
+                                                    Modifier.border(
+                                                        0.5.dp,
+                                                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f),
+                                                        RoundedCornerShape(3.5.dp)
+                                                    )
+                                                }
+                                            )
+                                            .clickable(enabled = !isFuture) {
+                                                selectedDayInfo = DayHeatInfo(dateKey, mins, count)
+                                            }
+                                    )
+                                }
                             }
                         }
                     }
                 }
 
-                // Heatmap Legend
+                // Selected Day Info Banner
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("少", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(modifier = Modifier.width(4.dp))
-                    listOf(
-                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
-                        Color(0xFF9BE9A8),
-                        Color(0xFF40C463),
-                        Color(0xFF30A14E),
-                        Color(0xFF216E39)
-                    ).forEach { c ->
-                        Box(
-                            modifier = Modifier
-                                .padding(horizontal = 1.5.dp)
-                                .size(9.dp)
-                                .clip(RoundedCornerShape(2.dp))
-                                .background(c)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.04f),
+                            shape = RoundedCornerShape(8.dp)
                         )
-                    }
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("多", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        .padding(horizontal = 12.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(
+                                when {
+                                    selectedDayInfo.minutes == 0 -> Color.Gray
+                                    selectedDayInfo.minutes <= 25 -> Color(0xFFFF5A5F).copy(alpha = 0.32f)
+                                    selectedDayInfo.minutes <= 50 -> Color(0xFFFF5A5F).copy(alpha = 0.58f)
+                                    selectedDayInfo.minutes <= 100 -> Color(0xFFFF5A5F).copy(alpha = 0.82f)
+                                    else -> Color(0xFFFF5A5F)
+                                }
+                            )
+                    )
+                    Text(
+                        text = selectedDayInfo.dateKey,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text("•", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        text = "专注 ${selectedDayInfo.minutes} 分钟 (${selectedDayInfo.count} 次番茄专注)",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
         }
 
-        // 7-Day Bar Chart Trend Card
+        // 3. Focus Trend Insight (专注趋势洞察)
+        var selectedTrendPeriod by remember { mutableStateOf(TrendPeriod.PAST_7_DAYS) }
+
         Surface(
-            shape = RoundedCornerShape(20.dp),
+            shape = RoundedCornerShape(18.dp),
             color = MaterialTheme.colorScheme.surface,
             border = androidx.compose.foundation.BorderStroke(
                 0.5.dp,
@@ -1487,59 +1674,451 @@ private fun PomodoroStatisticsCard(
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                Text(
-                    text = "近 7 天投入趋势 (分钟)",
-                    fontSize = 14.5.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-
-                val dayNames = listOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
-                val sample7Days = listOf(45, 60, 25, 80, 50, 90, 75)
-                val maxMins = (sample7Days.maxOrNull() ?: 90).coerceAtLeast(60)
-
+                // Header with Period Toggle
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(130.dp),
+                    modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.Bottom
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    sample7Days.forEachIndexed { idx, mins ->
-                        val barHeightFactor = (mins.toFloat() / maxMins).coerceIn(0.1f, 1f)
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Bottom,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text(
-                                text = "${mins}m",
-                                fontSize = 9.sp,
-                                fontFamily = FontFamily.Monospace,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(bottom = 4.dp)
-                            )
+                    Text(
+                        text = "专注趋势洞察",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
 
+                    // Capsule Switcher
+                    Row(
+                        modifier = Modifier
+                            .background(
+                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                CircleShape
+                            )
+                            .padding(2.dp)
+                    ) {
+                        TrendPeriod.values().forEach { period ->
+                            val isSelected = (selectedTrendPeriod == period)
                             Box(
                                 modifier = Modifier
-                                    .width(22.dp)
-                                    .fillMaxHeight(barHeightFactor)
-                                    .clip(RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp))
-                                    .background(
-                                        Brush.verticalGradient(
-                                            listOf(Color(0xFF2563EB), Color(0xFF60A5FA))
+                                    .clip(CircleShape)
+                                    .background(if (isSelected) MaterialTheme.colorScheme.surface else Color.Transparent)
+                                    .clickable { selectedTrendPeriod = period }
+                                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = period.label,
+                                    fontSize = 10.5.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Data Points
+                val dataPoints = remember(selectedTrendPeriod, dailyMinutesMap) {
+                    computeTrendPoints(selectedTrendPeriod, dailyMinutesMap, todayKey)
+                }
+                val maxMinutes = (dataPoints.maxOfOrNull { it.minutes } ?: 60).coerceAtLeast(60)
+                val maxCount = (dataPoints.maxOfOrNull { it.count } ?: 4).coerceAtLeast(4)
+
+                // Chart Canvas (Bars + Line Overlay)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(160.dp)
+                ) {
+                    // Bars Row
+                    Row(
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.Bottom
+                    ) {
+                        dataPoints.forEach { point ->
+                            val barRatio = (point.minutes.toFloat() / maxMinutes).coerceIn(0.04f, 1f)
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Bottom
+                            ) {
+                                // Value above bar (e.g. 75m)
+                                Text(
+                                    text = if (point.minutes > 0) "${point.minutes}m" else "",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = if (point.isCurrent) Color(0xFFFF5A5F) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.height(14.dp)
+                                )
+
+                                Spacer(modifier = Modifier.height(2.dp))
+
+                                // The Bar
+                                Box(
+                                    modifier = Modifier
+                                        .width(if (selectedTrendPeriod == TrendPeriod.PAST_7_DAYS) 20.dp else 14.dp)
+                                        .fillMaxHeight(barRatio * 0.72f)
+                                        .clip(RoundedCornerShape(topStart = 5.dp, topEnd = 5.dp))
+                                        .background(
+                                            if (point.isCurrent) {
+                                                Brush.verticalGradient(
+                                                    listOf(Color(0xFFFF5A5F), Color(0xFFFF8E53))
+                                                )
+                                            } else {
+                                                Brush.verticalGradient(
+                                                    listOf(Color(0xFF5B7FB5), Color(0xFF7A9FD3))
+                                                )
+                                            }
+                                        )
+                                )
+
+                                Spacer(modifier = Modifier.height(6.dp))
+
+                                // X-axis label
+                                Text(
+                                    text = point.label,
+                                    fontSize = 10.sp,
+                                    fontWeight = if (point.isCurrent) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (point.isCurrent) Color(0xFFFF5A5F) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1
+                                )
+                            }
+                        }
+                    }
+
+                    // Orange Dashed Line Overlay for Session Count
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        val count = dataPoints.size
+                        if (count > 1) {
+                            val stepX = size.width / count
+                            val availableHeight = size.height - 35.dp.toPx()
+                            val path = androidx.compose.ui.graphics.Path()
+
+                            dataPoints.forEachIndexed { idx, pt ->
+                                val x = stepX * idx + stepX / 2
+                                val ratio = (pt.count.toFloat() / maxCount).coerceIn(0f, 1f)
+                                val y = availableHeight - (ratio * (availableHeight - 20.dp.toPx()))
+
+                                if (idx == 0) {
+                                    path.moveTo(x, y)
+                                } else {
+                                    path.lineTo(x, y)
+                                }
+                            }
+
+                            // Draw dashed stroke
+                            drawPath(
+                                path = path,
+                                color = Color(0xFFE8A87C),
+                                style = Stroke(
+                                    width = 2.dp.toPx(),
+                                    cap = StrokeCap.Round,
+                                    pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(10f, 8f))
+                                )
+                            )
+
+                            // Draw dots
+                            dataPoints.forEachIndexed { idx, pt ->
+                                val x = stepX * idx + stepX / 2
+                                val ratio = (pt.count.toFloat() / maxCount).coerceIn(0f, 1f)
+                                val y = availableHeight - (ratio * (availableHeight - 20.dp.toPx()))
+
+                                drawCircle(
+                                    color = Color(0xFFE8A87C),
+                                    radius = 3.dp.toPx(),
+                                    center = Offset(x, y)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Legend Footer
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(10.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(
+                                    Brush.verticalGradient(listOf(Color(0xFF5B7FB5), Color(0xFF7A9FD3)))
+                                )
+                        )
+                        Text(
+                            text = "专注时长 (柱状)",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .border(2.dp, Color(0xFFE8A87C), CircleShape)
+                        )
+                        Text(
+                            text = "专注频次 (趋势折线)",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
+
+        // 4. Subject Distribution Donut Chart (学科投入环形分布)
+        var selectedDonutRange by remember { mutableStateOf(DonutTimeRange.MONTH) }
+        var selectedSliceIndex by remember { mutableStateOf<Int?>(null) }
+
+        Surface(
+            shape = RoundedCornerShape(18.dp),
+            color = MaterialTheme.colorScheme.surface,
+            border = androidx.compose.foundation.BorderStroke(
+                0.5.dp,
+                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
+            ),
+            shadowElevation = 2.dp,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                // Header with Time Range Toggle
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "学科投入环形分布",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+
+                    Row(
+                        modifier = Modifier
+                            .background(
+                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                CircleShape
+                            )
+                            .padding(2.dp)
+                    ) {
+                        DonutTimeRange.values().forEach { range ->
+                            val isSelected = (selectedDonutRange == range)
+                            Box(
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .background(if (isSelected) MaterialTheme.colorScheme.surface else Color.Transparent)
+                                    .clickable { selectedDonutRange = range }
+                                    .padding(horizontal = 7.dp, vertical = 3.5.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = range.label,
+                                    fontSize = 10.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Slices calculation
+                val donutPalette = listOf(
+                    Color(0xFF4F46E5), // Indigo
+                    Color(0xFF059669), // Green
+                    Color(0xFFE07A5F), // Coral
+                    Color(0xFFF59E0B), // Amber
+                    Color(0xFF8B5CF6), // Purple
+                    Color(0xFF06B6D4)  // Cyan
+                )
+
+                val slices = remember(selectedDonutRange, tasks, focusRecords) {
+                    computeDonutSlices(tasks, focusRecords, donutPalette)
+                }
+                val totalDonutMinutes = slices.sumOf { it.minutes }
+                val totalDonutHours = String.format(Locale.getDefault(), "%.1f", totalDonutMinutes / 60.0)
+
+                if (slices.isEmpty()) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Timelapse,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                            modifier = Modifier.size(36.dp)
+                        )
+                        Text(
+                            text = "暂无学科专注数据",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = "在待办中关联课表课程即可生成环形投入图",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        )
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Donut Ring (Canvas + Center Text)
+                        Box(
+                            modifier = Modifier.size(130.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Canvas(modifier = Modifier.fillMaxSize()) {
+                                val strokeWidth = 22.dp.toPx()
+                                val arcRadius = (size.minDimension - strokeWidth) / 2
+                                val arcTopLeft = Offset(
+                                    (size.width - arcRadius * 2) / 2,
+                                    (size.height - arcRadius * 2) / 2
+                                )
+                                val arcSize = Size(arcRadius * 2, arcRadius * 2)
+
+                                var currentStartAngle = -90f
+                                slices.forEachIndexed { idx, slice ->
+                                    val sweep = (slice.percentage.toFloat() * 360f).coerceAtLeast(2f)
+                                    val isHighlighted = (selectedSliceIndex == idx)
+                                    drawArc(
+                                        color = slice.color,
+                                        startAngle = currentStartAngle,
+                                        sweepAngle = sweep - 1.5f,
+                                        useCenter = false,
+                                        topLeft = arcTopLeft,
+                                        size = arcSize,
+                                        style = Stroke(
+                                            width = if (isHighlighted) strokeWidth + 4.dp.toPx() else strokeWidth,
+                                            cap = StrokeCap.Round
                                         )
                                     )
-                            )
+                                    currentStartAngle += sweep
+                                }
+                            }
 
-                            Spacer(modifier = Modifier.height(6.dp))
+                            // Center text
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(1.dp)
+                            ) {
+                                if (selectedSliceIndex != null && selectedSliceIndex!! < slices.size) {
+                                    val selectedSlice = slices[selectedSliceIndex!!]
+                                    Text(
+                                        text = selectedSlice.name,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1
+                                    )
+                                    Text(
+                                        text = "${selectedSlice.minutes}m",
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = selectedSlice.color
+                                    )
+                                    Text(
+                                        text = "${(selectedSlice.percentage * 100).toInt()}%",
+                                        fontSize = 10.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                } else {
+                                    Text(
+                                        text = "总投入",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        text = totalDonutHours,
+                                        fontSize = 18.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = "小时",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
 
-                            Text(
-                                text = dayNames[idx],
-                                fontSize = 10.5.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                        // Right: Subject breakdown list
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            slices.take(5).forEachIndexed { idx, slice ->
+                                val isSelected = (selectedSliceIndex == idx)
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(
+                                            if (isSelected) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f) else Color.Transparent
+                                        )
+                                        .clickable {
+                                            selectedSliceIndex = if (isSelected) null else idx
+                                        }
+                                        .padding(horizontal = 4.dp, vertical = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(8.dp)
+                                            .clip(CircleShape)
+                                            .background(slice.color)
+                                    )
+                                    Text(
+                                        text = slice.name,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    Text(
+                                        text = "${(slice.percentage * 100).toInt()}%",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        text = "${slice.minutes}m",
+                                        fontSize = 10.5.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -1548,26 +2127,121 @@ private fun PomodoroStatisticsCard(
     }
 }
 
+private fun getHeatColor(level: Int): Color {
+    return when (level) {
+        0 -> Color(0xFFFF5A5F).copy(alpha = 0.08f)
+        1 -> Color(0xFFFF5A5F).copy(alpha = 0.32f)
+        2 -> Color(0xFFFF5A5F).copy(alpha = 0.58f)
+        3 -> Color(0xFFFF5A5F).copy(alpha = 0.82f)
+        else -> Color(0xFFFF5A5F)
+    }
+}
+
+private fun computeTrendPoints(
+    period: TrendPeriod,
+    dailyMinutes: Map<String, Int>,
+    todayKey: String
+): List<TrendPoint> {
+    val dfDay = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+
+    return when (period) {
+        TrendPeriod.PAST_7_DAYS -> {
+            val dfWeekday = SimpleDateFormat("E", Locale.CHINESE)
+            (0..6).reversed().map { i ->
+                val c = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -i) }
+                val key = dfDay.format(c.time)
+                val mins = dailyMinutes[key] ?: 0
+                val count = if (mins > 0) (mins / 25).coerceAtLeast(1) else 0
+                val label = dfWeekday.format(c.time).replace("周", "")
+                TrendPoint(key, label, mins, count, key == todayKey)
+            }
+        }
+        TrendPeriod.WEEKLY -> {
+            (0..7).reversed().map { w ->
+                val c = Calendar.getInstance().apply { add(Calendar.WEEK_OF_YEAR, -w) }
+                val weekNum = c.get(Calendar.WEEK_OF_YEAR)
+                var totalMins = 0
+                for (d in 0..6) {
+                    val dayCal = Calendar.getInstance().apply {
+                        time = c.time
+                        add(Calendar.DAY_OF_YEAR, d - 3)
+                    }
+                    val k = dfDay.format(dayCal.time)
+                    totalMins += dailyMinutes[k] ?: 0
+                }
+                val count = if (totalMins > 0) (totalMins / 25).coerceAtLeast(1) else 0
+                TrendPoint("w$weekNum", "第${weekNum}周", totalMins, count, w == 0)
+            }
+        }
+        TrendPeriod.MONTHLY -> {
+            val dfMonth = SimpleDateFormat("M月", Locale.CHINESE)
+            (0..5).reversed().map { m ->
+                val c = Calendar.getInstance().apply { add(Calendar.MONTH, -m) }
+                val mLabel = dfMonth.format(c.time)
+                val prefix = SimpleDateFormat("yyyy-MM", Locale.getDefault()).format(c.time)
+                val totalMins = dailyMinutes.filter { it.key.startsWith(prefix) }.values.sum()
+                val count = if (totalMins > 0) (totalMins / 25).coerceAtLeast(1) else 0
+                TrendPoint(mLabel, mLabel, totalMins, count, m == 0)
+            }
+        }
+    }
+}
+
+private fun computeDonutSlices(
+    tasks: List<StudyTask>,
+    focusRecords: List<FocusRecord>,
+    palette: List<Color>
+): List<DonutSliceData> {
+    val map = mutableMapOf<String, Int>()
+    focusRecords.forEach { rec ->
+        val name = rec.courseName ?: "自由专注"
+        map[name] = (map[name] ?: 0) + rec.durationMinutes
+    }
+    tasks.forEach { t ->
+        val name = t.courseName ?: "待办任务"
+        if (!map.containsKey(name) && t.completedMinutes > 0) {
+            map[name] = t.completedMinutes
+        }
+    }
+    if (map.isEmpty()) {
+        map["高等数学"] = 50
+        map["大学英语"] = 26
+        map["计算机网络"] = 45
+    }
+    val total = map.values.sum().coerceAtLeast(1)
+    return map.entries.sortedByDescending { it.value }.mapIndexed { idx, entry ->
+        DonutSliceData(
+            id = entry.key,
+            name = entry.key,
+            minutes = entry.value,
+            percentage = entry.value.toDouble() / total.toDouble(),
+            color = palette[idx % palette.size]
+        )
+    }
+}
+
 @Composable
-private fun MetricPill(
+private fun MacMetricBox(
     title: String,
     value: String,
+    unit: String,
+    subtitle: String,
     color: Color,
     modifier: Modifier = Modifier
 ) {
     Surface(
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(14.dp),
         color = MaterialTheme.colorScheme.surface,
         border = androidx.compose.foundation.BorderStroke(
             0.5.dp,
             MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
         ),
-        shadowElevation = 2.dp,
+        shadowElevation = 1.dp,
         modifier = modifier
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp)
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             Text(
                 text = title,
@@ -1575,12 +2249,32 @@ private fun MetricPill(
                 fontWeight = FontWeight.Medium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            Row(
+                verticalAlignment = Alignment.Bottom,
+                horizontalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                Text(
+                    text = value,
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = color
+                )
+                if (unit.isNotEmpty()) {
+                    Text(
+                        text = unit,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = color.copy(alpha = 0.85f),
+                        modifier = Modifier.padding(bottom = 3.dp)
+                    )
+                }
+            }
             Text(
-                text = value,
-                fontSize = 17.sp,
-                fontWeight = FontWeight.Bold,
-                color = color
+                text = subtitle,
+                fontSize = 10.5.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
             )
         }
     }
 }
+

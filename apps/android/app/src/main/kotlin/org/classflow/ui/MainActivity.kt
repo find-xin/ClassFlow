@@ -110,6 +110,7 @@ fun MainApp() {
         WallpaperBackground(
             isDark = isDark,
             wallpaperPreset = appSettings.wallpaperPreset,
+            customWallpaperUri = appSettings.customWallpaperUri,
             usePureColorBackground = appSettings.usePureColorBackground
         ) {
             MainScreenHost(
@@ -365,6 +366,8 @@ fun MainScreenHost(
                 NavigationTab.AGENDA -> AgendaScreen(
                     todayOccurrences = sampleOccurrences,
                     scheduleEvents = sampleSchedules,
+                    courses = sampleCourses,
+                    sectionTimes = sectionTimes,
                     currentWeek = currentWeek,
                     onCourseClick = { selectedOccurrence = it },
                     onScheduleClick = { selectedScheduleEvent = it },

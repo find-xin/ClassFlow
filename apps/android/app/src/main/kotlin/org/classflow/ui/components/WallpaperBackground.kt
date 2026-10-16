@@ -1,14 +1,21 @@
 package org.classflow.ui.components
 
+import android.graphics.BitmapFactory
+import android.net.Uri
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 
 /**
  * Aesthetic wallpaper background directly cloned from macOS WallpaperBackgroundView.swift.
@@ -19,6 +26,7 @@ import androidx.compose.ui.graphics.Color
  * - "warm_cream": 暖阳
  * - "mint": 薄荷
  * - "sky": 天空
+ * Supports custom wallpaper image loaded from gallery/storage via customWallpaperUri.
  */
 fun isWallpaperDark(preset: String, isSystemDark: Boolean, usePureColor: Boolean = false): Boolean {
     if (usePureColor) return isSystemDark
@@ -32,10 +40,29 @@ fun isWallpaperDark(preset: String, isSystemDark: Boolean, usePureColor: Boolean
 fun WallpaperBackground(
     isDark: Boolean = isSystemInDarkTheme(),
     wallpaperPreset: String = "default",
+    customWallpaperUri: String? = null,
     usePureColorBackground: Boolean = false,
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit
 ) {
+    val context = LocalContext.current
+
+    // Safely load custom image bitmap if URI provided
+    val customBitmap = remember(customWallpaperUri) {
+        if (!customWallpaperUri.isNullOrBlank()) {
+            try {
+                val uri = Uri.parse(customWallpaperUri)
+                context.contentResolver.openInputStream(uri)?.use { stream ->
+                    BitmapFactory.decodeStream(stream)
+                }
+            } catch (e: Throwable) {
+                null
+            }
+        } else {
+            null
+        }
+    }
+
     val gradientColors = if (usePureColorBackground) {
         listOf(
             if (isDark) Color(0xFF0E1117) else Color(0xFFF5F7FB),
@@ -72,14 +99,29 @@ fun WallpaperBackground(
             .fillMaxSize()
             .background(brush = backgroundBrush)
     ) {
-        // macOS safety baseboard: only applied for vivid presets, not needed for pure color or default
-        val safetyAlpha = if (usePureColorBackground || wallpaperPreset == "default") 0f else if (isDark) 0.25f else 0.06f
-        if (safetyAlpha > 0f) {
+        if (customBitmap != null) {
+            Image(
+                bitmap = customBitmap.asImageBitmap(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+            // Translucent scrim to protect readability
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = safetyAlpha))
+                    .background(Color.Black.copy(alpha = if (isDark) 0.35f else 0.12f))
             )
+        } else {
+            // macOS safety baseboard: only applied for vivid presets, not needed for pure color or default
+            val safetyAlpha = if (usePureColorBackground || wallpaperPreset == "default") 0f else if (isDark) 0.25f else 0.06f
+            if (safetyAlpha > 0f) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = safetyAlpha))
+                )
+            }
         }
 
         content()

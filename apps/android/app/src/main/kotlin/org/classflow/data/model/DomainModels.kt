@@ -130,7 +130,14 @@ data class CalendarEvent(
     val frequency: String = "none",
     val customDaysOfWeek: List<Int> = emptyList(),
     val isTask: Boolean = false,
-    val isCompleted: Boolean = false
+    val isCompleted: Boolean = false,
+    val courseId: String? = null,
+    val courseName: String? = null,
+    val priority: String = "medium",
+    val dueDate: String? = null,
+    val targetMinutes: Int? = null,
+    val customWeeks: List<Int> = emptyList(),
+    val alertMinutes: Int? = null
 )
 
 data class StudyTask(
