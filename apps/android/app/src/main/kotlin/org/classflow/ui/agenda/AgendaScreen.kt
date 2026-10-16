@@ -10,6 +10,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -20,8 +22,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -32,6 +37,7 @@ import org.classflow.data.model.CalendarEvent
 import org.classflow.data.model.Course
 import org.classflow.data.model.SectionTime
 import org.classflow.data.model.TimelineItem
+import org.classflow.ui.components.GoogleCalendarColorPicker
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -93,12 +99,12 @@ fun AgendaScreen(
         }
     }
 
-    // Selected date title
+    // Selected date title (compact "M/d" without "年", "月" or weekday)
     val formattedTitle = remember(selectedWeek, selectedDayOfWeek, currentWeek) {
         val cal = Calendar.getInstance()
         val diff = todayWeekday - selectedDayOfWeek
         cal.add(Calendar.DAY_OF_YEAR, -diff + (selectedWeek - currentWeek) * 7)
-        val df = SimpleDateFormat("yyyy年M月d日 EEEE", Locale.CHINESE)
+        val df = SimpleDateFormat("M/d", Locale.CHINESE)
         df.format(cal.time)
     }
 
@@ -192,53 +198,55 @@ fun AgendaScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 8.dp),
+                .padding(bottom = 6.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(modifier = Modifier.weight(1f, fill = false)) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Text(
-                        text = formattedTitle,
-                        fontSize = 15.5.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    // "今日" Capsule right next to date so it NEVER pushes "+ 新建" off-screen!
-                    if (selectedDayOfWeek != todayWeekday || selectedWeek != currentWeek) {
-                        Surface(
-                            onClick = {
-                                selectedWeek = currentWeek
-                                selectedDayOfWeek = todayWeekday
-                            },
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-                            border = androidx.compose.foundation.BorderStroke(0.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
+            // Left: Date (M/d) + Return to Today Capsule (no "年", "月" or weekday, no subtitle)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = formattedTitle,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+
+                if (selectedDayOfWeek != todayWeekday || selectedWeek != currentWeek) {
+                    Surface(
+                        onClick = {
+                            selectedWeek = currentWeek
+                            selectedDayOfWeek = todayWeekday
+                        },
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                        border = androidx.compose.foundation.BorderStroke(0.8.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f))
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(3.dp),
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.5.dp)
                         ) {
+                            Icon(
+                                Icons.Default.Refresh,
+                                contentDescription = null,
+                                modifier = Modifier.size(11.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
                             Text(
                                 text = "今日",
-                                fontSize = 11.sp,
+                                fontSize = 11.5.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                                color = MaterialTheme.colorScheme.primary
                             )
                         }
                     }
                 }
-                Text(
-                    text = "日程规划与待办专注",
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
-                )
             }
 
-            Spacer(modifier = Modifier.width(6.dp))
-
+            // Right: Week Switcher Capsule + "+ 新建" Button
             Row(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -314,7 +322,7 @@ fun AgendaScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 4.dp)
+                .padding(vertical = 3.dp)
                 .background(
                     MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
                     shape = RoundedCornerShape(12.dp)
@@ -373,72 +381,72 @@ fun AgendaScreen(
             }
         }
 
+        // 3. Segmented Filter Tabs [全部 | 课程与日程 | 待办清单] (macOS Segmented Style pinned below Day Selector)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 3.dp)
+                .background(
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                    shape = RoundedCornerShape(10.dp)
+                )
+                .padding(3.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            AgendaFilter.values().forEach { filter ->
+                val isSelected = (selectedFilter == filter)
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(
+                            if (isSelected) MaterialTheme.colorScheme.surface else Color.Transparent
+                        )
+                        .then(
+                            if (isSelected) {
+                                Modifier.border(
+                                    0.5.dp,
+                                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                                    shape = RoundedCornerShape(8.dp)
+                                )
+                            } else Modifier
+                        )
+                        .clickable { selectedFilter = filter }
+                        .padding(vertical = 5.5.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = filter.label,
+                        fontSize = 12.sp,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                        color = if (isSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+
         Spacer(modifier = Modifier.height(6.dp))
 
-        // 3. Scrollable Content Area
+        // 4. Scrollable Content Area
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(14.dp),
             contentPadding = PaddingValues(bottom = 24.dp)
         ) {
-            // Next Upcoming Class Hero Card
-            item {
-                if (nextUpcomingCourse != null && selectedWeek == currentWeek && selectedDayOfWeek == todayWeekday) {
-                    NextClassHeroCard(
-                        item = nextUpcomingCourse,
-                        onStartFocus = { onStartFocus(nextUpcomingCourse.title, nextUpcomingCourse.title) },
-                        onClick = { onCourseClick(nextUpcomingCourse) }
-                    )
-                } else {
-                    NoUpcomingHeroCard(
-                        dayName = dayNames[selectedDayOfWeek - 1],
-                        dateStr = if (selectedDayOfWeek - 1 in dayDates.indices) dayDates[selectedDayOfWeek - 1] else ""
-                    )
-                }
-            }
-
-            // Segmented Filter Capsule
-            item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 2.dp)
-                        .background(
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                            shape = CircleShape
+            // Next Upcoming Class Hero Card (Shown only when viewing all or schedule, hidden in task mode)
+            if (selectedFilter != AgendaFilter.TASK) {
+                item {
+                    if (nextUpcomingCourse != null && selectedWeek == currentWeek && selectedDayOfWeek == todayWeekday) {
+                        NextClassHeroCard(
+                            item = nextUpcomingCourse,
+                            onStartFocus = { onStartFocus(nextUpcomingCourse.title, nextUpcomingCourse.title) },
+                            onClick = { onCourseClick(nextUpcomingCourse) }
                         )
-                        .padding(3.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    AgendaFilter.values().forEach { filter ->
-                        val isSelected = (selectedFilter == filter)
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(CircleShape)
-                                .background(
-                                    if (isSelected) MaterialTheme.colorScheme.surface else Color.Transparent
-                                )
-                                .then(
-                                    if (isSelected) {
-                                        Modifier.border(
-                                            0.5.dp,
-                                            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
-                                            shape = CircleShape
-                                        )
-                                    } else Modifier
-                                )
-                                .clickable { selectedFilter = filter }
-                                .padding(vertical = 6.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = filter.label,
-                                fontSize = 12.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                color = if (isSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+                    } else {
+                        NoUpcomingHeroCard(
+                            dayName = dayNames[selectedDayOfWeek - 1],
+                            dateStr = if (selectedDayOfWeek - 1 in dayDates.indices) dayDates[selectedDayOfWeek - 1] else ""
+                        )
                     }
                 }
             }
@@ -1154,6 +1162,7 @@ fun CreateAgendaItemDialog(
         mutableStateOf("${dfDate.format(Date())} 18:00")
     }
     var targetMinutes by remember { mutableIntStateOf(45) }
+    var targetMinutesText by remember { mutableStateOf("45") }
     var taskNotes by remember { mutableStateOf("") }
 
     // Event fields
@@ -1292,7 +1301,7 @@ fun CreateAgendaItemDialog(
                                     courseName = selectedCourse?.name,
                                     priority = if (isTaskMode) taskPriority else "medium",
                                     dueDate = if (isTaskMode && hasDueDate) taskDueDateStr else null,
-                                    targetMinutes = if (isTaskMode) targetMinutes else null
+                                    targetMinutes = if (isTaskMode) (targetMinutesText.toIntOrNull()?.coerceIn(1, 480) ?: targetMinutes) else null
                                 )
                                 onCreate(event)
                             }
@@ -1580,28 +1589,87 @@ fun CreateAgendaItemDialog(
 
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                                     ) {
                                         IconButton(
-                                            onClick = { if (targetMinutes > 15) targetMinutes -= 15 },
-                                            modifier = Modifier.size(24.dp)
+                                            onClick = {
+                                                val curr = targetMinutesText.toIntOrNull() ?: targetMinutes
+                                                if (curr > 5) {
+                                                    val next = (curr - 5).coerceAtLeast(5)
+                                                    targetMinutes = next
+                                                    targetMinutesText = next.toString()
+                                                }
+                                            },
+                                            modifier = Modifier.size(28.dp)
                                         ) {
-                                            Icon(Icons.Default.Clear, contentDescription = "减", modifier = Modifier.size(14.dp))
+                                            Text(
+                                                text = "−",
+                                                fontSize = 18.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
                                         }
 
-                                        Text(
-                                            text = "$targetMinutes 分钟",
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            fontFamily = FontFamily.Monospace,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = MaterialTheme.colorScheme.surface,
+                                            border = androidx.compose.foundation.BorderStroke(
+                                                1.dp,
+                                                MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+                                            )
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.5.dp)
+                                            ) {
+                                                BasicTextField(
+                                                    value = targetMinutesText,
+                                                    onValueChange = { newStr ->
+                                                        val filtered = newStr.filter { it.isDigit() }.take(3)
+                                                        targetMinutesText = filtered
+                                                        filtered.toIntOrNull()?.let { valMins ->
+                                                            if (valMins in 1..480) {
+                                                                targetMinutes = valMins
+                                                            }
+                                                        }
+                                                    },
+                                                    singleLine = true,
+                                                    textStyle = TextStyle(
+                                                        fontSize = 14.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontFamily = FontFamily.Monospace,
+                                                        color = MaterialTheme.colorScheme.primary,
+                                                        textAlign = TextAlign.Center
+                                                    ),
+                                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                                    modifier = Modifier.width(36.dp)
+                                                )
+                                                Text(
+                                                    text = "分钟",
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
 
                                         IconButton(
-                                            onClick = { if (targetMinutes < 300) targetMinutes += 15 },
-                                            modifier = Modifier.size(24.dp)
+                                            onClick = {
+                                                val curr = targetMinutesText.toIntOrNull() ?: targetMinutes
+                                                if (curr < 480) {
+                                                    val next = (curr + 5).coerceAtMost(480)
+                                                    targetMinutes = next
+                                                    targetMinutesText = next.toString()
+                                                }
+                                            },
+                                            modifier = Modifier.size(28.dp)
                                         ) {
-                                            Icon(Icons.Default.Add, contentDescription = "加", modifier = Modifier.size(14.dp))
+                                            Icon(
+                                                Icons.Default.Add,
+                                                contentDescription = "加",
+                                                modifier = Modifier.size(15.dp),
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
                                         }
                                     }
                                 }
@@ -1611,7 +1679,7 @@ fun CreateAgendaItemDialog(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    listOf(15, 30, 45, 60, 90, 120).forEach { mins ->
+                                    listOf(15, 25, 30, 45, 60, 90).forEach { mins ->
                                         val isSelected = (targetMinutes == mins)
                                         Box(
                                             modifier = Modifier
@@ -1625,7 +1693,10 @@ fun CreateAgendaItemDialog(
                                                     if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
                                                     RoundedCornerShape(6.dp)
                                                 )
-                                                .clickable { targetMinutes = mins }
+                                                .clickable {
+                                                    targetMinutes = mins
+                                                    targetMinutesText = mins.toString()
+                                                }
                                                 .padding(vertical = 5.dp),
                                             contentAlignment = Alignment.Center
                                         ) {
@@ -1742,13 +1813,12 @@ fun CreateAgendaItemDialog(
 
                                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
 
-                                // Color Palette Row
-                                Row(
+                                // Color Palette Row with GoogleCalendarColorPicker (Presets + Custom Color Dialog with Hex & Hue)
+                                Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .padding(horizontal = 14.dp, vertical = 10.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     Text(
                                         text = "标记颜色",
@@ -1756,24 +1826,10 @@ fun CreateAgendaItemDialog(
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
 
-                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        eventColors.forEach { hex ->
-                                            val c = try { Color(android.graphics.Color.parseColor(hex)) } catch (e: Throwable) { Color.Gray }
-                                            val isSel = (selectedColor == hex)
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(20.dp)
-                                                    .clip(CircleShape)
-                                                    .background(c)
-                                                    .then(
-                                                        if (isSel) {
-                                                            Modifier.border(2.dp, MaterialTheme.colorScheme.onSurface, CircleShape)
-                                                        } else Modifier
-                                                    )
-                                                    .clickable { selectedColor = hex }
-                                            )
-                                        }
-                                    }
+                                    GoogleCalendarColorPicker(
+                                        selectedHex = selectedColor,
+                                        onColorSelected = { selectedColor = it }
+                                    )
                                 }
                             }
                         }
@@ -1789,7 +1845,7 @@ fun CreateAgendaItemDialog(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Column(modifier = Modifier.fillMaxWidth()) {
-                                // Date & All-Day
+                                // Row 1: Date
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -1797,49 +1853,50 @@ fun CreateAgendaItemDialog(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    Text(
+                                        text = "日期",
+                                        fontSize = 13.5.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = MaterialTheme.colorScheme.surface,
+                                        border = androidx.compose.foundation.BorderStroke(
+                                            0.5.dp,
+                                            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                                        )
                                     ) {
                                         Text(
-                                            text = "日期",
-                                            fontSize = 13.5.sp,
-                                            fontWeight = FontWeight.Medium,
-                                            color = MaterialTheme.colorScheme.onSurface
+                                            text = eventDateStr,
+                                            fontSize = 12.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                                         )
-                                        Surface(
-                                            shape = RoundedCornerShape(6.dp),
-                                            color = MaterialTheme.colorScheme.surface,
-                                            border = androidx.compose.foundation.BorderStroke(
-                                                0.5.dp,
-                                                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
-                                            )
-                                        ) {
-                                            Text(
-                                                text = eventDateStr,
-                                                fontSize = 12.sp,
-                                                fontFamily = FontFamily.Monospace,
-                                                color = MaterialTheme.colorScheme.onSurface,
-                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                            )
-                                        }
                                     }
+                                }
 
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        Text(
-                                            text = "全天日程",
-                                            fontSize = 13.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                        Switch(
-                                            checked = isAllDay,
-                                            onCheckedChange = { isAllDay = it },
-                                            modifier = Modifier.size(24.dp)
-                                        )
-                                    }
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
+
+                                // Row 2: All-Day Switch (Distinct row with no overlap)
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "全天日程",
+                                        fontSize = 13.5.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Switch(
+                                        checked = isAllDay,
+                                        onCheckedChange = { isAllDay = it }
+                                    )
                                 }
 
                                 if (!isAllDay) {
