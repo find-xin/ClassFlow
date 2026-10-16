@@ -22,41 +22,42 @@ public struct WeekMatrixPickerView: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            // Quick preset action pills
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
-                    presetButton("全选") {
-                        selectedWeeks = Set(1...maxWeeks)
-                    }
-                    presetButton("单周") {
-                        selectedWeeks = Set((1...maxWeeks).filter { $0 % 2 == 1 })
-                    }
-                    presetButton("双周") {
-                        selectedWeeks = Set((1...maxWeeks).filter { $0 % 2 == 0 })
-                    }
-                    presetButton("前八周") {
-                        selectedWeeks = Set(1...min(8, maxWeeks))
-                    }
-                    presetButton("后八周") {
-                        let start = min(9, maxWeeks)
-                        let end = min(16, maxWeeks)
-                        selectedWeeks = (start <= end) ? Set(start...end) : []
-                    }
-                    presetButton("清空") {
-                        selectedWeeks.removeAll()
-                    }
+            // Quick preset action pills (direct HStack without nested ScrollView to ensure instant click responsiveness in macOS AppKit)
+            HStack(spacing: 6) {
+                presetButton("全选") {
+                    selectedWeeks = Set(1...maxWeeks)
+                }
+                presetButton("单周") {
+                    selectedWeeks = Set((1...maxWeeks).filter { $0 % 2 == 1 })
+                }
+                presetButton("双周") {
+                    selectedWeeks = Set((1...maxWeeks).filter { $0 % 2 == 0 })
+                }
+                presetButton("前八周") {
+                    selectedWeeks = Set(1...min(8, maxWeeks))
+                }
+                presetButton("后八周") {
+                    let start = min(9, maxWeeks)
+                    let end = min(16, maxWeeks)
+                    selectedWeeks = (start <= end) ? Set(start...end) : []
+                }
+                presetButton("清空") {
+                    selectedWeeks.removeAll()
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             // 1..maxWeeks 5-column grid
             LazyVGrid(columns: columns, spacing: 6) {
                 ForEach(1...maxWeeks, id: \.self) { week in
                     let isSelected = selectedWeeks.contains(week)
                     Button(action: {
-                        if isSelected {
-                            selectedWeeks.remove(week)
-                        } else {
-                            selectedWeeks.insert(week)
+                        withAnimation(.easeInOut(duration: 0.12)) {
+                            if isSelected {
+                                selectedWeeks.remove(week)
+                            } else {
+                                selectedWeeks.insert(week)
+                            }
                         }
                     }) {
                         Text("\(week)")
@@ -69,7 +70,8 @@ public struct WeekMatrixPickerView: View {
                                     .fill(isSelected ? accentColor : Color(nsColor: .textBackgroundColor).opacity(0.6))
                             )
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PillClickButtonStyle())
+                    .contentShape(Rectangle())
                 }
             }
 
@@ -90,16 +92,27 @@ public struct WeekMatrixPickerView: View {
     }
 
     private func presetButton(_ title: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
+        Button(action: {
+            withAnimation(.easeInOut(duration: 0.12)) {
+                action()
+            }
+        }) {
             Text(title)
-                .font(.system(size: 11, weight: .medium))
+                .font(.system(size: 11.5, weight: .medium))
                 .foregroundColor(.primary)
                 .padding(.horizontal, 9)
-                .padding(.vertical, 4)
-                .background(Color(nsColor: .textBackgroundColor).opacity(0.8))
-                .clipShape(Capsule())
+                .padding(.vertical, 4.5)
+                .background(
+                    Capsule()
+                        .fill(Color(nsColor: .controlColor))
+                )
+                .overlay(
+                    Capsule()
+                        .stroke(Color(nsColor: .separatorColor).opacity(0.6), lineWidth: 0.8)
+                )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PillClickButtonStyle())
+        .contentShape(Capsule())
     }
 
     private var summaryText: String {
@@ -128,5 +141,14 @@ public struct WeekMatrixPickerView: View {
         }
         ranges.append(start == prev ? "\(start)周" : "\(start)-\(prev)周")
         return ranges.joined(separator: ", ")
+    }
+}
+
+private struct PillClickButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
+            .opacity(configuration.isPressed ? 0.7 : 1.0)
+            .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
     }
 }
