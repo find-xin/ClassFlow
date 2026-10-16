@@ -27,7 +27,8 @@ fi
 
 # 2. Prepare .app Bundle Structure
 echo "[2/6] Constructing ${APP_NAME}.app bundle..."
-rm -rf "${DIST_DIR}"
+mkdir -p "${DIST_DIR}"
+rm -rf "${BUNDLE_DIR}" "${DIST_DIR}/${DMG_NAME}" "${DIST_DIR}/${APP_NAME}-1.0.0-macOS-arm64.zip"*
 mkdir -p "${BUNDLE_DIR}/Contents/MacOS"
 mkdir -p "${BUNDLE_DIR}/Contents/Resources"
 mkdir -p "${BUNDLE_DIR}/Contents/PlugIns"
