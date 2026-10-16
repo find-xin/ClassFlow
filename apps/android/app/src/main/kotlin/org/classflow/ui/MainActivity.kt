@@ -364,7 +364,13 @@ fun MainScreenHost(
             when (selectedTab) {
                 NavigationTab.AGENDA -> AgendaScreen(
                     todayOccurrences = sampleOccurrences,
-                    onCourseClick = { selectedOccurrence = it }
+                    scheduleEvents = sampleSchedules,
+                    currentWeek = currentWeek,
+                    onCourseClick = { selectedOccurrence = it },
+                    onScheduleClick = { selectedScheduleEvent = it },
+                    onStartFocus = { _, _ ->
+                        selectedTab = NavigationTab.STUDY
+                    }
                 )
 
                 NavigationTab.TIMETABLE -> TimetableScreen(

@@ -48,7 +48,7 @@ fun WallpaperBackground(
             "warm_cream" -> listOf(Color(0xFF161311), Color(0xFF221D18), Color(0xFF181512))
             "midnight" -> listOf(Color(0xFF08090C), Color(0xFF0F1117), Color(0xFF060709))
             "sky" -> listOf(Color(0xFF09131E), Color(0xFF0F1D2E), Color(0xFF0B1622))
-            else -> listOf(Color(0xFF0D1117), Color(0xFF161B22), Color(0xFF0A0D12)) // default
+            else -> listOf(Color(0xFF0F1117), Color(0xFF161922), Color(0xFF0D0F15)) // default
         }
     } else {
         when (wallpaperPreset) {
@@ -57,7 +57,7 @@ fun WallpaperBackground(
             "warm_cream" -> listOf(Color(0xFFEFE0CE), Color(0xFFF9F2E7), Color(0xFFE8D5BF))
             "midnight" -> listOf(Color(0xFF151821), Color(0xFF1E2433), Color(0xFF11141B))
             "sky" -> listOf(Color(0xFFE0F2FE), Color(0xFFBAE6FD), Color(0xFF7DD3FC))
-            else -> listOf(Color(0xFFB7D2EC), Color(0xFFCFE1F6), Color(0xFFB9CCE6)) // default
+            else -> listOf(Color(0xFFF1F4F9), Color(0xFFF8FAFD), Color(0xFFEDF2F8)) // default macOS light canvas
         }
     }
 
@@ -72,13 +72,15 @@ fun WallpaperBackground(
             .fillMaxSize()
             .background(brush = backgroundBrush)
     ) {
-        // macOS safety baseboard: guarantees crisp text contrast over vivid wallpapers
-        val safetyAlpha = if (usePureColorBackground) 0f else if (isDark) 0.35f else 0.12f
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = safetyAlpha))
-        )
+        // macOS safety baseboard: only applied for vivid presets, not needed for pure color or default
+        val safetyAlpha = if (usePureColorBackground || wallpaperPreset == "default") 0f else if (isDark) 0.25f else 0.06f
+        if (safetyAlpha > 0f) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = safetyAlpha))
+            )
+        }
 
         content()
     }

@@ -40,9 +40,11 @@ fun WakeUpHeaderView(
     selectedWeek: Int,
     totalWeeks: Int,
     semesterName: String,
+    displayMode: String = "week", // "week" or "day"
     isDark: Boolean = false,
     isWallpaperDark: Boolean = true,
     onWeekChange: (Int) -> Unit,
+    onToggleDisplayMode: (String) -> Unit = {},
     onAddCourseClick: () -> Unit,
     onAddScheduleClick: () -> Unit,
     onImportClick: (ImportType) -> Unit,
@@ -85,31 +87,38 @@ fun WakeUpHeaderView(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // 1. Left: Clickable Date & Week Title (exact macOS WakeUpHeaderView layout)
+        // 1. Left: Clickable Date & Week Title (exact WakeUp layout Image 1)
         Column(
             modifier = Modifier
                 .clip(RoundedCornerShape(10.dp))
                 .clickable { showWeekDrawer = true }
                 .padding(horizontal = 4.dp, vertical = 2.dp)
         ) {
+            Text(
+                text = currentDateStr,
+                style = MaterialTheme.typography.titleMedium.copy(fontSize = 22.sp),
+                fontWeight = FontWeight.Bold,
+                color = textPrimary
+            )
+            Spacer(modifier = Modifier.height(2.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = "第 $selectedWeek 周 周$todayWeekdayShort",
-                    style = MaterialTheme.typography.titleMedium.copy(fontSize = 20.sp),
-                    fontWeight = FontWeight.Bold,
-                    color = textPrimary
+                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.5.sp),
+                    fontWeight = FontWeight.Medium,
+                    color = textSecondary
                 )
                 if (selectedWeek != currentWeek) {
                     Spacer(modifier = Modifier.width(6.dp))
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(10.dp))
+                            .clip(RoundedCornerShape(8.dp))
                             .background(Color(0xFFFF5A5F))
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                            .padding(horizontal = 5.dp, vertical = 1.5.dp)
                     ) {
                         Text(
                             text = "非本周",
-                            fontSize = 10.sp,
+                            fontSize = 9.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color.White
                         )
@@ -123,45 +132,56 @@ fun WakeUpHeaderView(
                     modifier = Modifier.size(16.dp)
                 )
             }
-            Spacer(modifier = Modifier.height(2.dp))
+        }
+
+        // 2. Center-Right: Week / Day View Toggle & 4 Action Icons
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            // Week / Day View Toggle Capsule (macOS & mobile parity)
             Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                modifier = Modifier
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(if (isWallpaperDark) Color.White.copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.06f))
+                    .padding(2.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = currentDateStr,
-                    fontSize = 11.5.sp,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Medium,
-                    color = textSecondary
-                )
-                if (semesterName.isNotEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(if (displayMode == "week") (if (isWallpaperDark) Color.White.copy(alpha = 0.25f) else Color.White) else Color.Transparent)
+                        .clickable { onToggleDisplayMode("week") }
+                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                ) {
                     Text(
-                        text = "·",
+                        text = "周",
                         fontSize = 11.5.sp,
-                        color = textSecondary.copy(alpha = 0.5f)
+                        fontWeight = if (displayMode == "week") FontWeight.Bold else FontWeight.Medium,
+                        color = textPrimary
                     )
+                }
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(if (displayMode == "day") (if (isWallpaperDark) Color.White.copy(alpha = 0.25f) else Color.White) else Color.Transparent)
+                        .clickable { onToggleDisplayMode("day") }
+                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                ) {
                     Text(
-                        text = semesterName,
+                        text = "日",
                         fontSize = 11.5.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = textSecondary,
-                        maxLines = 1
+                        fontWeight = if (displayMode == "day") FontWeight.Bold else FontWeight.Medium,
+                        color = textPrimary
                     )
                 }
             }
-        }
 
-        // 2. Right: 4 Sleek Ghost Action Icons: (+), (↓), (⤴), (⋮)
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
             // (+) Add Menu
             Box {
                 IconButton(
                     onClick = { showAddMenu = true },
-                    modifier = Modifier.size(38.dp)
+                    modifier = Modifier.size(36.dp)
                 ) {
                     Icon(
                         Icons.Default.Add,

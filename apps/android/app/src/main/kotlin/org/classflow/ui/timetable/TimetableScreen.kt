@@ -67,6 +67,8 @@ fun TimetableScreen(
     onExportClick: (ExportType) -> Unit = {},
     onOpenThreeDotsMenu: () -> Unit
 ) {
+    var displayMode by remember { mutableStateOf("week") } // "week" or "day"
+
     // Calculate dates for the 7 days of the selected week
     val weekDates = remember(selectedWeek) {
         val cal = Calendar.getInstance()
@@ -89,15 +91,17 @@ fun TimetableScreen(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        // 1. WakeUp Style Top Bar
+        // 1. WakeUp Style Top Bar with Week / Day View Toggle
         WakeUpHeaderView(
             currentWeek = currentWeek,
             selectedWeek = selectedWeek,
             totalWeeks = totalWeeks,
             semesterName = semesterName,
+            displayMode = displayMode,
             isDark = isDark,
             isWallpaperDark = isWallpaperDark,
             onWeekChange = onWeekChange,
+            onToggleDisplayMode = { displayMode = it },
             onAddCourseClick = onAddCourseClick,
             onAddScheduleClick = onAddScheduleClick,
             onImportClick = onImportClick,
@@ -105,40 +109,47 @@ fun TimetableScreen(
             onOpenThreeDotsMenu = onOpenThreeDotsMenu
         )
 
-        HorizontalDivider(color = if (isWallpaperDark) Color.White.copy(alpha = 0.12f) else Color(0xFFE5E7EB))
+        if (displayMode == "day") {
+            // Day View (日视图时间轴)
+            DayViewTimeline(
+                occurrences = occurrences.filter { it.weekNumber == selectedWeek },
+                scheduleEvents = scheduleEvents,
+                todayDateString = todayDateString,
+                onCourseClick = onCourseClick,
+                onScheduleClick = onScheduleClick
+            )
+        } else {
+            // 2. Day Header Row (Month + visible days matching WakeUp Image 1)
+            WakeUpDayHeaderRow(
+                dateStrings = weekDates,
+                todayDateString = todayDateString,
+                showSaturday = appSettings.showSaturday,
+                showSunday = appSettings.showSunday,
+                isWallpaperDark = isWallpaperDark
+            )
 
-        // 2. Day Header Row (Month + visible days with actual dates and WakeUp highlight)
-        WakeUpDayHeaderRow(
-            dateStrings = weekDates,
-            todayDateString = todayDateString,
-            showSaturday = appSettings.showSaturday,
-            showSunday = appSettings.showSunday,
-            isWallpaperDark = isWallpaperDark
-        )
-
-        HorizontalDivider(color = if (isWallpaperDark) Color.White.copy(alpha = 0.10f) else Color(0xFFE5E7EB))
-
-        // 3. Timetable Canvas (Section Axis + Day Columns)
-        TimetableCanvas(
-            occurrences = occurrences,
-            scheduleEvents = scheduleEvents,
-            sectionTimes = sectionTimes,
-            todayDateString = todayDateString,
-            weekDates = weekDates,
-            selectedWeek = selectedWeek,
-            appSettings = appSettings,
-            isDark = isDark,
-            isWallpaperDark = isWallpaperDark,
-            onCourseClick = onCourseClick,
-            onScheduleClick = onScheduleClick,
-            onAddAtSlot = onAddCourseAtSlot
-        )
+            // 3. Timetable Canvas (Section Axis + Day Columns)
+            TimetableCanvas(
+                occurrences = occurrences,
+                scheduleEvents = scheduleEvents,
+                sectionTimes = sectionTimes,
+                todayDateString = todayDateString,
+                weekDates = weekDates,
+                selectedWeek = selectedWeek,
+                appSettings = appSettings,
+                isDark = isDark,
+                isWallpaperDark = isWallpaperDark,
+                onCourseClick = onCourseClick,
+                onScheduleClick = onScheduleClick,
+                onAddAtSlot = onAddCourseAtSlot
+            )
+        }
     }
 }
 
 /**
  * WakeUp style day header row with stacked month indicator and date numbers,
- * matching macOS DayHeaderView 1:1.
+ * matching WakeUp Image 1.
  */
 @Composable
 fun WakeUpDayHeaderRow(
@@ -170,23 +181,23 @@ fun WakeUpDayHeaderRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 4.dp),
+            .padding(horizontal = 4.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // 1. Month Column: Stacked "10" and "月" (width 44dp, exact macOS DayHeaderView style)
+        // 1. Month Column: Stacked "10" and "月" (width 44dp, matching WakeUp Image 1)
         Column(
             modifier = Modifier.width(44.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
                 text = monthNumber,
-                fontSize = 13.sp,
+                fontSize = 13.5.sp,
                 fontWeight = FontWeight.Bold,
                 color = if (isWallpaperDark) Color.White else Color(0xFF1F2937)
             )
             Text(
                 text = "月",
-                fontSize = 11.sp,
+                fontSize = 10.5.sp,
                 fontWeight = FontWeight.Medium,
                 color = if (isWallpaperDark) Color.White.copy(alpha = 0.70f) else Color(0xFF6B7280)
             )
@@ -198,58 +209,41 @@ fun WakeUpDayHeaderRow(
             val day = dayNames.getOrElse(index) { "" }
             val dateStr = if (index < dateStrings.size) dateStrings[index] else ""
             val isToday = (dateStr == todayDateString)
-            val dayNumber = remember(dateStr) {
+            val dateSubtext = remember(dateStr) {
                 val parts = dateStr.split("-")
                 if (parts.size == 3) {
-                    parts[2].toIntOrNull()?.toString() ?: parts[2]
+                    val m = parts[1].toIntOrNull() ?: 10
+                    val d = parts[2].toIntOrNull() ?: 1
+                    "$m/$d"
                 } else ""
             }
 
             Column(
                 modifier = Modifier.weight(1f),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+                verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 Text(
                     text = day,
                     fontSize = 12.5.sp,
                     fontWeight = if (isToday) FontWeight.Bold else FontWeight.Medium,
                     color = if (isWallpaperDark) {
-                        if (isToday) Color.White else Color.White.copy(alpha = 0.85f)
+                        if (isToday) Color.White else Color.White.copy(alpha = 0.65f)
                     } else {
-                        if (isToday) Color(0xFF1F2937) else Color(0xFF6B7280)
+                        if (isToday) Color(0xFF111827) else Color(0xFF9CA3AF)
                     }
                 )
 
-                if (isToday) {
-                    // Rounded coral badge with white bold text (exact macOS DayHeaderView: #FF5A5F 24x24dp 7dp corner)
-                    Box(
-                        modifier = Modifier
-                            .size(24.dp)
-                            .clip(RoundedCornerShape(7.dp))
-                            .background(Color(0xFFFF5A5F)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = dayNumber,
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
+                Text(
+                    text = dateSubtext,
+                    fontSize = 10.sp,
+                    fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal,
+                    color = if (isWallpaperDark) {
+                        if (isToday) Color.White else Color.White.copy(alpha = 0.65f)
+                    } else {
+                        if (isToday) Color(0xFF111827) else Color(0xFF9CA3AF)
                     }
-                } else {
-                    Box(
-                        modifier = Modifier.size(24.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = dayNumber,
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.Normal,
-                            color = if (isWallpaperDark) Color.White.copy(alpha = 0.75f) else Color(0xFF6B7280)
-                        )
-                    }
-                }
+                )
             }
         }
     }
@@ -352,12 +346,7 @@ fun TimetableCanvas(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
-                        .then(
-                            if (isToday) {
-                                Modifier.background(if (isWallpaperDark) Color.White.copy(alpha = 0.05f) else Color(0xFF4F46E5).copy(alpha = 0.04f))
-                            } else Modifier
-                        )
-                        .padding(horizontal = 1.5.dp)
+                        .padding(horizontal = 1.dp)
                 ) {
                     // Empty grid slot click targets & guidelines
                     Column(modifier = Modifier.fillMaxSize()) {
@@ -372,11 +361,11 @@ fun TimetableCanvas(
                                     Box(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .height(0.5.dp)
+                                            .height(0.8.dp)
                                             .align(Alignment.BottomCenter)
                                             .background(
-                                                if (isWallpaperDark) Color.White.copy(alpha = 0.07f)
-                                                else Color.Black.copy(alpha = 0.05f)
+                                                if (isWallpaperDark) Color.White.copy(alpha = 0.22f)
+                                                else Color.Black.copy(alpha = 0.12f)
                                             )
                                     )
                                 }
@@ -389,7 +378,7 @@ fun TimetableCanvas(
                         val isActiveThisWeek = (item.weekNumber == selectedWeek)
                         val topOffset = (item.startSection - 1) * appSettings.gridHeight
                         val duration = maxOf(1, item.endSection - item.startSection + 1)
-                        val cardHeight = duration * appSettings.gridHeight - 4
+                        val cardHeight = duration * appSettings.gridHeight - 3
 
                         CourseCard(
                             item = item,
@@ -410,8 +399,10 @@ fun TimetableCanvas(
 }
 
 /**
- * WakeUp & macOS parity course card with rounded corners, glass reflection, dynamic contrast text,
- * and deep customizable options matching macOS CourseCardView.
+ * WakeUp & macOS parity course card matching WakeUp Image 1:
+ * - Centered vertical stack of [非本周], Title, @Classroom, Teacher
+ * - Comfortable typography with compact lineHeight preventing premature ellipsis
+ * - Full slot filling with subtle rounded corners
  */
 @Composable
 fun CourseCard(
@@ -425,7 +416,7 @@ fun CourseCard(
     val baseOpacity = if (isActiveThisWeek) appSettings.cardOpacity else appSettings.cardOpacity * appSettings.nonCurrentWeekOpacityRatio
 
     val radius = appSettings.cardCornerRadius.dp
-    val fontSize = appSettings.cardFontSize.sp
+    val fontSize = maxOf(12f, appSettings.cardFontSize).sp
 
     val isLight = cardColor.isLight()
     val effectiveTextColor = when {
@@ -435,7 +426,7 @@ fun CourseCard(
         appSettings.cardTextColorMode == "light" -> Color.White
         appSettings.cardTextColorMode == "dark" -> Color.Black.copy(alpha = 0.85f)
         else -> {
-            // Auto contrast mode
+            // Auto contrast mode matching macOS & WakeUp
             if (isDark) {
                 if (isActiveThisWeek) Color.White.copy(alpha = 0.96f) else Color.White.copy(alpha = 0.78f)
             } else {
@@ -448,7 +439,7 @@ fun CourseCard(
         }
     }
 
-    val effectiveSecondaryTextColor = effectiveTextColor.copy(alpha = 0.82f)
+    val effectiveSecondaryTextColor = effectiveTextColor.copy(alpha = 0.85f)
 
     val borderStrokeColor = when (appSettings.cardBorderColorMode) {
         "cardColor" -> if (isDark) cardColor.copy(alpha = 0.85f) else cardColor
@@ -471,7 +462,7 @@ fun CourseCard(
                 color = borderStrokeColor,
                 shape = RoundedCornerShape(radius)
             ),
-        contentAlignment = if (appSettings.cardTextVerticalCenter) Alignment.Center else Alignment.TopStart
+        contentAlignment = Alignment.Center
     ) {
         // Glass top reflection gradient for depth
         Box(
@@ -488,49 +479,37 @@ fun CourseCard(
                 )
         )
 
-        // Card Content
+        // Card Content: exact WakeUp Image 1 centered stack
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 6.dp, vertical = 5.dp),
-            horizontalAlignment = if (appSettings.cardTextHorizontalCenter) Alignment.CenterHorizontally else Alignment.Start,
-            verticalArrangement = if (appSettings.cardTextVerticalCenter) Arrangement.Center else Arrangement.Top
+                .padding(horizontal = 3.dp, vertical = 4.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
         ) {
-            // Header Row: Title & Status Pills
-            Row(
-                verticalAlignment = Alignment.Top,
-                horizontalArrangement = if (appSettings.cardTextHorizontalCenter) Arrangement.Center else Arrangement.Start,
-                modifier = Modifier.fillMaxWidth()
-            ) {
+            // [非本周] tag (exact Image 1 WakeUp style)
+            if (!isActiveThisWeek) {
                 Text(
-                    text = item.title,
-                    fontSize = fontSize,
-                    lineHeight = (fontSize.value + 2.5f).sp,
+                    text = "[非本周]",
+                    fontSize = 8.5.sp,
                     fontWeight = FontWeight.Bold,
-                    color = effectiveTextColor,
-                    textAlign = if (appSettings.cardTextHorizontalCenter) TextAlign.Center else TextAlign.Start,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = if (!appSettings.cardTextHorizontalCenter) Modifier.weight(1f, fill = false) else Modifier
+                    color = effectiveTextColor.copy(alpha = 0.80f),
+                    textAlign = TextAlign.Center
                 )
-
-                if (!isActiveThisWeek) {
-                    Spacer(modifier = Modifier.width(3.dp))
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(3.dp))
-                            .background(if (isDark) Color.White.copy(alpha = 0.22f) else Color.Black.copy(alpha = 0.28f))
-                            .padding(horizontal = 3.dp, vertical = 1.dp)
-                    ) {
-                        Text(
-                            text = "非本周",
-                            fontSize = 8.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
-                    }
-                }
+                Spacer(modifier = Modifier.height(1.dp))
             }
+
+            // Course Title
+            Text(
+                text = item.title,
+                fontSize = fontSize,
+                lineHeight = 14.5.sp,
+                fontWeight = FontWeight.Bold,
+                color = effectiveTextColor,
+                textAlign = TextAlign.Center,
+                maxLines = 4,
+                overflow = TextOverflow.Ellipsis
+            )
 
             // Location
             if (appSettings.showLocationInCard && !item.location.isNullOrBlank()) {
@@ -538,24 +517,26 @@ fun CourseCard(
                 val locText = if (appSettings.showAtPrefixForRoom) "@${item.location}" else item.location ?: ""
                 Text(
                     text = locText,
-                    fontSize = maxOf(8.5f, fontSize.value - 2.5f).sp,
-                    lineHeight = maxOf(10.5f, fontSize.value - 0.5f).sp,
+                    fontSize = 10.sp,
+                    lineHeight = 12.sp,
                     fontWeight = FontWeight.Medium,
                     color = effectiveSecondaryTextColor,
-                    maxLines = 1,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
             }
 
             // Teacher
             if (appSettings.showTeacherInCard && !item.teacher.isNullOrBlank()) {
-                Spacer(modifier = Modifier.height(2.dp))
+                Spacer(modifier = Modifier.height(1.5.dp))
                 Text(
                     text = item.teacher ?: "",
-                    fontSize = maxOf(8.0f, fontSize.value - 3.5f).sp,
-                    lineHeight = maxOf(10.0f, fontSize.value - 1.5f).sp,
+                    fontSize = 9.5.sp,
+                    lineHeight = 11.sp,
                     fontWeight = FontWeight.Normal,
                     color = effectiveSecondaryTextColor.copy(alpha = 0.90f),
+                    textAlign = TextAlign.Center,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -563,12 +544,13 @@ fun CourseCard(
 
             // Time
             if (appSettings.showTimeInCard && !item.startTime.isNullOrBlank() && !item.endTime.isNullOrBlank()) {
-                Spacer(modifier = Modifier.height(2.dp))
+                Spacer(modifier = Modifier.height(1.5.dp))
                 Text(
                     text = "${item.startTime}-${item.endTime}",
                     fontSize = 8.sp,
                     fontWeight = FontWeight.Medium,
                     color = effectiveSecondaryTextColor.copy(alpha = 0.85f),
+                    textAlign = TextAlign.Center,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -576,11 +558,12 @@ fun CourseCard(
 
             // Notes
             if (appSettings.showNotesInCard && !item.notes.isNullOrBlank()) {
-                Spacer(modifier = Modifier.height(2.dp))
+                Spacer(modifier = Modifier.height(1.5.dp))
                 Text(
                     text = item.notes ?: "",
                     fontSize = 8.sp,
                     color = effectiveSecondaryTextColor.copy(alpha = 0.75f),
+                    textAlign = TextAlign.Center,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )

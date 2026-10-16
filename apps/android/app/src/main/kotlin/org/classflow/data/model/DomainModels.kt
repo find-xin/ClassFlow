@@ -182,6 +182,9 @@ data class AppSettings(
     val cardTextBlendCardColor: Boolean = false,
     val syncInterval: String = "manual", // "manual", "on_launch", "15m", "30m", "1h", "6h", "daily"
     val autoSyncEnabled: Boolean = false,
-    val lastSyncedTime: String? = null
+    val lastSyncedTime: String? = null,
+    val calendarName: String = "ClassFlow",
+    val calendarReminderMinutes: Int? = 15,
+    val calendarIncludeNotes: Boolean = true
 )
 

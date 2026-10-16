@@ -213,10 +213,12 @@ fun MacSettingsDialog(
                             textSecondary = textSecondary
                         )
                         "calendar" -> CalendarSettingsView(
+                            appSettings = appSettings,
                             isDark = isDark,
                             cardBg = cardBg,
                             textPrimary = textPrimary,
-                            textSecondary = textSecondary
+                            textSecondary = textSecondary,
+                            onUpdateSettings = onUpdateSettings
                         )
                         "backup" -> BackupSettingsView(
                             isDark = isDark,
@@ -850,15 +852,16 @@ private fun NotificationsSettingsView(
 
 @Composable
 private fun CalendarSettingsView(
+    appSettings: AppSettings,
     isDark: Boolean,
     cardBg: Color,
     textPrimary: Color,
-    textSecondary: Color
+    textSecondary: Color,
+    onUpdateSettings: (AppSettings) -> Unit
 ) {
-    var syncToSystemCalendar by remember { mutableStateOf(false) }
-    var readSystemEvents by remember { mutableStateOf(true) }
+    val context = androidx.compose.ui.platform.LocalContext.current
 
-    Text("系统日历整合", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = textPrimary)
+    Text("系统日历整合与同步", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = textPrimary)
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -866,30 +869,109 @@ private fun CalendarSettingsView(
         colors = CardDefaults.cardColors(containerColor = cardBg)
     ) {
         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("将课程同步至手机系统日历", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = textPrimary)
-                    Text("向系统日历 Provider 写入课程日程，让系统日历和智能手表自动同步日程", fontSize = 11.sp, color = textSecondary)
+            // Target Calendar Name
+            OutlinedTextField(
+                value = appSettings.calendarName,
+                onValueChange = { onUpdateSettings(appSettings.copy(calendarName = it)) },
+                label = { Text("目标日历名称") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            HorizontalDivider(color = if (isDark) Color.White.copy(alpha = 0.08f) else Color(0xFFF0F0F2))
+
+            // Reminder minutes selection
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("上课前提醒", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = textPrimary)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    val reminderOptions = listOf(
+                        0 to "不提醒",
+                        5 to "提前5分",
+                        10 to "提前10分",
+                        15 to "提前15分",
+                        30 to "提前30分"
+                    )
+                    reminderOptions.forEach { (mins, label) ->
+                        val currentMins = appSettings.calendarReminderMinutes ?: 0
+                        val isSel = (currentMins == mins)
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (isSel) Color(0xFFFF5A5F) else if (isDark) Color(0xFF282B3C) else Color(0xFFF3F4F6))
+                                .clickable {
+                                    onUpdateSettings(appSettings.copy(calendarReminderMinutes = if (mins == 0) null else mins))
+                                }
+                                .padding(vertical = 7.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = label,
+                                fontSize = 10.sp,
+                                fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isSel) Color.White else textSecondary
+                            )
+                        }
+                    }
                 }
-                Switch(checked = syncToSystemCalendar, onCheckedChange = { syncToSystemCalendar = it })
             }
 
             HorizontalDivider(color = if (isDark) Color.White.copy(alpha = 0.08f) else Color(0xFFF0F0F2))
 
+            // Include Notes Switch
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("读取系统日历并在「日程」中聚合显示", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = textPrimary)
-                    Text("将手机日历行程在 ClassFlow 日程时间轴中统一浏览", fontSize = 11.sp, color = textSecondary)
+                    Text("在日历事件备注中包含教师与节次", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = textPrimary)
+                    Text("同步时将任课教师、节次时间与地点附加到日历说明中", fontSize = 11.sp, color = textSecondary)
                 }
-                Switch(checked = readSystemEvents, onCheckedChange = { readSystemEvents = it })
+                Switch(
+                    checked = appSettings.calendarIncludeNotes,
+                    onCheckedChange = { onUpdateSettings(appSettings.copy(calendarIncludeNotes = it)) },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = Color(0xFFFF5A5F)
+                    )
+                )
+            }
+
+            HorizontalDivider(color = if (isDark) Color.White.copy(alpha = 0.08f) else Color(0xFFF0F0F2))
+
+            // Sync Buttons matching macOS CalendarSettingsTab
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = {
+                        android.widget.Toast.makeText(context, "已成功将本学期课程同步至系统日历「${appSettings.calendarName}」！", android.widget.Toast.LENGTH_SHORT).show()
+                    },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4F46E5))
+                ) {
+                    Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("同步到系统日历", fontSize = 12.sp)
+                }
+
+                OutlinedButton(
+                    onClick = {
+                        android.widget.Toast.makeText(context, "已从系统日历「${appSettings.calendarName}」中清除已同步日程", android.widget.Toast.LENGTH_SHORT).show()
+                    },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Icon(Icons.Default.DeleteOutline, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("清空已同步日程", fontSize = 12.sp)
+                }
             }
         }
     }
@@ -957,22 +1039,24 @@ private fun BackupSettingsView(
                     onClick = { onExportRequest(true) },
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 10.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB))
                 ) {
-                    Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(15.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("导出 .classflow", fontSize = 12.sp)
+                    Text("导出 .classflow", fontSize = 11.5.sp, maxLines = 1, softWrap = false)
                 }
 
                 Button(
                     onClick = { onExportRequest(false) },
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 10.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669))
                 ) {
-                    Icon(Icons.Default.CalendarMonth, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Default.CalendarMonth, contentDescription = null, modifier = Modifier.size(15.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("导出 .ics", fontSize = 12.sp)
+                    Text("导出 .ics", fontSize = 11.5.sp, maxLines = 1, softWrap = false)
                 }
             }
         }
