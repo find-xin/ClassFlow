@@ -571,6 +571,39 @@ struct MacOSViewModelTests {
         let unlistedMatches = filterSuggestions("全新自创实验课", candidates: courseNames)
         #expect(unlistedMatches.isEmpty)
     }
+
+    @Test("CalendarEvent with custom days of week and custom weeks matrix linkage")
+    @MainActor
+    func testCalendarEventCustomDaysAndWeeksMatrixLinkage() {
+        let state = makeIsolatedAppState()
+        state.selectedWeek = 1
+
+        let event = CalendarEvent(
+            id: UUID(),
+            title: "前三周周二周四专项研讨",
+            startTime: "2026-09-08T14:00:00",
+            endTime: "2026-09-08T15:30:00",
+            frequency: "customDays",
+            customWeeks: [1, 2, 3],
+            customDaysOfWeek: [2, 4],
+            startDate: "2026-09-01",
+            endDate: "2026-11-30"
+        )
+        state.addCalendarEvent(event)
+
+        // Week 1: should contain Tuesday (2) and Thursday (4)
+        let week1Items = state.currentWeekOccurrences.filter { $0.calendarEventId == event.id }
+        let week1Days = Set(week1Items.map { $0.dayOfWeek })
+        #expect(week1Days.contains(2))
+        #expect(week1Days.contains(4))
+        #expect(!week1Days.contains(1))
+        #expect(!week1Days.contains(3))
+
+        // Switch to Week 4 (outside customWeeks [1, 2, 3]): should be completely empty
+        state.selectedWeek = 4
+        let week4Items = state.currentWeekOccurrences.filter { $0.calendarEventId == event.id }
+        #expect(week4Items.isEmpty)
+    }
 }
 
 

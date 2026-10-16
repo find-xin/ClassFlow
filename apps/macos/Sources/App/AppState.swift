@@ -316,8 +316,45 @@ public final class AppState {
         df.dateFormat = "yyyy-MM-dd"
         let cal = Calendar.current
 
+        // 1. Check week matrix filtering: if customWeeks is configured, must contain selectedWeek
+        if let weeks = event.customWeeks, !weeks.isEmpty {
+            if !weeks.contains(selectedWeek) {
+                return []
+            }
+        }
+
+        // 2. Check every N weeks interval
+        if let interval = event.intervalWeeks, interval > 1 {
+            let startWeek: Int
+            if let startDStr = event.startDate ?? event.startTime.split(separator: "T").first.map(String.init) ?? event.startTime.split(separator: " ").first.map(String.init),
+               let sDate = df.date(from: startDStr),
+               let semDate = df.date(from: semester.startDate) {
+                let diffDays = cal.dateComponents([.day], from: semDate, to: sDate).day ?? 0
+                startWeek = max(1, (diffDays / 7) + 1)
+            } else {
+                startWeek = 1
+            }
+            if selectedWeek >= startWeek && ((selectedWeek - startWeek) % interval != 0) {
+                return []
+            }
+        }
+
         for (dayIdx, dateStr) in weekDates.enumerated() {
             let dayOfWeek = dayIdx + 1 // 1 = Monday ... 7 = Sunday
+
+            // 3. Check start and end date boundaries
+            if let sDate = event.startDate, !sDate.isEmpty, dateStr < sDate {
+                continue
+            }
+            if let eDate = event.endDate, !eDate.isEmpty, dateStr > eDate {
+                continue
+            }
+
+            // 4. Check recurrence termination condition
+            if event.endRepeatType == "untilDate", let until = event.endRepeatUntil, !until.isEmpty, dateStr > until {
+                continue
+            }
+
             var shouldInclude = false
 
             let freq = event.frequency ?? "none"
@@ -327,7 +364,9 @@ public final class AppState {
             case "workdays":
                 shouldInclude = (dayOfWeek <= 5)
             case "weekly":
-                if let eventDate = df.date(from: String(event.startTime.prefix(10))) {
+                if let days = event.customDaysOfWeek, !days.isEmpty {
+                    shouldInclude = days.contains(dayOfWeek)
+                } else if let eventDate = df.date(from: String(event.startTime.prefix(10))) {
                     let evWeekday = cal.component(.weekday, from: eventDate)
                     let evDayOfWeek = evWeekday == 1 ? 7 : (evWeekday - 1)
                     if evDayOfWeek == dayOfWeek {
@@ -338,7 +377,9 @@ public final class AppState {
                 }
             case "biweekly":
                 if selectedWeek % 2 == 1 {
-                    if let eventDate = df.date(from: String(event.startTime.prefix(10))) {
+                    if let days = event.customDaysOfWeek, !days.isEmpty {
+                        shouldInclude = days.contains(dayOfWeek)
+                    } else if let eventDate = df.date(from: String(event.startTime.prefix(10))) {
                         let evWeekday = cal.component(.weekday, from: eventDate)
                         let evDayOfWeek = evWeekday == 1 ? 7 : (evWeekday - 1)
                         if evDayOfWeek == dayOfWeek {
@@ -348,7 +389,9 @@ public final class AppState {
                 }
             case "customWeeks":
                 if let weeks = event.customWeeks, weeks.contains(selectedWeek) {
-                    if let eventDate = df.date(from: String(event.startTime.prefix(10))) {
+                    if let days = event.customDaysOfWeek, !days.isEmpty {
+                        shouldInclude = days.contains(dayOfWeek)
+                    } else if let eventDate = df.date(from: String(event.startTime.prefix(10))) {
                         let evWeekday = cal.component(.weekday, from: eventDate)
                         let evDayOfWeek = evWeekday == 1 ? 7 : (evWeekday - 1)
                         if evDayOfWeek == dayOfWeek {
