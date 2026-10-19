@@ -95,7 +95,7 @@ public struct UserProfileView: View {
                             }
                             Divider().padding(.leading, 46)
 
-                            profileRow(icon: "books.vertical", title: "已选课程库", desc: "集中查看当前学期所有课程详情与节次安排") {
+                            profileRow(icon: "books.vertical", title: "事项管理", desc: "集中查看当前学期课程、日程与待办详情") {
                                 isShowingCourseList = true
                             }
                             Divider().padding(.leading, 46)
@@ -241,7 +241,7 @@ public struct UserProfileView: View {
                             }
                             Divider().padding(.leading, 46)
 
-                            profileRow(icon: "externaldrive.badge.icloud", title: "七牛云 Kodo / S3 兼容对象存储", desc: "使用个人 AK/SK 密钥进行加密异地增量备份") {
+                            profileRow(icon: "externaldrive.badge.icloud", title: "S3 兼容对象存储 (BYOC 云同步)", desc: "使用个人 AK/SK 密钥进行加密异地增量备份") {
                                 appState.isShowingSettings = true
                             }
                             Divider().padding(.leading, 46)
@@ -275,7 +275,7 @@ public struct UserProfileView: View {
             }
         }
         .sheet(isPresented: $isShowingCourseList) {
-            WakeUpCourseListSheet(appState: appState)
+            UnifiedEntityManagerSheet(appState: appState)
         }
     }
 

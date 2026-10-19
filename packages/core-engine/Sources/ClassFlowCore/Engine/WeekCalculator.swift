@@ -15,29 +15,34 @@ public struct WeekCalculator: Sendable {
         self.calendar = cal
     }
 
-    private static let dateFormatter: DateFormatter = {
-        let df = DateFormatter()
-        df.dateFormat = "yyyy-MM-dd"
-        df.locale = Locale(identifier: "en_US_POSIX")
-        return df
-    }()
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var formatters: [String: DateFormatter] = [:]
 
-    /// Parses "YYYY-MM-DD" into Date at start of day in configured timezone.
-    public func parseDate(_ dateString: String) -> Date? {
+    private func getCachedFormatterUnsafe() -> DateFormatter {
+        let tzId = timeZone.identifier
+        if let df = Self.formatters[tzId] {
+            return df
+        }
         let df = DateFormatter()
         df.dateFormat = "yyyy-MM-dd"
         df.timeZone = timeZone
         df.locale = Locale(identifier: "en_US_POSIX")
-        return df.date(from: dateString)
+        Self.formatters[tzId] = df
+        return df
+    }
+
+    /// Parses "YYYY-MM-DD" into Date at start of day in configured timezone.
+    public func parseDate(_ dateString: String) -> Date? {
+        Self.lock.lock()
+        defer { Self.lock.unlock() }
+        return getCachedFormatterUnsafe().date(from: dateString)
     }
 
     /// Formats Date into "YYYY-MM-DD".
     public func formatDate(_ date: Date) -> String {
-        let df = DateFormatter()
-        df.dateFormat = "yyyy-MM-dd"
-        df.timeZone = timeZone
-        df.locale = Locale(identifier: "en_US_POSIX")
-        return df.string(from: date)
+        Self.lock.lock()
+        defer { Self.lock.unlock() }
+        return getCachedFormatterUnsafe().string(from: date)
     }
 
     /// Finds the Monday date of the week containing the semester start date.

@@ -34,6 +34,10 @@ public struct TimelineEngine: Sendable {
             by: { $0.targetDate ?? "" }
         )
 
+        // Pre-compute the 7 date strings of the week once
+        let weekDates = weekCalculator.dateStringsInWeek(weekNumber: weekNumber, semesterStartDate: semester.startDate)
+        let datesInWeek = Set(weekDates)
+
         // 1. Process regular schedules
         for course in courses {
             for schedule in course.schedules {
@@ -47,11 +51,17 @@ public struct TimelineEngine: Sendable {
                     continue
                 }
 
-                let dateStr = weekCalculator.dateString(
-                    forWeek: weekNumber,
-                    dayOfWeek: schedule.dayOfWeek,
-                    semesterStartDate: semester.startDate
-                )
+                let dayIdx = schedule.dayOfWeek - 1
+                let dateStr: String
+                if dayIdx >= 0 && dayIdx < weekDates.count {
+                    dateStr = weekDates[dayIdx]
+                } else {
+                    dateStr = weekCalculator.dateString(
+                        forWeek: weekNumber,
+                        dayOfWeek: schedule.dayOfWeek,
+                        semesterStartDate: semester.startDate
+                    )
+                }
 
                 let startTime = schedule.customStartTime ?? semester.sectionTime(for: schedule.startSection)?.startTime
                 let endTime = schedule.customEndTime ?? semester.sectionTime(for: schedule.endSection)?.endTime
@@ -74,7 +84,8 @@ public struct TimelineEngine: Sendable {
                     status: .normal,
                     color: course.color,
                     teacher: schedule.teacher ?? course.teacher,
-                    notes: course.notes
+                    notes: course.notes,
+                    isRecurring: true
                 )
 
                 // Apply exceptions matching this original occurrence
@@ -82,6 +93,9 @@ public struct TimelineEngine: Sendable {
                 if let exList = exceptionByOrigDateAndSchedule[lookupKey], let ex = exList.first {
                     switch ex.exceptionType {
                     case .cancel:
+                        if ex.reason == "单次删除" {
+                            continue
+                        }
                         item.status = .cancelled
                     case .reschedule:
                         // Original slot is marked cancelled / rescheduled away
@@ -103,7 +117,6 @@ public struct TimelineEngine: Sendable {
         }
 
         // 2. Process rescheduled arrivals & makeup sessions targeting dates in this week
-        let datesInWeek = Set(weekCalculator.dateStringsInWeek(weekNumber: weekNumber, semesterStartDate: semester.startDate))
         let scheduleMap: [UUID: (Course, CourseSchedule)] = courses.reduce(into: [:]) { result, course in
             for s in course.schedules {
                 result[s.id] = (course, s)

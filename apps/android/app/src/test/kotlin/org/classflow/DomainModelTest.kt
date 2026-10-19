@@ -155,6 +155,42 @@ class DomainModelTest {
         val matchedNames = allNames.filter { it.contains(queryName, ignoreCase = true) }
         assertEquals(listOf("高等数学", "高级英语视听说"), matchedNames)
     }
+
+    @Test
+    fun testCalendarEventAndStudyTaskSemesterScoping() {
+        val defaultSemId = "sem_default"
+        val newSemId = "sem_new_clean"
+
+        val events = listOf(
+            CalendarEvent(id = "e1", title = "主课表日程", semesterId = defaultSemId),
+            CalendarEvent(id = "e2", title = "无学期旧日程", semesterId = null),
+            CalendarEvent(id = "e3", title = "新课表日程", semesterId = newSemId)
+        )
+
+        val studyTasks = listOf(
+            StudyTask(id = "t1", title = "主课表专注任务", semesterId = defaultSemId),
+            StudyTask(id = "t2", title = "旧任务", semesterId = null),
+            StudyTask(id = "t3", title = "新课表专注任务", semesterId = newSemId)
+        )
+
+        // For default semester, items with matching ID or null/blank ID should be included
+        val defaultEvents = events.filter { it.semesterId == defaultSemId || it.semesterId.isNullOrBlank() }
+        val defaultTasks = studyTasks.filter { it.semesterId == defaultSemId || it.semesterId.isNullOrBlank() }
+        assertEquals(listOf("e1", "e2"), defaultEvents.map { it.id })
+        assertEquals(listOf("t1", "t2"), defaultTasks.map { it.id })
+
+        // When a user creates a new clean timetable (newSemId), it should only contain items explicitly created for newSemId (0 initially)
+        val freshNewEvents = events.filter { it.id != "e3" }.filter { it.semesterId == newSemId }
+        val freshNewTasks = studyTasks.filter { it.id != "t3" }.filter { it.semesterId == newSemId }
+        assertEquals(0, freshNewEvents.size)
+        assertEquals(0, freshNewTasks.size)
+
+        // Once items are added to new semester, only those items appear
+        val newEvents = events.filter { it.semesterId == newSemId }
+        val newTasks = studyTasks.filter { it.semesterId == newSemId }
+        assertEquals(listOf("e3"), newEvents.map { it.id })
+        assertEquals(listOf("t3"), newTasks.map { it.id })
+    }
 }
 
 

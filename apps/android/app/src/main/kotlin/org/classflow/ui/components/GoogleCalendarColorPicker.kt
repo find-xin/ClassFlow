@@ -260,11 +260,17 @@ fun CustomColorDialog(
     )
 }
 
+private val colorHexCache = java.util.concurrent.ConcurrentHashMap<String, Color>(64)
+
 fun parseHexColor(hex: String, fallback: Color = Color(0xFF4F46E5)): Color {
-    return try {
+    val cached = colorHexCache[hex]
+    if (cached != null) return cached
+    val parsed = try {
         val clean = if (hex.startsWith("#")) hex else "#$hex"
         Color(android.graphics.Color.parseColor(clean))
-    } catch (e: Throwable) {
+    } catch (_: Throwable) {
         fallback
     }
+    colorHexCache[hex] = parsed
+    return parsed
 }

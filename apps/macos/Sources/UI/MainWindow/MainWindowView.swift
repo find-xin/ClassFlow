@@ -49,6 +49,7 @@ public struct MainWindowView: View {
         .frame(minWidth: 780, minHeight: 560)
         .background {
             WallpaperBackgroundView(settings: appState.settings)
+                .id("\(appState.settings.wallpaperPreset)-\(appState.settings.customBackgroundPath ?? "")-\(appState.settings.usePureColorBackground)-\(appState.settings.themeMode)")
         }
         .background {
             Group {
@@ -79,6 +80,11 @@ public struct MainWindowView: View {
                             appState.editingCourseInitialMode = .fullCourse
                             appState.editingOccurrence = item
                             appState.editingCourse = course
+                        }
+                    } else if let eventId = item.calendarEventId, let event = appState.calendarEvents.first(where: { $0.id == eventId }) {
+                        appState.selectedOccurrence = nil
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+                            appState.startEditingCalendarEvent(event)
                         }
                     }
                 },
@@ -120,6 +126,31 @@ public struct MainWindowView: View {
                     }
                     appState.selectedOccurrence = nil
                 },
+                onDeleteScope: { scope in
+                    if let courseId = item.courseId, let scheduleId = item.scheduleId {
+                        switch scope {
+                        case .thisOnly:
+                            appState.cancelSchedule(
+                                courseId: courseId,
+                                scheduleId: scheduleId,
+                                scope: .thisOnly,
+                                occurrenceDate: item.date
+                            )
+                        case .thisAndFuture:
+                            appState.cancelSchedule(
+                                courseId: courseId,
+                                scheduleId: scheduleId,
+                                scope: .thisAndFuture,
+                                occurrenceDate: item.date
+                            )
+                        case .all:
+                            appState.deleteCourse(id: courseId)
+                        }
+                    } else if let eventId = item.calendarEventId {
+                        appState.deleteCalendarEvent(id: eventId, scope: scope, occurrenceDate: item.date)
+                    }
+                    appState.selectedOccurrence = nil
+                },
                 onStartFocus: appState.settings.enableStudyModule ? {
                     appState.startFocusForCourse(item)
                 } : nil
@@ -133,6 +164,7 @@ public struct MainWindowView: View {
                     occurrence: appState.editingOccurrence,
                     initialMode: appState.editingCourseInitialMode,
                     availableSections: semester.sections,
+                    totalWeeks: semester.totalWeeks,
                     courseNameSuggestions: existingCourseNames,
                     teacherSuggestions: existingTeachers,
                     classroomSuggestions: existingClassrooms,
@@ -170,6 +202,8 @@ public struct MainWindowView: View {
                 CourseAddSheet(
                     semesterId: semester.id,
                     availableSections: semester.sections,
+                    totalWeeks: semester.totalWeeks,
+                    defaultDayOfWeek: appState.selectedDayOfWeek,
                     initialSlot: appState.prefilledSlotForAdd,
                     courseNameSuggestions: existingCourseNames,
                     teacherSuggestions: existingTeachers,
@@ -257,9 +291,31 @@ public struct MainWindowView: View {
             }
             .frame(width: 580, height: 620)
         }
-        // Course List Sheet (已选课程管理)
+        // Unified Entity Manager Sheet (课程、日程与待办统一管理)
         .sheet(isPresented: $appState.isShowingCourseList) {
-            WakeUpCourseListSheet(appState: appState)
+            UnifiedEntityManagerSheet(appState: appState)
+        }
+        // Edit Calendar Event Sheet
+        .sheet(item: $appState.editingCalendarEvent) { event in
+            ScheduleItemCreateSheet(
+                appState: appState,
+                initialMode: .event,
+                editingEvent: event,
+                onDismiss: {
+                    appState.editingCalendarEvent = nil
+                }
+            )
+        }
+        // Edit Pomodoro Task Sheet
+        .sheet(item: $appState.editingPomodoroTask) { task in
+            ScheduleItemCreateSheet(
+                appState: appState,
+                initialMode: .task,
+                editingTask: task,
+                onDismiss: {
+                    appState.editingPomodoroTask = nil
+                }
+            )
         }
         // Edit Section Times Sheet
         .sheet(isPresented: $appState.isShowingEditSectionTimes) {

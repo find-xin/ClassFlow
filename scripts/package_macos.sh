@@ -83,6 +83,11 @@ cat << 'EOF' > "${BUNDLE_DIR}/Contents/Info.plist"
             </array>
         </dict>
     </array>
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsArbitraryLoads</key>
+        <true/>
+    </dict>
     <key>NSHumanReadableCopyright</key>
     <string>Copyright © 2026 ClassFlow Contributors. Licensed under Apache-2.0.</string>
 </dict>

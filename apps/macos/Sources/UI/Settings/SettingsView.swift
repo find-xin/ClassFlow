@@ -167,7 +167,9 @@ public struct SettingsView: View {
                 VStack(spacing: 0) {
                     Button(action: {
                         onDismiss?()
-                        appState.isShowingAppearance = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                            appState.isShowingAppearance = true
+                        }
                     }) {
                         HStack {
                             Label("课表外观与壁纸皮肤深度设置", systemImage: "paintbrush")
@@ -187,7 +189,9 @@ public struct SettingsView: View {
 
                     Button(action: {
                         onDismiss?()
-                        appState.isShowingSectionProfiles = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                            appState.isShowingSectionProfiles = true
+                        }
                     }) {
                         HStack {
                             Label("作息时间表设置 (节次时长与联动)", systemImage: "clock")
@@ -202,6 +206,37 @@ public struct SettingsView: View {
                         .padding(.vertical, 12)
                     }
                     .buttonStyle(.plain)
+                }
+                .background(Color(nsColor: .controlBackgroundColor))
+                .cornerRadius(12)
+            }
+
+            // Data & History Management
+            VStack(alignment: .leading, spacing: 10) {
+                Text("数据与历史管理")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 4)
+
+                VStack(spacing: 0) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("专注成果历史记录")
+                                .font(.system(size: 14))
+                            Text("当前已累计记录 \(appState.pomodoroRecords.count) 条专注成果")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+                        Button("清空历史") {
+                            appState.clearPomodoroRecords()
+                        }
+                        .disabled(appState.pomodoroRecords.isEmpty)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(appState.pomodoroRecords.isEmpty ? .secondary : .red)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
                 }
                 .background(Color(nsColor: .controlBackgroundColor))
                 .cornerRadius(12)

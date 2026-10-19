@@ -44,4 +44,29 @@ struct S3SignatureV4Tests {
         #expect(result.payloadHashHeader != "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
         #expect(result.authorizationHeader.contains("x-amz-content-sha256"))
     }
+
+    @Test("Normalize endpoint trailing slash and protocol scheme")
+    func testEndpointNormalization() {
+        let configWithSlash = S3StorageProvider.Configuration(
+            endpoint: "http://s3.cn-south-1.qiniucs.com/",
+            region: " cn-south-1 ",
+            bucket: " classflow-sync ",
+            accessKey: " ak_test ",
+            secretKey: " sk_test ",
+            pathPrefix: "/classflow-sync/"
+        )
+        #expect(configWithSlash.endpoint == "http://s3.cn-south-1.qiniucs.com")
+        #expect(configWithSlash.region == "cn-south-1")
+        #expect(configWithSlash.bucket == "classflow-sync")
+        #expect(configWithSlash.accessKey == "ak_test")
+        #expect(configWithSlash.secretKey == "sk_test")
+        #expect(configWithSlash.pathPrefix == "classflow-sync/")
+
+        let configNoScheme = S3StorageProvider.Configuration(
+            endpoint: "s3.cn-south-1.qiniucs.com",
+            pathPrefix: "sync-data"
+        )
+        #expect(configNoScheme.endpoint == "https://s3.cn-south-1.qiniucs.com")
+        #expect(configNoScheme.pathPrefix == "sync-data/")
+    }
 }

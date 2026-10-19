@@ -27,12 +27,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.classflow.data.model.CalendarEvent
 import org.classflow.data.model.SectionTime
+import org.classflow.data.model.Semester
 import org.classflow.data.model.TimelineItem
 import org.classflow.ui.components.parseHexColor
 import java.text.SimpleDateFormat
 import java.util.*
 
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import org.classflow.data.model.AppSettings
 
 private fun Color.isLight(): Boolean {
@@ -51,6 +54,8 @@ fun TimetableScreen(
     selectedWeek: Int,
     totalWeeks: Int,
     semesterName: String,
+    activeSemesterId: String = "",
+    semestersList: List<Semester> = emptyList(),
     occurrences: List<TimelineItem>,
     scheduleEvents: List<CalendarEvent> = emptyList(),
     sectionTimes: List<SectionTime> = emptyList(),
@@ -60,6 +65,10 @@ fun TimetableScreen(
     appSettings: AppSettings = AppSettings(),
     onWeekChange: (Int) -> Unit,
     onSemesterChange: (String) -> Unit = {},
+    onSelectSemester: (Semester) -> Unit = {},
+    onCreateSemester: (Semester) -> Unit = {},
+    onUpdateSemester: (Semester) -> Unit = {},
+    onDeleteSemester: (Semester) -> Unit = {},
     onCourseClick: (TimelineItem) -> Unit,
     onScheduleClick: (CalendarEvent) -> Unit = {},
     onAddCourseClick: () -> Unit,
@@ -68,13 +77,15 @@ fun TimetableScreen(
     onAddScheduleAtSlot: (dayOfWeek: Int, section: Int) -> Unit = { _, _ -> },
     onImportClick: (ImportType) -> Unit = {},
     onExportClick: (ExportType) -> Unit = {},
+    topCourseSelections: Map<String, String> = emptyMap(),
+    onSelectTopCourse: (clusterKey: String, courseId: String) -> Unit = { _, _ -> },
     onOpenThreeDotsMenu: () -> Unit
 ) {
     var displayMode by remember { mutableStateOf("week") } // "week" or "day"
     var activeSlotForAction by remember { mutableStateOf<Pair<Int, Int>?>(null) }
 
     // Calculate dates for the 7 days of the selected week
-    val weekDates = remember(selectedWeek) {
+    val weekDates = remember(selectedWeek, currentWeek) {
         val cal = Calendar.getInstance()
         cal.firstDayOfWeek = Calendar.MONDAY
         val currentWeekIdx = currentWeek
@@ -94,19 +105,52 @@ fun TimetableScreen(
         SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
+    val effectiveShowSaturday = appSettings.showWeekends && appSettings.showSaturday
+    val effectiveShowSunday = appSettings.showWeekends && appSettings.showSunday
+
+    var totalDragOffset by remember { mutableFloatStateOf(0f) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .pointerInput(selectedWeek, totalWeeks) {
+                detectHorizontalDragGestures(
+                    onDragStart = { totalDragOffset = 0f },
+                    onDragEnd = {
+                        val threshold = 60.dp.toPx()
+                        if (totalDragOffset < -threshold && selectedWeek < totalWeeks) {
+                            onWeekChange(selectedWeek + 1)
+                        } else if (totalDragOffset > threshold && selectedWeek > 1) {
+                            onWeekChange(selectedWeek - 1)
+                        }
+                        totalDragOffset = 0f
+                    },
+                    onDragCancel = { totalDragOffset = 0f },
+                    onHorizontalDrag = { change, dragAmount ->
+                        change.consume()
+                        totalDragOffset += dragAmount
+                    }
+                )
+            }
+    ) {
         // 1. WakeUp Style Top Bar with Week / Day View Toggle
         WakeUpHeaderView(
             currentWeek = currentWeek,
             selectedWeek = selectedWeek,
             totalWeeks = totalWeeks,
             semesterName = semesterName,
+            activeSemesterId = activeSemesterId,
+            semestersList = semestersList,
             displayMode = displayMode,
             isDark = isDark,
             isWallpaperDark = isWallpaperDark,
             onWeekChange = onWeekChange,
             onToggleDisplayMode = { displayMode = it },
             onSemesterChange = onSemesterChange,
+            onSelectSemester = onSelectSemester,
+            onCreateSemester = onCreateSemester,
+            onUpdateSemester = onUpdateSemester,
+            onDeleteSemester = onDeleteSemester,
             onAddCourseClick = onAddCourseClick,
             onAddScheduleClick = onAddScheduleClick,
             onImportClick = onImportClick,
@@ -120,6 +164,8 @@ fun TimetableScreen(
                 occurrences = occurrences.filter { it.weekNumber == selectedWeek },
                 scheduleEvents = scheduleEvents,
                 todayDateString = todayDateString,
+                isDark = isDark,
+                isWallpaperDark = isWallpaperDark,
                 onCourseClick = onCourseClick,
                 onScheduleClick = onScheduleClick
             )
@@ -128,8 +174,8 @@ fun TimetableScreen(
             WakeUpDayHeaderRow(
                 dateStrings = weekDates,
                 todayDateString = todayDateString,
-                showSaturday = appSettings.showSaturday,
-                showSunday = appSettings.showSunday,
+                showSaturday = effectiveShowSaturday,
+                showSunday = effectiveShowSunday,
                 isWallpaperDark = isWallpaperDark
             )
 
@@ -156,7 +202,9 @@ fun TimetableScreen(
                 onAddScheduleAtSlot = { d, s ->
                     activeSlotForAction = null
                     onAddScheduleAtSlot(d, s)
-                }
+                },
+                topCourseSelections = topCourseSelections,
+                onSelectTopCourse = onSelectTopCourse
             )
         }
     }
@@ -285,6 +333,56 @@ fun WakeUpDayHeaderRow(
 }
 
 /**
+ * Represents an overlapping cluster of courses occupying overlapping sections in a single day.
+ */
+data class OverlapCluster(
+    val key: String,
+    val items: List<TimelineItem>,
+    val minStartSection: Int,
+    val maxEndSection: Int
+)
+
+/**
+ * Clusters courses of a day into groups of mutually overlapping courses.
+ * Non-overlapping courses form 1-item clusters; overlapping courses form multi-item clusters.
+ */
+fun clusterDayCourses(courses: List<TimelineItem>, dayOfWeek: Int): List<OverlapCluster> {
+    if (courses.isEmpty()) return emptyList()
+    val sorted = courses.sortedWith(compareBy({ it.startSection }, { it.endSection }))
+    val clusters = mutableListOf<MutableList<TimelineItem>>()
+
+    for (item in sorted) {
+        var placed = false
+        for (cluster in clusters) {
+            val overlaps = cluster.any { other ->
+                maxOf(item.startSection, other.startSection) <= minOf(item.endSection, other.endSection)
+            }
+            if (overlaps) {
+                cluster.add(item)
+                placed = true
+                break
+            }
+        }
+        if (!placed) {
+            clusters.add(mutableListOf(item))
+        }
+    }
+
+    return clusters.map { list ->
+        val sortedList = list.sortedWith(compareBy({ it.startSection }, { it.endSection }))
+        val minStart = sortedList.minOf { it.startSection }
+        val maxEnd = sortedList.maxOf { it.endSection }
+        val stableKey = "day_${dayOfWeek}_sec_${minStart}_" + sortedList.map { it.courseId ?: it.id }.sorted().joinToString("_")
+        OverlapCluster(
+            key = stableKey,
+            items = sortedList,
+            minStartSection = minStart,
+            maxEndSection = maxEnd
+        )
+    }
+}
+
+/**
  * Timetable grid canvas with accurate section axis, today column soft highlighting,
  * and slot click-to-add support, fully respecting user appearance settings.
  */
@@ -305,9 +403,19 @@ fun TimetableCanvas(
     onScheduleClick: (CalendarEvent) -> Unit,
     onAddAtSlot: (dayOfWeek: Int, section: Int) -> Unit,
     onAddCourseAtSlot: (dayOfWeek: Int, section: Int) -> Unit = { _, _ -> },
-    onAddScheduleAtSlot: (dayOfWeek: Int, section: Int) -> Unit = { _, _ -> }
+    onAddScheduleAtSlot: (dayOfWeek: Int, section: Int) -> Unit = { _, _ -> },
+    topCourseSelections: Map<String, String> = emptyMap(),
+    onSelectTopCourse: (clusterKey: String, courseId: String) -> Unit = { _, _ -> }
 ) {
-    val totalSections = 12
+    val totalSections = remember(sectionTimes, occurrences) {
+        val maxConfigSection = if (sectionTimes.isNotEmpty()) {
+            maxOf(sectionTimes.size, sectionTimes.maxOf { it.section })
+        } else {
+            12
+        }
+        val maxCourseSection = occurrences.maxOfOrNull { it.endSection } ?: 0
+        maxOf(1, maxOf(maxConfigSection, maxCourseSection))
+    }
     val sectionHeight = appSettings.gridHeight.dp
 
     // Fallback section times if not provided
@@ -319,13 +427,16 @@ fun TimetableCanvas(
         )
     }
 
-    val visibleDays = remember(appSettings.showSaturday, appSettings.showSunday) {
+    val visibleDays = remember(appSettings.showWeekends, appSettings.showSaturday, appSettings.showSunday) {
         buildList {
             for (i in 1..5) add(i)
-            if (appSettings.showSaturday) add(6)
-            if (appSettings.showSunday) add(7)
+            if (appSettings.showWeekends && appSettings.showSaturday) add(6)
+            if (appSettings.showWeekends && appSettings.showSunday) add(7)
         }
     }
+
+    val coursesByDay = remember(occurrences) { occurrences.groupBy { it.dayOfWeek } }
+    var activePickerCluster by remember { mutableStateOf<OverlapCluster?>(null) }
 
     Row(
         modifier = Modifier
@@ -337,8 +448,27 @@ fun TimetableCanvas(
         Column(modifier = Modifier.width(44.dp)) {
             for (sec in 1..totalSections) {
                 val secTime = sectionTimes.find { it.section == sec }
-                val startT = secTime?.startTime ?: defaultTimes.getOrNull(sec - 1)?.substringBefore("\n") ?: ""
-                val endT = secTime?.endTime ?: defaultTimes.getOrNull(sec - 1)?.substringAfter("\n") ?: ""
+                val (fallbackStart, fallbackEnd) = run {
+                    val dt = defaultTimes.getOrNull(sec - 1)
+                    if (dt != null) {
+                        Pair(dt.substringBefore("\n"), dt.substringAfter("\n"))
+                    } else {
+                        val prevEnd = sectionTimes.find { it.section == sec - 1 }?.endTime
+                            ?: defaultTimes.lastOrNull()?.substringAfter("\n")
+                            ?: "21:50"
+                        val parts = prevEnd.split(":")
+                        val ph = parts.getOrNull(0)?.toIntOrNull() ?: 21
+                        val pm = parts.getOrNull(1)?.toIntOrNull() ?: 50
+                        val startMin = (ph * 60 + pm + 10) % (24 * 60)
+                        val endMin = (startMin + 45) % (24 * 60)
+                        Pair(
+                            String.format(java.util.Locale.getDefault(), "%02d:%02d", startMin / 60, startMin % 60),
+                            String.format(java.util.Locale.getDefault(), "%02d:%02d", endMin / 60, endMin % 60)
+                        )
+                    }
+                }
+                val startT = secTime?.startTime ?: fallbackStart
+                val endT = secTime?.endTime ?: fallbackEnd
 
                 Column(
                     modifier = Modifier
@@ -384,7 +514,7 @@ fun TimetableCanvas(
             for (dayIdx in visibleDays) {
                 val dateStr = if (dayIdx - 1 < weekDates.size) weekDates[dayIdx - 1] else ""
                 val isToday = (dateStr == todayDateString)
-                val dayCourses = occurrences.filter { it.dayOfWeek == dayIdx }
+                val dayCourses = coursesByDay[dayIdx] ?: emptyList()
 
                 Box(
                     modifier = Modifier
@@ -415,43 +545,310 @@ fun TimetableCanvas(
                                     )
                                 }
 
-                                // Anchored popover right at the clicked slot
-                                SlotActionMenu(
-                                    expanded = isSlotActive,
-                                    dayOfWeek = dayIdx,
-                                    section = sec,
-                                    isDark = isDark,
-                                    onDismiss = onDismissSlotAction,
-                                    onAddCourse = onAddCourseAtSlot,
-                                    onAddSchedule = onAddScheduleAtSlot
-                                )
+                                // Anchored popover mounted on-demand only for the clicked slot
+                                if (isSlotActive) {
+                                    SlotActionMenu(
+                                        expanded = true,
+                                        dayOfWeek = dayIdx,
+                                        section = sec,
+                                        isDark = isDark,
+                                        onDismiss = onDismissSlotAction,
+                                        onAddCourse = onAddCourseAtSlot,
+                                        onAddSchedule = onAddScheduleAtSlot
+                                    )
+                                }
                             }
                         }
                     }
 
-                    // Render Course Cards
-                    for (item in dayCourses) {
-                        val isActiveThisWeek = (item.weekNumber == selectedWeek)
-                        val topOffset = (item.startSection - 1) * appSettings.gridHeight
-                        val duration = maxOf(1, item.endSection - item.startSection + 1)
-                        val cardHeight = duration * appSettings.gridHeight - 3
+                    // Render Course Clusters (handling non-overlapping single courses and user-selectable overlapping courses)
+                    val clusters = remember(dayCourses, dayIdx) { clusterDayCourses(dayCourses, dayIdx) }
+                    for (cluster in clusters) {
+                        if (cluster.items.size == 1) {
+                            val item = cluster.items.first()
+                            val isActiveThisWeek = item.isCurrentWeek
+                            val topOffset = (item.startSection - 1) * appSettings.gridHeight
+                            val duration = maxOf(1, item.endSection - item.startSection + 1)
+                            val cardHeight = duration * appSettings.gridHeight - 3
 
-                        CourseCard(
-                            item = item,
-                            isActiveThisWeek = isActiveThisWeek,
-                            appSettings = appSettings,
-                            isDark = isDark,
-                            modifier = Modifier
-                                .padding(top = topOffset.dp)
-                                .height(cardHeight.dp)
-                                .fillMaxWidth()
-                                .clickable { onCourseClick(item) }
-                        )
+                            CourseCard(
+                                item = item,
+                                isActiveThisWeek = isActiveThisWeek,
+                                appSettings = appSettings,
+                                isDark = isDark,
+                                modifier = Modifier
+                                    .padding(top = topOffset.dp)
+                                    .height(cardHeight.dp)
+                                    .fillMaxWidth()
+                                    .clickable { onCourseClick(item) }
+                            )
+                        } else {
+                            val selectedId = topCourseSelections[cluster.key]
+                                ?: cluster.items.firstOrNull { it.isCurrentWeek }?.let { it.courseId ?: it.id }
+                                ?: cluster.items.first().let { it.courseId ?: it.id }
+                            val topItem = cluster.items.find { (it.courseId ?: it.id) == selectedId || it.id == selectedId }
+                                ?: cluster.items.first()
+                            val isActiveThisWeek = topItem.isCurrentWeek
+                            val topOffset = (topItem.startSection - 1) * appSettings.gridHeight
+                            val duration = maxOf(1, topItem.endSection - topItem.startSection + 1)
+                            val cardHeight = duration * appSettings.gridHeight - 3
+
+                            Box(
+                                modifier = Modifier
+                                    .padding(top = topOffset.dp)
+                                    .height(cardHeight.dp)
+                                    .fillMaxWidth()
+                            ) {
+                                // Stacked physical card deck shadow
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .offset(x = 2.dp, y = 2.dp)
+                                        .clip(RoundedCornerShape(appSettings.cardCornerRadius.dp))
+                                        .background(if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.08f))
+                                )
+
+                                CourseCard(
+                                    item = topItem,
+                                    isActiveThisWeek = isActiveThisWeek,
+                                    appSettings = appSettings,
+                                    isDark = isDark,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .clickable { onCourseClick(topItem) }
+                                )
+
+                                // Overlap indicator badge
+                                Surface(
+                                    shape = RoundedCornerShape(bottomStart = 8.dp, topEnd = appSettings.cardCornerRadius.dp),
+                                    color = Color(0xDD1E202B),
+                                    modifier = Modifier
+                                        .align(Alignment.TopEnd)
+                                        .clickable { activePickerCluster = cluster }
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(
+                                            text = "${cluster.items.size}重叠▾",
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
     }
+
+    if (activePickerCluster != null) {
+        val cluster = activePickerCluster!!
+        val selectedId = topCourseSelections[cluster.key]
+            ?: cluster.items.firstOrNull { it.isCurrentWeek }?.let { it.courseId ?: it.id }
+            ?: cluster.items.first().let { it.courseId ?: it.id }
+
+        OverlapCoursePickerDialog(
+            cluster = cluster,
+            selectedCourseId = selectedId,
+            isDark = isDark,
+            onDismiss = { activePickerCluster = null },
+            onSelectTopCourse = { courseId ->
+                onSelectTopCourse(cluster.key, courseId)
+                activePickerCluster = null
+            },
+            onCourseClick = { item ->
+                activePickerCluster = null
+                onCourseClick(item)
+            }
+        )
+    }
+}
+
+/**
+ * Dialog allowing users to select which course is displayed on top for overlapping slots.
+ * Provides full control without relying on desktop swimlanes.
+ */
+@Composable
+fun OverlapCoursePickerDialog(
+    cluster: OverlapCluster,
+    selectedCourseId: String?,
+    isDark: Boolean,
+    onDismiss: () -> Unit,
+    onSelectTopCourse: (courseId: String) -> Unit,
+    onCourseClick: (TimelineItem) -> Unit
+) {
+    val textPrimary = if (isDark) Color(0xFFF5F5F7) else Color(0xFF1F2937)
+    val textSecondary = if (isDark) Color(0xFFA1A3AC) else Color(0xFF6B7280)
+    val cardBg = if (isDark) Color(0xFF262838) else Color(0xFFF3F4F8)
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = if (isDark) Color(0xFF1E202B) else Color.White,
+        title = {
+            Column {
+                Text(
+                    text = "重叠课程选择 (${cluster.items.size} 门重叠)",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = textPrimary
+                )
+                Text(
+                    text = "第 ${cluster.minStartSection} - ${cluster.maxEndSection} 节存在时间重叠，请选择置顶展示的课程：",
+                    fontSize = 11.5.sp,
+                    color = textSecondary
+                )
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                cluster.items.forEach { item ->
+                    val itemId = item.courseId ?: item.id
+                    val isTop = (itemId == selectedCourseId || item.id == selectedCourseId)
+                    val itemColor = remember(item.color) { parseHexColor(item.color) }
+
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(
+                                width = if (isTop) 1.5.dp else 0.5.dp,
+                                color = if (isTop) Color(0xFF4F46E5) else Color.Transparent,
+                                shape = RoundedCornerShape(12.dp)
+                            ),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = cardBg)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(10.dp)
+                                            .clip(androidx.compose.foundation.shape.CircleShape)
+                                            .background(itemColor)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = item.title,
+                                        fontSize = 13.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = textPrimary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+
+                                if (item.isCurrentWeek) {
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = Color(0xFF10B981).copy(alpha = 0.15f)
+                                    ) {
+                                        Text(
+                                            text = "本周有课",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF059669),
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                } else {
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = Color.Gray.copy(alpha = 0.15f)
+                                    ) {
+                                        Text(
+                                            text = "非本周",
+                                            fontSize = 10.sp,
+                                            color = textSecondary,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                item.location?.let {
+                                    Text("@$it", fontSize = 11.5.sp, color = textSecondary)
+                                }
+                                item.teacher?.let {
+                                    Text(it, fontSize = 11.5.sp, color = textSecondary)
+                                }
+                                Text("第${item.startSection}-${item.endSection}节", fontSize = 11.5.sp, color = textSecondary)
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                TextButton(
+                                    onClick = { onCourseClick(item) },
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Text("查看详情", fontSize = 11.5.sp)
+                                }
+
+                                Spacer(modifier = Modifier.width(6.dp))
+
+                                if (isTop) {
+                                    Button(
+                                        onClick = { /* already top */ },
+                                        enabled = false,
+                                        shape = RoundedCornerShape(8.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            disabledContainerColor = Color(0xFF4F46E5).copy(alpha = 0.25f),
+                                            disabledContentColor = Color(0xFF4F46E5)
+                                        ),
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                                    ) {
+                                        Text("✓ 当前置顶", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                } else {
+                                    Button(
+                                        onClick = { onSelectTopCourse(itemId) },
+                                        shape = RoundedCornerShape(8.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4F46E5)),
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                                    ) {
+                                        Text("置顶此课", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("关闭")
+            }
+        }
+    )
 }
 
 /**
@@ -468,13 +865,13 @@ fun CourseCard(
     isDark: Boolean = false,
     modifier: Modifier = Modifier
 ) {
-    val cardColor = parseHexColor(item.color)
+    val cardColor = remember(item.color) { parseHexColor(item.color) }
     val baseOpacity = if (isActiveThisWeek) appSettings.cardOpacity else appSettings.cardOpacity * appSettings.nonCurrentWeekOpacityRatio
 
     val radius = appSettings.cardCornerRadius.dp
     val fontSize = maxOf(12f, appSettings.cardFontSize).sp
 
-    val isLight = cardColor.isLight()
+    val isLight = remember(cardColor) { cardColor.isLight() }
     val effectiveTextColor = when {
         appSettings.cardTextBlendCardColor -> {
             if (isLight && !isDark) cardColor.deepShade() else cardColor
@@ -509,6 +906,16 @@ fun CourseCard(
         }
     }
 
+    val glassBrush = remember(isDark) {
+        Brush.verticalGradient(
+            colors = if (isDark) {
+                listOf(Color.White.copy(alpha = 0.08f), Color.Transparent)
+            } else {
+                listOf(Color.White.copy(alpha = 0.18f), Color.Transparent)
+            }
+        )
+    }
+
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(radius))
@@ -524,18 +931,10 @@ fun CourseCard(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors = if (isDark) {
-                            listOf(Color.White.copy(alpha = 0.08f), Color.Transparent)
-                        } else {
-                            listOf(Color.White.copy(alpha = 0.18f), Color.Transparent)
-                        }
-                    )
-                )
+                .background(glassBrush)
         )
 
-        // Card Content: exact WakeUp Image 1 centered stack
+        // Card Content: exact WakeUp centered stack without distracting [非本周] text
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -543,17 +942,6 @@ fun CourseCard(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            // [非本周] tag (exact Image 1 WakeUp style)
-            if (!isActiveThisWeek) {
-                Text(
-                    text = "[非本周]",
-                    fontSize = 8.5.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = effectiveTextColor.copy(alpha = 0.80f),
-                    textAlign = TextAlign.Center
-                )
-                Spacer(modifier = Modifier.height(1.dp))
-            }
 
             // Course Title
             Text(
@@ -636,10 +1024,18 @@ fun DayViewTimeline(
     occurrences: List<TimelineItem>,
     scheduleEvents: List<CalendarEvent>,
     todayDateString: String,
+    isDark: Boolean = false,
+    isWallpaperDark: Boolean = false,
     onCourseClick: (TimelineItem) -> Unit,
     onScheduleClick: (CalendarEvent) -> Unit
 ) {
     val sortedItems = occurrences.sortedBy { it.startSection }
+    val isHighContrastDark = isDark || isWallpaperDark
+    val cardBg = if (isHighContrastDark) Color(0xFF1E212B).copy(alpha = 0.90f) else Color.White.copy(alpha = 0.94f)
+    val cardBorder = androidx.compose.foundation.BorderStroke(1.dp, if (isHighContrastDark) Color.White.copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.08f))
+    val titleColor = if (isHighContrastDark) Color(0xFFF9FAFB) else Color(0xFF111827)
+    val subtextColor = if (isHighContrastDark) Color(0xFFCBD5E1) else Color(0xFF4B5563)
+    val headerColor = if (isHighContrastDark) Color.White else Color(0xFF111827)
 
     if (sortedItems.isEmpty() && scheduleEvents.isEmpty()) {
         Box(
@@ -650,13 +1046,13 @@ fun DayViewTimeline(
                 Icon(
                     Icons.Default.Book,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                    tint = subtextColor.copy(alpha = 0.5f),
                     modifier = Modifier.size(48.dp)
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = "今日无课程或日程安排",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    color = subtextColor,
                     fontSize = 14.sp
                 )
             }
@@ -672,19 +1068,19 @@ fun DayViewTimeline(
                 Text(
                     text = "今日安排",
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    color = headerColor
                 )
             }
 
-            items(sortedItems) { item ->
+            items(sortedItems, key = { it.id }) { item ->
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable { onCourseClick(item) },
                     shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = parseHexColor(item.color).copy(alpha = 0.12f)
-                    )
+                    colors = CardDefaults.cardColors(containerColor = cardBg),
+                    border = cardBorder
                 ) {
                     Row(
                         modifier = Modifier
@@ -707,7 +1103,7 @@ fun DayViewTimeline(
                                 text = item.title,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 15.sp,
-                                color = MaterialTheme.colorScheme.onSurface
+                                color = titleColor
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Row(
@@ -716,15 +1112,15 @@ fun DayViewTimeline(
                             ) {
                                 item.location?.let { loc ->
                                     Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Default.LocationOn, contentDescription = null, modifier = Modifier.size(13.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Icon(Icons.Default.LocationOn, contentDescription = null, modifier = Modifier.size(13.dp), tint = subtextColor)
                                         Spacer(modifier = Modifier.width(2.dp))
-                                        Text(loc, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Text(loc, fontSize = 12.sp, color = subtextColor)
                                     }
                                 }
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.AccessTime, contentDescription = null, modifier = Modifier.size(13.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Icon(Icons.Default.AccessTime, contentDescription = null, modifier = Modifier.size(13.dp), tint = subtextColor)
                                     Spacer(modifier = Modifier.width(2.dp))
-                                    Text("第 ${item.startSection}-${item.endSection} 节 (${item.startTime})", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text("第 ${item.startSection}-${item.endSection} 节 (${item.startTime})", fontSize = 12.sp, color = subtextColor)
                                 }
                             }
                         }
@@ -732,15 +1128,14 @@ fun DayViewTimeline(
                 }
             }
 
-            items(scheduleEvents) { evt ->
+            items(scheduleEvents, key = { it.id }) { evt ->
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable { onScheduleClick(evt) },
                     shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = parseHexColor(evt.color).copy(alpha = 0.10f)
-                    )
+                    colors = CardDefaults.cardColors(containerColor = cardBg),
+                    border = cardBorder
                 ) {
                     Row(
                         modifier = Modifier
@@ -763,13 +1158,13 @@ fun DayViewTimeline(
                                 text = evt.title,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 15.sp,
-                                color = MaterialTheme.colorScheme.onSurface
+                                color = titleColor
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 text = "${evt.startTime} ~ ${evt.endTime}${evt.location?.let { " · $it" } ?: ""}",
                                 fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = subtextColor
                             )
                         }
                     }

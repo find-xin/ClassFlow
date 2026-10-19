@@ -23,10 +23,12 @@ public struct ScheduleItemCreateSheet: View {
     public enum EventFrequency: String, CaseIterable, Identifiable {
         case none = "不重复"
         case daily = "每天"
-        case workdays = "工作日"
+        case workdays = "工作日 (周一至周五)"
+        case weekends = "周末 (周六周日)"
         case weekly = "每周"
         case monthly = "每月"
         case customDays = "自定义每周某几天"
+        case customWeeks = "按周次重复"
         public var id: String { rawValue }
 
         public var internalCode: String {
@@ -34,9 +36,25 @@ public struct ScheduleItemCreateSheet: View {
             case .none: return "none"
             case .daily: return "daily"
             case .workdays: return "workdays"
+            case .weekends: return "weekends"
             case .weekly: return "weekly"
             case .monthly: return "monthly"
             case .customDays: return "customDays"
+            case .customWeeks: return "customWeeks"
+            }
+        }
+
+        public init(internalCode: String) {
+            let norm = AppState.normalizeFrequency(internalCode)
+            switch norm {
+            case "daily": self = .daily
+            case "workdays": self = .workdays
+            case "weekends": self = .weekends
+            case "weekly": self = .weekly
+            case "monthly": self = .monthly
+            case "customDays": self = .customDays
+            case "customWeeks": self = .customWeeks
+            default: self = .none
             }
         }
     }
@@ -62,7 +80,22 @@ public struct ScheduleItemCreateSheet: View {
             case .day1: return 1440
             }
         }
+
+        public init(minutesBefore: Int?) {
+            switch minutesBefore {
+            case 0: self = .atTime
+            case 5: self = .min5
+            case 15: self = .min15
+            case 30: self = .min30
+            case 60: self = .hour1
+            case 1440: self = .day1
+            default: self = .none
+            }
+        }
     }
+
+    public let editingEvent: CalendarEvent?
+    public let editingTask: PomodoroTask?
 
     @State private var mode: ItemMode = .event
 
@@ -91,8 +124,11 @@ public struct ScheduleItemCreateSheet: View {
     // MARK: - Task Fields
     @State private var taskTitle: String = ""
     @State private var selectedCourseId: UUID? = nil
+    @State private var hasStartDate: Bool = false
+    @State private var taskStartDate: Date = Date()
     @State private var hasDueDate: Bool = true
     @State private var taskDueDate: Date = Date()
+    @State private var taskFrequency: EventFrequency = .none
     @State private var taskPriority: TaskPriority = .medium
     @State private var targetMinutes: Int = 45
     @State private var taskNotes: String = ""
@@ -106,34 +142,112 @@ public struct ScheduleItemCreateSheet: View {
         appState.currentSemester?.sections ?? []
     }
 
+    private var maxSemesterWeeks: Int {
+        appState.currentSemester?.totalWeeks ?? 20
+    }
+
     public init(
         appState: AppState,
         initialMode: ItemMode = .event,
+        editingEvent: CalendarEvent? = nil,
+        editingTask: PomodoroTask? = nil,
         prefilledDayOfWeek: Int? = nil,
         prefilledSection: Int? = nil,
         onDismiss: @escaping () -> Void
     ) {
         self.appState = appState
-        self._mode = State(initialValue: initialMode)
+        self.editingEvent = editingEvent
+        self.editingTask = editingTask
         self.onDismiss = onDismiss
+        let maxWeeks = appState.currentSemester?.totalWeeks ?? 20
 
-        if let sec = prefilledSection {
-            self._startSection = State(initialValue: sec)
-            self._endSection = State(initialValue: sec)
-            self._timeMode = State(initialValue: .bySection)
-        }
+        if let ev = editingEvent {
+            self._mode = State(initialValue: .event)
+            self._eventTitle = State(initialValue: ev.title)
+            self._isAllDay = State(initialValue: ev.isAllDay)
+            self._location = State(initialValue: ev.location ?? "")
+            self._eventNotes = State(initialValue: ev.description ?? "")
+            self._eventColor = State(initialValue: ev.color)
+            self._frequency = State(initialValue: EventFrequency(internalCode: ev.frequency ?? "none"))
+            self._customDaysOfWeek = State(initialValue: ev.customDaysOfWeek ?? [1, 2, 3, 4, 5])
+            self._customWeeks = State(initialValue: ev.customWeeks ?? Set(1...maxWeeks))
+            self._endRepeatType = State(initialValue: ev.endRepeatType ?? "never")
+            self._alertOption = State(initialValue: AlertOption(minutesBefore: ev.alertMinutesBefore))
 
-        if let dow = prefilledDayOfWeek, let sem = appState.currentSemester {
-            let weekDates = appState.timelineEngine.weekCalculator.dateStringsInWeek(
-                weekNumber: appState.selectedWeek,
-                semesterStartDate: sem.startDate
-            )
-            if dow - 1 < weekDates.count {
-                let df = DateFormatter()
-                df.dateFormat = "yyyy-MM-dd"
-                if let targetDate = df.date(from: weekDates[dow - 1]) {
-                    self._eventDate = State(initialValue: targetDate)
-                    self._eventEndDate = State(initialValue: targetDate)
+            let df = DateFormatter()
+            df.dateFormat = "yyyy-MM-dd"
+            if let sDate = ev.startDate, let d = df.date(from: sDate) {
+                self._eventDate = State(initialValue: d)
+                self._eventEndDate = State(initialValue: d)
+            } else if let prefix10 = ev.startTime.split(separator: " ").first.map(String.init), let d = df.date(from: prefix10) {
+                self._eventDate = State(initialValue: d)
+                self._eventEndDate = State(initialValue: d)
+            }
+
+            if let eDate = ev.endDate, let d = df.date(from: eDate) {
+                self._eventEndDate = State(initialValue: d)
+            }
+
+            if let until = ev.endRepeatUntil, let d = df.date(from: until) {
+                self._endRepeatUntil = State(initialValue: d)
+            }
+
+            if let startSec = ev.startSection {
+                self._timeMode = State(initialValue: .bySection)
+                self._startSection = State(initialValue: startSec)
+                self._endSection = State(initialValue: ev.endSection ?? startSec)
+            } else {
+                self._timeMode = State(initialValue: .byTime)
+                if ev.startTime.contains(" ") {
+                    self._startTimeStr = State(initialValue: String(ev.startTime.split(separator: " ").last?.prefix(5) ?? "09:00"))
+                }
+                if ev.endTime.contains(" ") {
+                    self._endTimeStr = State(initialValue: String(ev.endTime.split(separator: " ").last?.prefix(5) ?? "10:30"))
+                }
+            }
+        } else if let tk = editingTask {
+            self._mode = State(initialValue: .task)
+            self._taskTitle = State(initialValue: tk.title)
+            self._selectedCourseId = State(initialValue: tk.courseId)
+            self._taskNotes = State(initialValue: tk.notes ?? "")
+            self._targetMinutes = State(initialValue: tk.targetMinutes ?? 45)
+            self._taskPriority = State(initialValue: tk.priority)
+            let df = DateFormatter()
+            df.dateFormat = "yyyy-MM-dd"
+            if let s = tk.startDate, let d = df.date(from: s) {
+                self._hasStartDate = State(initialValue: true)
+                self._taskStartDate = State(initialValue: d)
+            }
+            let dfDue = DateFormatter()
+            dfDue.dateFormat = "yyyy-MM-dd HH:mm"
+            if let due = tk.dueDate, let d = dfDue.date(from: due) {
+                self._hasDueDate = State(initialValue: true)
+                self._taskDueDate = State(initialValue: d)
+            }
+            self._customWeeks = State(initialValue: Set(1...maxWeeks))
+        } else {
+            self._mode = State(initialValue: initialMode)
+            self._customWeeks = State(initialValue: Set(1...maxWeeks))
+
+            if let sec = prefilledSection {
+                self._startSection = State(initialValue: sec)
+                self._endSection = State(initialValue: sec)
+                self._timeMode = State(initialValue: .bySection)
+            }
+
+            if let sem = appState.currentSemester {
+                let targetDay = prefilledDayOfWeek ?? appState.selectedDayOfWeek
+                let weekDates = appState.timelineEngine.weekCalculator.dateStringsInWeek(
+                    weekNumber: appState.selectedWeek,
+                    semesterStartDate: sem.startDate
+                )
+                if targetDay - 1 < weekDates.count {
+                    let df = DateFormatter()
+                    df.dateFormat = "yyyy-MM-dd"
+                    if let targetDate = df.date(from: weekDates[targetDay - 1]) {
+                        self._eventDate = State(initialValue: targetDate)
+                        self._eventEndDate = State(initialValue: targetDate)
+                    }
                 }
             }
         }
@@ -150,19 +264,24 @@ public struct ScheduleItemCreateSheet: View {
 
                 Spacer()
 
-                // Mode Picker (日程 vs 待办)
-                Picker("", selection: $mode) {
-                    ForEach(ItemMode.allCases) { m in
-                        Text(m.rawValue).tag(m)
+                if editingEvent != nil || editingTask != nil {
+                    Text(editingEvent != nil ? "编辑日程" : "编辑待办")
+                        .font(.system(size: 15, weight: .bold))
+                } else {
+                    // Mode Picker (日程 vs 待办)
+                    Picker("", selection: $mode) {
+                        ForEach(ItemMode.allCases) { m in
+                            Text(m.rawValue).tag(m)
+                        }
                     }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    .frame(width: 140)
                 }
-                .labelsHidden()
-                .pickerStyle(.segmented)
-                .frame(width: 140)
 
                 Spacer()
 
-                Button("添加", action: handleSave)
+                Button((editingEvent != nil || editingTask != nil) ? "保存" : "添加", action: handleSave)
                     .buttonStyle(.plain)
                     .font(.system(size: 14, weight: .bold))
                     .foregroundColor(canSave ? .accentColor : .secondary.opacity(0.4))
@@ -233,7 +352,7 @@ public struct ScheduleItemCreateSheet: View {
             VStack(spacing: 0) {
                 // Date & All-Day Checkbox on same line (Native macOS Calendar style)
                 HStack {
-                    Text("开始")
+                    Text(frequency == .none ? "日期" : "起始日期")
                         .font(.system(size: 13, weight: .medium))
                     DatePicker("", selection: $eventDate, displayedComponents: .date)
                         .labelsHidden()
@@ -245,17 +364,18 @@ public struct ScheduleItemCreateSheet: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
 
-                Divider()
-
-                HStack {
-                    Text("结束")
-                        .font(.system(size: 13, weight: .medium))
-                    DatePicker("", selection: $eventEndDate, displayedComponents: .date)
-                        .labelsHidden()
-                    Spacer()
+                if frequency == .none && isAllDay {
+                    Divider()
+                    HStack {
+                        Text("结束日期")
+                            .font(.system(size: 13, weight: .medium))
+                        DatePicker("", selection: $eventEndDate, displayedComponents: .date)
+                            .labelsHidden()
+                        Spacer()
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
 
                 if !isAllDay {
                     Divider()
@@ -311,7 +431,7 @@ public struct ScheduleItemCreateSheet: View {
                     } else {
                         // By Exact Time
                         HStack(spacing: 8) {
-                            Text("具体时间")
+                            Text("单次起止时间")
                                 .font(.system(size: 13))
                             Spacer()
                             TextField("09:00", text: $startTimeStr)
@@ -350,51 +470,60 @@ public struct ScheduleItemCreateSheet: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
 
-                if frequency == .customDays {
+                if frequency == .customDays || frequency == .customWeeks {
                     Divider()
                     VStack(alignment: .leading, spacing: 10) {
-                        // 生效星期 (日..六 segmented strip)
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("生效星期")
-                                .font(.system(size: 11))
-                                .foregroundColor(.secondary)
-                            HStack(spacing: 4) {
-                                let dayLabels = [
-                                    (7, "日"), (1, "一"), (2, "二"), (3, "三"),
-                                    (4, "四"), (5, "五"), (6, "六")
-                                ]
-                                ForEach(dayLabels, id: \.0) { day, name in
-                                    let isSelected = customDaysOfWeek.contains(day)
-                                    Button(action: {
-                                        if isSelected {
-                                            if customDaysOfWeek.count > 1 {
-                                                customDaysOfWeek.remove(day)
+                        if frequency == .customDays {
+                            // 生效星期 (日..六 segmented strip)
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("生效星期")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                                HStack(spacing: 4) {
+                                    let dayLabels = [
+                                        (7, "日"), (1, "一"), (2, "二"), (3, "三"),
+                                        (4, "四"), (5, "五"), (6, "六")
+                                    ]
+                                    ForEach(dayLabels, id: \.0) { day, name in
+                                        let isSelected = customDaysOfWeek.contains(day)
+                                        Button(action: {
+                                            if isSelected {
+                                                if customDaysOfWeek.count > 1 {
+                                                    customDaysOfWeek.remove(day)
+                                                }
+                                            } else {
+                                                customDaysOfWeek.insert(day)
                                             }
-                                        } else {
-                                            customDaysOfWeek.insert(day)
+                                        }) {
+                                            Text(name)
+                                                .font(.system(size: 12, weight: isSelected ? .bold : .regular))
+                                                .frame(maxWidth: .infinity)
+                                                .padding(.vertical, 6)
+                                                .background(
+                                                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                                        .fill(isSelected ? Color(nsColor: .selectedControlColor).opacity(0.8) : Color(nsColor: .textBackgroundColor).opacity(0.6))
+                                                )
+                                                .foregroundColor(isSelected ? .white : .primary)
                                         }
-                                    }) {
-                                        Text(name)
-                                            .font(.system(size: 12, weight: isSelected ? .bold : .regular))
-                                            .frame(maxWidth: .infinity)
-                                            .padding(.vertical, 6)
-                                            .background(
-                                                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                                    .fill(isSelected ? Color(nsColor: .selectedControlColor).opacity(0.8) : Color(nsColor: .textBackgroundColor).opacity(0.6))
-                                            )
-                                            .foregroundColor(isSelected ? .white : .primary)
+                                        .buttonStyle(.plain)
+                                        .contentShape(Rectangle())
                                     }
-                                    .buttonStyle(.plain)
                                 }
                             }
-                        }
-
-                        // 学期生效周次 (仅在自定义时显示，彻底避免设计冲突与冗余)
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("学期生效周次")
-                                .font(.system(size: 11))
-                                .foregroundColor(.secondary)
-                            WeekMatrixPickerView(selectedWeeks: $customWeeks, maxWeeks: 25, accentColor: Color(hex: eventColor))
+                        } else if frequency == .customWeeks {
+                            // 学期生效周次 (按课表实际设置周数)
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack {
+                                    Text("学期生效周次 (共 \(maxSemesterWeeks) 周)")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(.secondary)
+                                    Spacer()
+                                    Text("已选 \(customWeeks.count) 周")
+                                        .font(.system(size: 11, design: .monospaced))
+                                        .foregroundColor(.secondary)
+                                }
+                                WeekMatrixPickerView(selectedWeeks: $customWeeks, maxWeeks: maxSemesterWeeks, accentColor: Color(hex: eventColor))
+                            }
                         }
                     }
                     .padding(12)
@@ -403,16 +532,16 @@ public struct ScheduleItemCreateSheet: View {
                 if frequency != .none {
                     Divider()
                     VStack(alignment: .leading, spacing: 10) {
-                        // 结束重复设置
+                        // 重复终止条件设置
                         HStack {
-                            Text("结束重复")
+                            Text("重复终止条件")
                                 .font(.system(size: 12))
                                 .foregroundColor(.secondary)
                             Spacer()
                             Picker("", selection: $endRepeatType) {
-                                Text("永不").tag("never")
-                                Text("于指定日期").tag("untilDate")
-                                Text("达到次数").tag("count")
+                                Text("从不终止 (一直重复)").tag("never")
+                                Text("按日期终止 (指定最后一天)").tag("untilDate")
+                                Text("按次数终止 (达到次数后)").tag("count")
                             }
                             .labelsHidden()
                             .pickerStyle(.menu)
@@ -420,7 +549,7 @@ public struct ScheduleItemCreateSheet: View {
 
                         if endRepeatType == "untilDate" {
                             HStack {
-                                Text("截止日期:")
+                                Text("最后重复日期:")
                                     .font(.system(size: 12))
                                     .foregroundColor(.secondary)
                                 Spacer()
@@ -429,11 +558,11 @@ public struct ScheduleItemCreateSheet: View {
                             }
                         } else if endRepeatType == "count" {
                             HStack {
-                                Text("重复次数:")
+                                Text("发生次数:")
                                     .font(.system(size: 12))
                                     .foregroundColor(.secondary)
                                 Spacer()
-                                Stepper("\(endRepeatCount) 次后结束", value: $endRepeatCount, in: 1...100)
+                                Stepper("共重复 \(endRepeatCount) 次后停止", value: $endRepeatCount, in: 1...100)
                                     .font(.system(size: 12))
                             }
                         }
@@ -541,6 +670,23 @@ public struct ScheduleItemCreateSheet: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
 
+                Divider()
+
+                HStack {
+                    Toggle("设置开始日期", isOn: $hasStartDate)
+                        .toggleStyle(.checkbox)
+                        .font(.system(size: 13, weight: .medium))
+                    Spacer()
+                    if hasStartDate {
+                        DatePicker("", selection: $taskStartDate, displayedComponents: .date)
+                            .labelsHidden()
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+
+                Divider()
+
                 HStack {
                     Toggle("设置截止时间", isOn: $hasDueDate)
                         .toggleStyle(.checkbox)
@@ -553,6 +699,120 @@ public struct ScheduleItemCreateSheet: View {
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
+
+                Divider()
+
+                HStack {
+                    Text("重复频次")
+                        .font(.system(size: 13, weight: .medium))
+                    Spacer()
+                    Picker("", selection: $taskFrequency) {
+                        ForEach(EventFrequency.allCases) { freq in
+                            Text(freq.rawValue).tag(freq)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+
+                if taskFrequency == .customDays || taskFrequency == .customWeeks {
+                    Divider()
+                    VStack(alignment: .leading, spacing: 10) {
+                        if taskFrequency == .customDays {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("生效星期")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                                HStack(spacing: 4) {
+                                    let dayLabels = [
+                                        (7, "日"), (1, "一"), (2, "二"), (3, "三"),
+                                        (4, "四"), (5, "五"), (6, "六")
+                                    ]
+                                    ForEach(dayLabels, id: \.0) { day, name in
+                                        let isSelected = customDaysOfWeek.contains(day)
+                                        Button(action: {
+                                            if isSelected {
+                                                if customDaysOfWeek.count > 1 {
+                                                    customDaysOfWeek.remove(day)
+                                                }
+                                            } else {
+                                                customDaysOfWeek.insert(day)
+                                            }
+                                        }) {
+                                            Text(name)
+                                                .font(.system(size: 12, weight: isSelected ? .bold : .regular))
+                                                .frame(maxWidth: .infinity)
+                                                .padding(.vertical, 6)
+                                                .background(
+                                                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                                        .fill(isSelected ? Color(nsColor: .selectedControlColor).opacity(0.8) : Color(nsColor: .textBackgroundColor).opacity(0.6))
+                                                )
+                                                .foregroundColor(isSelected ? .white : .primary)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .contentShape(Rectangle())
+                                    }
+                                }
+                            }
+                        } else if taskFrequency == .customWeeks {
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack {
+                                    Text("学期生效周次 (共 \(maxSemesterWeeks) 周)")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(.secondary)
+                                    Spacer()
+                                    Text("已选 \(customWeeks.count) 周")
+                                        .font(.system(size: 11, design: .monospaced))
+                                        .foregroundColor(.secondary)
+                                }
+                                WeekMatrixPickerView(selectedWeeks: $customWeeks, maxWeeks: maxSemesterWeeks, accentColor: Color(hex: eventColor))
+                            }
+                        }
+                    }
+                    .padding(12)
+                }
+
+                if taskFrequency != .none {
+                    Divider()
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Text("重复终止条件")
+                                .font(.system(size: 12))
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Picker("", selection: $endRepeatType) {
+                                Text("从不终止 (一直重复)").tag("never")
+                                Text("按日期终止 (指定最后一天)").tag("untilDate")
+                                Text("按次数终止 (达到次数后)").tag("count")
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.menu)
+                        }
+
+                        if endRepeatType == "untilDate" {
+                            HStack {
+                                Text("最后重复日期:")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.secondary)
+                                Spacer()
+                                DatePicker("", selection: $endRepeatUntil, displayedComponents: .date)
+                                    .labelsHidden()
+                            }
+                        } else if endRepeatType == "count" {
+                            HStack {
+                                Text("发生次数:")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.secondary)
+                                Spacer()
+                                Stepper("共重复 \(endRepeatCount) 次后停止", value: $endRepeatCount, in: 1...100)
+                                    .font(.system(size: 12))
+                            }
+                        }
+                    }
+                    .padding(12)
+                }
             }
             .background(Color(nsColor: .controlBackgroundColor))
             .cornerRadius(12)
@@ -655,63 +915,113 @@ public struct ScheduleItemCreateSheet: View {
             resolvedEndSec = max(startMatch, endMatch)
         }
 
-        let newEvent = CalendarEvent(
-            id: UUID(),
-            calendarId: UUID(),
-            title: eventTitle.trimmingCharacters(in: .whitespacesAndNewlines),
-            startTime: resolvedStart,
-            endTime: resolvedEnd,
-            isAllDay: isAllDay,
-            location: location.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : location,
-            description: eventNotes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : eventNotes,
-            recurrenceRule: nil,
-            color: eventColor,
-            startSection: resolvedStartSec,
-            endSection: resolvedEndSec,
-            alertMinutesBefore: alertOption.minutesBefore,
-            frequency: frequency.internalCode,
-            customWeeks: (frequency == .customDays) ? customWeeks : nil,
-            customDaysOfWeek: (frequency == .customDays) ? customDaysOfWeek : nil,
-            startDate: datePart,
-            endDate: df.string(from: eventEndDate),
-            intervalWeeks: nil,
-            endRepeatType: endRepeatType,
-            endRepeatUntil: df.string(from: endRepeatUntil),
-            endRepeatCount: endRepeatCount
-        )
+        let resolvedEndDate = (frequency == .none && isAllDay) ? df.string(from: eventEndDate) : nil
 
-        appState.addCalendarEvent(newEvent)
+        if let existing = editingEvent {
+            var updated = existing
+            updated.title = eventTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+            updated.startTime = resolvedStart
+            updated.endTime = resolvedEnd
+            updated.isAllDay = isAllDay
+            updated.location = location.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : location
+            updated.description = eventNotes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : eventNotes
+            updated.color = eventColor
+            updated.startSection = resolvedStartSec
+            updated.endSection = resolvedEndSec
+            updated.alertMinutesBefore = alertOption.minutesBefore
+            updated.frequency = frequency.internalCode
+            updated.customWeeks = (frequency == .customWeeks) ? customWeeks : nil
+            updated.customDaysOfWeek = (frequency == .customDays) ? customDaysOfWeek : nil
+            updated.startDate = datePart
+            updated.endDate = resolvedEndDate
+            updated.endRepeatType = endRepeatType
+            updated.endRepeatUntil = df.string(from: endRepeatUntil)
+            updated.endRepeatCount = endRepeatCount
+            appState.updateCalendarEvent(updated)
+        } else {
+            let newEvent = CalendarEvent(
+                id: UUID(),
+                calendarId: UUID(),
+                semesterId: appState.currentSemester?.id,
+                title: eventTitle.trimmingCharacters(in: .whitespacesAndNewlines),
+                startTime: resolvedStart,
+                endTime: resolvedEnd,
+                isAllDay: isAllDay,
+                location: location.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : location,
+                description: eventNotes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : eventNotes,
+                recurrenceRule: nil,
+                color: eventColor,
+                startSection: resolvedStartSec,
+                endSection: resolvedEndSec,
+                alertMinutesBefore: alertOption.minutesBefore,
+                frequency: frequency.internalCode,
+                customWeeks: (frequency == .customWeeks) ? customWeeks : nil,
+                customDaysOfWeek: (frequency == .customDays) ? customDaysOfWeek : nil,
+                startDate: datePart,
+                endDate: resolvedEndDate,
+                intervalWeeks: nil,
+                endRepeatType: endRepeatType,
+                endRepeatUntil: df.string(from: endRepeatUntil),
+                endRepeatCount: endRepeatCount
+            )
+            appState.addCalendarEvent(newEvent)
+        }
     }
 
     private func saveTask() {
-        let df = DateFormatter()
-        df.dateFormat = "yyyy-MM-dd HH:mm"
-        let dueStr = hasDueDate ? df.string(from: taskDueDate) : nil
+        let dfDate = DateFormatter()
+        dfDate.dateFormat = "yyyy-MM-dd"
+        let dfDue = DateFormatter()
+        dfDue.dateFormat = "yyyy-MM-dd HH:mm"
+
+        let startStr = hasStartDate ? dfDate.string(from: taskStartDate) : nil
+        let dueStr = hasDueDate ? dfDue.string(from: taskDueDate) : nil
 
         let matchedCourse = appState.courses.first(where: { $0.id == selectedCourseId })
-        var fullNotes: String? = nil
         let trimmedNotes = taskNotes.trimmingCharacters(in: .whitespacesAndNewlines)
-        if hasDueDate, let due = dueStr {
-            let dueText = "截止: \(due)"
-            fullNotes = trimmedNotes.isEmpty ? dueText : "\(dueText)\n\(trimmedNotes)"
+
+        if let existing = editingTask {
+            var updated = existing
+            updated.title = taskTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+            updated.courseId = selectedCourseId
+            updated.courseName = matchedCourse?.name
+            updated.estimatedPomodoros = max(1, (targetMinutes + 24) / 25)
+            updated.targetMinutes = targetMinutes
+            updated.priority = taskPriority
+            updated.notes = trimmedNotes.isEmpty ? nil : trimmedNotes
+            updated.startDate = startStr
+            updated.dueDate = dueStr
+            updated.frequency = taskFrequency.internalCode
+            updated.customDaysOfWeek = (taskFrequency == .customDays) ? customDaysOfWeek : nil
+            updated.customWeeks = (taskFrequency == .customWeeks) ? customWeeks : nil
+            updated.endRepeatType = (taskFrequency != .none) ? endRepeatType : "never"
+            updated.endRepeatUntil = (taskFrequency != .none && endRepeatType == "untilDate") ? dfDate.string(from: endRepeatUntil) : nil
+            updated.endRepeatCount = (taskFrequency != .none && endRepeatType == "count") ? endRepeatCount : nil
+            appState.updatePomodoroTask(updated)
         } else {
-            fullNotes = trimmedNotes.isEmpty ? nil : trimmedNotes
+            let newTask = PomodoroTask(
+                id: UUID(),
+                semesterId: appState.currentSemester?.id,
+                title: taskTitle.trimmingCharacters(in: .whitespacesAndNewlines),
+                courseId: selectedCourseId,
+                courseName: matchedCourse?.name,
+                estimatedPomodoros: max(1, (targetMinutes + 24) / 25),
+                targetMinutes: targetMinutes,
+                completedPomodoros: 0,
+                totalFocusMinutes: 0,
+                isCompleted: false,
+                priority: taskPriority,
+                notes: trimmedNotes.isEmpty ? nil : trimmedNotes,
+                startDate: startStr,
+                dueDate: dueStr,
+                frequency: taskFrequency.internalCode,
+                customDaysOfWeek: (taskFrequency == .customDays) ? customDaysOfWeek : nil,
+                customWeeks: (taskFrequency == .customWeeks) ? customWeeks : nil,
+                endRepeatType: (taskFrequency != .none) ? endRepeatType : "never",
+                endRepeatUntil: (taskFrequency != .none && endRepeatType == "untilDate") ? dfDate.string(from: endRepeatUntil) : nil,
+                endRepeatCount: (taskFrequency != .none && endRepeatType == "count") ? endRepeatCount : nil
+            )
+            appState.addPomodoroTask(newTask)
         }
-
-        let newTask = PomodoroTask(
-            id: UUID(),
-            title: taskTitle.trimmingCharacters(in: .whitespacesAndNewlines),
-            courseId: selectedCourseId,
-            courseName: matchedCourse?.name,
-            estimatedPomodoros: max(1, (targetMinutes + 24) / 25),
-            targetMinutes: targetMinutes,
-            completedPomodoros: 0,
-            totalFocusMinutes: 0,
-            isCompleted: false,
-            priority: taskPriority,
-            notes: fullNotes
-        )
-
-        appState.addPomodoroTask(newTask)
     }
 }

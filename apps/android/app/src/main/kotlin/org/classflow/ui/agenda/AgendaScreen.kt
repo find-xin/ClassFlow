@@ -19,6 +19,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -35,8 +36,11 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import org.classflow.data.model.CalendarEvent
 import org.classflow.data.model.Course
+import org.classflow.data.model.ScheduleException
 import org.classflow.data.model.SectionTime
+import org.classflow.data.model.StudyTask
 import org.classflow.data.model.TimelineItem
+import org.classflow.data.local.TimelineProjection
 import org.classflow.ui.components.GoogleCalendarColorPicker
 import org.classflow.ui.timetable.ScheduleAddDialog
 import java.text.SimpleDateFormat
@@ -54,8 +58,15 @@ fun AgendaScreen(
     scheduleEvents: List<CalendarEvent> = emptyList(),
     courses: List<Course> = emptyList(),
     sectionTimes: List<SectionTime> = emptyList(),
+    exceptions: List<ScheduleException> = emptyList(),
+    semesterStartDate: String = "2026-09-01",
     currentWeek: Int = 1,
     isDark: Boolean = false,
+    tasks: List<StudyTask> = emptyList(),
+    onToggleTask: (StudyTask) -> Unit = {},
+    onDeleteTask: (StudyTask) -> Unit = {},
+    onAddTask: (StudyTask) -> Unit = {},
+    onAddSchedule: (CalendarEvent) -> Unit = {},
     onCourseClick: (TimelineItem) -> Unit = {},
     onScheduleClick: (CalendarEvent) -> Unit = {},
     onNavigateToTimetable: () -> Unit = {},
@@ -72,8 +83,8 @@ fun AgendaScreen(
     var showCreateDialog by remember { mutableStateOf(false) }
     var showWeekPicker by remember { mutableStateOf(false) }
 
-    val availableCourses = if (courses.isNotEmpty()) courses else remember {
-        listOf(
+    val availableCourses = remember(courses) {
+        if (courses.isNotEmpty()) courses else listOf(
             Course(id = "c_math", semesterId = "sem_1", name = "高等数学", color = "#4F46E5"),
             Course(id = "c_cs", semesterId = "sem_1", name = "数据结构与算法", color = "#0B8043"),
             Course(id = "c_eng", semesterId = "sem_1", name = "大学英语", color = "#E07A5F"),
@@ -81,8 +92,8 @@ fun AgendaScreen(
         )
     }
 
-    val availableSections = if (sectionTimes.isNotEmpty()) sectionTimes else remember {
-        (1..12).map { s ->
+    val availableSections = remember(sectionTimes) {
+        if (sectionTimes.isNotEmpty()) sectionTimes else (1..12).map { s ->
             SectionTime(s, String.format("%02d:00", 7 + s), String.format("%02d:45", 7 + s))
         }
     }
@@ -111,68 +122,40 @@ fun AgendaScreen(
         df.format(cal.time)
     }
 
-    // Sample Calendar Events
-    val calendarEvents = remember {
-        mutableStateListOf(
-            CalendarEvent(
-                id = "evt_1",
-                title = "高等代数辅导答疑",
-                startTime = "14:00",
-                endTime = "15:30",
-                location = "数学学院 304",
-                color = "#4A90E2",
-                frequency = "每周"
-            ),
-            CalendarEvent(
-                id = "evt_2",
-                title = "系学术前沿讲座",
-                startTime = "16:00",
-                endTime = "17:30",
-                location = "学生活动中心大厅",
-                color = "#9C27B0",
-                frequency = "none"
-            )
+    // Dynamically project occurrences for the selectedWeek
+    val weekOccurrences = remember(
+        courses,
+        scheduleEvents,
+        exceptions,
+        selectedWeek,
+        currentWeek,
+        sectionTimes,
+        semesterStartDate
+    ) {
+        TimelineProjection.projectOccurrences(
+            courses = courses,
+            schedules = scheduleEvents,
+            selectedWeek = selectedWeek,
+            currentWeek = currentWeek,
+            sectionTimes = sectionTimes,
+            totalWeeks = 25,
+            showNonCurrentWeekCourses = true,
+            semesterStartDate = semesterStartDate,
+            exceptions = exceptions
         )
     }
 
-    // Sample Tasks (Checklist ToDos)
-    val taskItems = remember {
-        mutableStateListOf(
-            CalendarEvent(
-                id = "task_1",
-                title = "高等数学 · 课后习题第4章巩固",
-                isTask = true,
-                isCompleted = false,
-                color = "#4A90E2"
-            ),
-            CalendarEvent(
-                id = "task_2",
-                title = "大学英语六级 · 听力真题一篇精听",
-                isTask = true,
-                isCompleted = true,
-                color = "#059669"
-            ),
-            CalendarEvent(
-                id = "task_3",
-                title = "数据结构 · 实验报告整理提交",
-                isTask = true,
-                isCompleted = false,
-                color = "#E07A5F"
-            )
-        )
-    }
-
-    // Courses for selected day
-    val selectedDayCourses = remember(todayOccurrences, selectedDayOfWeek, selectedWeek) {
-        todayOccurrences.filter {
-            it.dayOfWeek == selectedDayOfWeek && it.weekNumber == selectedWeek
+    // Courses & Schedules for selected day
+    val selectedDayCourses = remember(weekOccurrences, selectedDayOfWeek) {
+        weekOccurrences.filter {
+            it.dayOfWeek == selectedDayOfWeek
         }.sortedBy { it.startSection }
     }
 
     // Next upcoming course hero logic
     val nextUpcomingCourse = remember(todayOccurrences, todayWeekday, currentWeek) {
         val todayCourses = todayOccurrences.filter {
-            it.dayOfWeek == todayWeekday && it.weekNumber == currentWeek
+            it.dayOfWeek == todayWeekday && it.status != org.classflow.data.model.OccurrenceStatus.CANCELLED
         }.sortedBy { it.startSection }
 
         val cal = Calendar.getInstance()
@@ -414,10 +397,7 @@ fun AgendaScreen(
                 DayCourseScheduleCard(
                     dayName = dayNames[selectedDayOfWeek - 1],
                     selectedDayCourses = selectedDayCourses,
-                    calendarEvents = calendarEvents,
                     onCourseClick = onCourseClick,
-                    onScheduleClick = onScheduleClick,
-                    onDeleteEvent = { calendarEvents.remove(it) },
                     onNavigateToTimetable = onNavigateToTimetable
                 )
             }
@@ -425,16 +405,11 @@ fun AgendaScreen(
             // Section 2: Study Tasks Card for Day (macOS dayTasksColumn with segmented filter)
             item {
                 DayTasksCard(
-                    taskItems = taskItems,
+                    tasks = tasks,
                     taskFilter = taskFilter,
                     onFilterChange = { taskFilter = it },
-                    onToggle = { task ->
-                        val idx = taskItems.indexOf(task)
-                        if (idx >= 0) {
-                            taskItems[idx] = task.copy(isCompleted = !task.isCompleted)
-                        }
-                    },
-                    onDelete = { taskItems.remove(it) },
+                    onToggle = onToggleTask,
+                    onDelete = onDeleteTask,
                     onStartFocus = { task ->
                         onStartFocus(task.title, task.courseName)
                     },
@@ -461,11 +436,11 @@ fun AgendaScreen(
             isDark = isDark,
             onDismiss = { showCreateDialog = false },
             onSaveSchedule = { event ->
-                if (event.isTask) {
-                    taskItems.add(0, event)
-                } else {
-                    calendarEvents.add(0, event)
-                }
+                onAddSchedule(event)
+                showCreateDialog = false
+            },
+            onSaveTask = { task ->
+                onAddTask(task)
                 showCreateDialog = false
             }
         )
@@ -476,10 +451,7 @@ fun AgendaScreen(
 private fun DayCourseScheduleCard(
     dayName: String,
     selectedDayCourses: List<TimelineItem>,
-    calendarEvents: List<CalendarEvent>,
     onCourseClick: (TimelineItem) -> Unit,
-    onScheduleClick: (CalendarEvent) -> Unit,
-    onDeleteEvent: (CalendarEvent) -> Unit,
     onNavigateToTimetable: () -> Unit
 ) {
     Surface(
@@ -531,7 +503,7 @@ private fun DayCourseScheduleCard(
                 }
             }
 
-            if (selectedDayCourses.isEmpty() && calendarEvents.isEmpty()) {
+            if (selectedDayCourses.isEmpty()) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -565,13 +537,6 @@ private fun DayCourseScheduleCard(
                             onClick = { onCourseClick(item) }
                         )
                     }
-                    calendarEvents.forEach { event ->
-                        AgendaEventCard(
-                            event = event,
-                            onClick = { onScheduleClick(event) },
-                            onDelete = { onDeleteEvent(event) }
-                        )
-                    }
                 }
             }
         }
@@ -580,12 +545,12 @@ private fun DayCourseScheduleCard(
 
 @Composable
 private fun DayTasksCard(
-    taskItems: List<CalendarEvent>,
+    tasks: List<StudyTask>,
     taskFilter: AgendaTaskFilter,
     onFilterChange: (AgendaTaskFilter) -> Unit,
-    onToggle: (CalendarEvent) -> Unit,
-    onDelete: (CalendarEvent) -> Unit,
-    onStartFocus: (CalendarEvent) -> Unit,
+    onToggle: (StudyTask) -> Unit,
+    onDelete: (StudyTask) -> Unit,
+    onStartFocus: (StudyTask) -> Unit,
     onNewTask: () -> Unit
 ) {
     Surface(
@@ -646,11 +611,11 @@ private fun DayTasksCard(
                 }
             }
 
-            val filteredTasks = remember(taskItems.toList(), taskFilter) {
+            val filteredTasks = remember(tasks, taskFilter) {
                 when (taskFilter) {
-                    AgendaTaskFilter.IN_PROGRESS -> taskItems.filter { !it.isCompleted }
-                    AgendaTaskFilter.COMPLETED -> taskItems.filter { it.isCompleted }
-                    AgendaTaskFilter.ALL -> taskItems
+                    AgendaTaskFilter.IN_PROGRESS -> tasks.filter { !it.isCompleted }
+                    AgendaTaskFilter.COMPLETED -> tasks.filter { it.isCompleted }
+                    AgendaTaskFilter.ALL -> tasks
                 }
             }
 
@@ -871,43 +836,23 @@ private fun NoUpcomingHeroCard(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Surface(
-                    shape = CircleShape,
-                    color = Color(0xFF56A3A6).copy(alpha = 0.15f),
-                    modifier = Modifier.size(40.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            Icons.Default.AutoAwesome,
-                            contentDescription = null,
-                            tint = Color(0xFF56A3A6),
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                }
-
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(
-                        text = "$dayName · 无剩余待上课程",
-                        fontSize = 14.5.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = "把握课余时光，高效完成待办！",
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
-                    )
-                }
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = "$dayName · 今日无待上课程",
+                    fontSize = 14.5.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = "把握自习与课余时光，高效完成待办",
+                    fontSize = 11.5.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+                )
             }
 
             Surface(
                 onClick = onAddNew,
-                shape = CircleShape,
+                shape = RoundedCornerShape(8.dp),
                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                 border = androidx.compose.foundation.BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
             ) {
@@ -917,7 +862,7 @@ private fun NoUpcomingHeroCard(
                     horizontalArrangement = Arrangement.spacedBy(3.dp)
                 ) {
                     Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(12.dp), tint = MaterialTheme.colorScheme.onSurface)
-                    Text("加安排", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                    Text("加安排", fontSize = 11.5.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface)
                 }
             }
         }
@@ -926,7 +871,7 @@ private fun NoUpcomingHeroCard(
 
 @Composable
 fun TaskChecklistItem(
-    task: CalendarEvent,
+    task: StudyTask,
     onToggle: () -> Unit,
     onDelete: () -> Unit,
     onStartFocus: () -> Unit = {}
@@ -1012,36 +957,59 @@ fun TaskChecklistItem(
                     }
 
                     if (task.priority == "high") {
+                        Text(
+                            text = "紧急",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color(0xFFFF5A5F)
+                        )
+                    } else if (task.priority == "medium") {
+                        Text(
+                            text = "重要",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color(0xFFF59E0B)
+                        )
+                    }
+
+                    if (!task.dueDate.isNullOrBlank()) {
                         Surface(
-                            shape = CircleShape,
+                            shape = RoundedCornerShape(4.dp),
                             color = Color(0xFFFF5A5F).copy(alpha = 0.12f)
                         ) {
                             Text(
-                                text = "紧急",
+                                text = "截止 ${task.dueDate.takeLast(11)}",
                                 fontSize = 9.sp,
-                                fontWeight = FontWeight.Bold,
                                 color = Color(0xFFFF5A5F),
-                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                            )
-                        }
-                    } else if (task.priority == "medium") {
-                        Surface(
-                            shape = CircleShape,
-                            color = Color(0xFFF59E0B).copy(alpha = 0.12f)
-                        ) {
-                            Text(
-                                text = "重要",
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFFF59E0B),
                                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
                             )
                         }
                     }
 
-                    if (!task.description.isNullOrBlank()) {
+                    if (!task.frequency.isNullOrBlank() && task.frequency != "none") {
+                        val fLabel = when (task.frequency) {
+                            "daily" -> "每天"
+                            "workday" -> "工作日"
+                            "weekly" -> "每周"
+                            "monthly" -> "每月"
+                            else -> task.frequency
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = Color(0xFF2563EB).copy(alpha = 0.12f)
+                        ) {
+                            Text(
+                                text = "↻ $fLabel",
+                                fontSize = 9.sp,
+                                color = Color(0xFF2563EB),
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                            )
+                        }
+                    }
+
+                    if (!task.notes.isNullOrBlank()) {
                         Text(
-                            text = task.description,
+                            text = task.notes,
                             fontSize = 10.5.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
                             maxLines = 1,
@@ -1052,20 +1020,12 @@ fun TaskChecklistItem(
             }
 
             if (!task.isCompleted) {
-                Surface(
+                TextButton(
                     onClick = onStartFocus,
-                    shape = CircleShape,
-                    color = Color(0xFF2563EB).copy(alpha = 0.10f),
-                    modifier = Modifier.padding(end = 4.dp)
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                    modifier = Modifier.height(28.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(2.dp)
-                    ) {
-                        Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color(0xFF2563EB), modifier = Modifier.size(11.dp))
-                        Text("专注", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2563EB))
-                    }
+                    Text("专注", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
                 }
             }
 
@@ -1165,22 +1125,10 @@ fun AgendaEventCard(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                    Surface(
-                        shape = CircleShape,
-                        color = Color(0xFF34C759).copy(alpha = 0.12f)
-                    ) {
-                        Text(
-                            text = "日程",
-                            fontSize = 9.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF34C759),
-                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
-                        )
-                    }
                     if (event.frequency != "none" && event.frequency.isNotBlank()) {
                         Text(
                             text = event.frequency,
-                            fontSize = 9.sp,
+                            fontSize = 9.5.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                         )
                     }
@@ -1215,6 +1163,7 @@ fun AgendaCourseCard(
     item: TimelineItem,
     onClick: () -> Unit
 ) {
+    val isCancelled = item.status == org.classflow.data.model.OccurrenceStatus.CANCELLED
     val barColor = try {
         Color(android.graphics.Color.parseColor(item.color))
     } catch (e: Throwable) {
@@ -1224,12 +1173,14 @@ fun AgendaCourseCard(
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
+        color = if (isCancelled) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
         border = androidx.compose.foundation.BorderStroke(
             0.5.dp,
-            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+            MaterialTheme.colorScheme.outlineVariant.copy(alpha = if (isCancelled) 0.15f else 0.3f)
         ),
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(if (isCancelled) Modifier.alpha(0.55f) else Modifier)
     ) {
         Row(
             modifier = Modifier
@@ -1282,11 +1233,25 @@ fun AgendaCourseCard(
                         text = item.title,
                         fontSize = 13.5.sp,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = if (isCancelled) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f) else MaterialTheme.colorScheme.onSurface,
+                        textDecoration = if (isCancelled) androidx.compose.ui.text.style.TextDecoration.LineThrough else androidx.compose.ui.text.style.TextDecoration.None,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                    if (item.startSection > 0) {
+                    if (isCancelled) {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.error.copy(alpha = 0.12f)
+                        ) {
+                            Text(
+                                text = "已停课",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                            )
+                        }
+                    } else if (item.startSection > 0) {
                         Surface(
                             shape = CircleShape,
                             color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)

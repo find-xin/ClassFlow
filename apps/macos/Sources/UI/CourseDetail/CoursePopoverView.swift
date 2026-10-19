@@ -10,9 +10,11 @@ public struct CoursePopoverView: View {
     public let onQuickCancel: () -> Void
     public let onRestore: (() -> Void)?
     public let onDelete: () -> Void
+    public let onDeleteScope: ((EditingScope) -> Void)?
     public let onStartFocus: (() -> Void)?
 
     @State private var isConfirmingCancel: Bool = false
+    @State private var isConfirmingDelete: Bool = false
 
     public init(
         item: TimelineItem,
@@ -21,6 +23,7 @@ public struct CoursePopoverView: View {
         onQuickCancel: @escaping () -> Void,
         onRestore: (() -> Void)? = nil,
         onDelete: @escaping () -> Void,
+        onDeleteScope: ((EditingScope) -> Void)? = nil,
         onStartFocus: (() -> Void)? = nil
     ) {
         self.item = item
@@ -29,6 +32,7 @@ public struct CoursePopoverView: View {
         self.onQuickCancel = onQuickCancel
         self.onRestore = onRestore
         self.onDelete = onDelete
+        self.onDeleteScope = onDeleteScope
         self.onStartFocus = onStartFocus
     }
 
@@ -148,8 +152,8 @@ public struct CoursePopoverView: View {
                 .cornerRadius(8)
             }
 
-            // Quick Focus Linkage Button
-            if onStartFocus != nil && item.status != .cancelled {
+            // Quick Focus Linkage Button (Only for courses, not for calendar schedules)
+            if item.sourceType == .course && onStartFocus != nil && item.status != .cancelled {
                 Button(action: {
                     onStartFocus?()
                 }) {
@@ -186,7 +190,9 @@ public struct CoursePopoverView: View {
 
             // Action Buttons
             HStack(spacing: 8) {
-                Button(role: .destructive, action: onDelete) {
+                Button(role: .destructive, action: {
+                    isConfirmingDelete = true
+                }) {
                     Image(systemName: "trash")
                         .foregroundColor(.red)
                 }
@@ -243,6 +249,21 @@ public struct CoursePopoverView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                     }
                     .buttonStyle(.plain)
+                } else {
+                    Button(action: onEdit) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "pencil")
+                            Text("编辑日程")
+                        }
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 5)
+                        .background(Color(hex: "#FF5A5F"))
+                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .help("编辑此日程的标题、时间、重复与提醒")
                 }
             }
         }
@@ -255,6 +276,51 @@ public struct CoursePopoverView: View {
             Button("取消", role: .cancel) {}
         } message: {
             Text("停课仅影响本次课时，您可以在详情卡片中随时点击「恢复本次上课」改回。")
+        }
+        .confirmationDialog(
+            item.isRecurring ? (item.sourceType == .calendarEvent ? "删除循环日程" : "删除循环课程") : (item.sourceType == .calendarEvent ? "删除日程" : "删除课程"),
+            isPresented: $isConfirmingDelete,
+            titleVisibility: .visible
+        ) {
+            if item.isRecurring {
+                Button(item.sourceType == .calendarEvent ? "仅删除此日程" : "仅删除本次课时") {
+                    if let onDeleteScope {
+                        onDeleteScope(.thisOnly)
+                    } else {
+                        onQuickCancel()
+                    }
+                }
+                Button(item.sourceType == .calendarEvent ? "删除此日程及随后的所有日程" : "删除本次及随后所有课时") {
+                    if let onDeleteScope {
+                        onDeleteScope(.thisAndFuture)
+                    } else {
+                        onDelete()
+                    }
+                }
+                Button(item.sourceType == .calendarEvent ? "删除所有日程" : "彻底删除课程", role: .destructive) {
+                    if let onDeleteScope {
+                        onDeleteScope(.all)
+                    } else {
+                        onDelete()
+                    }
+                }
+                Button("取消", role: .cancel) {}
+            } else {
+                Button("删除", role: .destructive) {
+                    if let onDeleteScope {
+                        onDeleteScope(.all)
+                    } else {
+                        onDelete()
+                    }
+                }
+                Button("取消", role: .cancel) {}
+            }
+        } message: {
+            if item.isRecurring {
+                Text(item.sourceType == .calendarEvent ? "此日程为周期性重复安排，请选择要删除的范围。" : "此课程在学期中多次上课，请选择要删除的课时范围。")
+            } else {
+                Text("确定要删除「\(item.title)」吗？此操作无法撤销。")
+            }
         }
     }
 

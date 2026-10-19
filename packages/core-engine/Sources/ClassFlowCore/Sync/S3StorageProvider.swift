@@ -18,12 +18,26 @@ public final class S3StorageProvider: StorageProvider, @unchecked Sendable {
             secretKey: String = "",
             pathPrefix: String = "classflow-sync/"
         ) {
-            self.endpoint = endpoint
-            self.region = region
-            self.bucket = bucket
-            self.accessKey = accessKey
-            self.secretKey = secretKey
-            self.pathPrefix = pathPrefix.hasSuffix("/") ? pathPrefix : pathPrefix + "/"
+            var ep = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+            while ep.hasSuffix("/") {
+                ep.removeLast()
+            }
+            if !ep.isEmpty && !ep.contains("://") {
+                ep = "https://" + ep
+            }
+            self.endpoint = ep
+            self.region = region.trimmingCharacters(in: .whitespacesAndNewlines)
+            self.bucket = bucket.trimmingCharacters(in: .whitespacesAndNewlines)
+            self.accessKey = accessKey.trimmingCharacters(in: .whitespacesAndNewlines)
+            self.secretKey = secretKey.trimmingCharacters(in: .whitespacesAndNewlines)
+            var prefix = pathPrefix.trimmingCharacters(in: .whitespacesAndNewlines)
+            while prefix.hasPrefix("/") {
+                prefix.removeFirst()
+            }
+            if !prefix.isEmpty && !prefix.hasSuffix("/") {
+                prefix += "/"
+            }
+            self.pathPrefix = prefix.isEmpty ? "classflow-sync/" : prefix
         }
     }
 
@@ -31,7 +45,14 @@ public final class S3StorageProvider: StorageProvider, @unchecked Sendable {
     private let signer: S3SignatureV4
     private let session: URLSession
 
-    public init(config: Configuration, session: URLSession = .shared) {
+    public static func makeDefaultSession() -> URLSession {
+        let configuration = URLSessionConfiguration.default
+        configuration.timeoutIntervalForRequest = 15
+        configuration.timeoutIntervalForResource = 30
+        return URLSession(configuration: configuration, delegate: BYOCSessionDelegate(), delegateQueue: nil)
+    }
+
+    public init(config: Configuration, session: URLSession? = nil) {
         self.config = config
         self.signer = S3SignatureV4(
             accessKey: config.accessKey,
@@ -39,7 +60,7 @@ public final class S3StorageProvider: StorageProvider, @unchecked Sendable {
             region: config.region,
             service: "s3"
         )
-        self.session = session
+        self.session = session ?? Self.makeDefaultSession()
     }
 
     public func validateConfiguration() -> ConfigurationValidationResult {
@@ -97,6 +118,9 @@ public final class S3StorageProvider: StorageProvider, @unchecked Sendable {
         let url = makeURL(for: fullPath)
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
+        if let host = url.host {
+            request.setValue(host, forHTTPHeaderField: "Host")
+        }
 
         let sig = signer.signRequest(
             method: "GET",
@@ -124,6 +148,9 @@ public final class S3StorageProvider: StorageProvider, @unchecked Sendable {
         var request = URLRequest(url: url)
         request.httpMethod = "PUT"
         request.httpBody = data
+        if let host = url.host {
+            request.setValue(host, forHTTPHeaderField: "Host")
+        }
 
         var headers: [String: String] = ["host": url.host ?? ""]
         if let metadata {
@@ -159,6 +186,9 @@ public final class S3StorageProvider: StorageProvider, @unchecked Sendable {
         let url = makeURL(for: fullPath)
         var request = URLRequest(url: url)
         request.httpMethod = "DELETE"
+        if let host = url.host {
+            request.setValue(host, forHTTPHeaderField: "Host")
+        }
 
         let sig = signer.signRequest(
             method: "DELETE",
@@ -181,15 +211,23 @@ public final class S3StorageProvider: StorageProvider, @unchecked Sendable {
 
     public func listObjects(prefix: String) async throws -> [StorageObjectSummary] {
         let fullPrefix = sanitizeKey(prefix)
-        var components = URLComponents(url: URL(string: config.endpoint)!.appendingPathComponent(config.bucket), resolvingAgainstBaseURL: false)!
-        components.queryItems = [
-            URLQueryItem(name: "list-type", value: "2"),
-            URLQueryItem(name: "prefix", value: fullPrefix)
-        ]
-
-        let url = components.url!
+        guard URL(string: config.endpoint) != nil else {
+            throw NSError(domain: "S3StorageProvider", code: 400, userInfo: [
+                NSLocalizedDescriptionKey: "无效的 Endpoint 地址: \(config.endpoint)"
+            ])
+        }
+        let encodedPrefix = S3SignatureV4.uriEncode(fullPrefix)
+        let endpointClean = config.endpoint.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard let url = URL(string: "\(endpointClean)/\(config.bucket)?list-type=2&prefix=\(encodedPrefix)") else {
+            throw NSError(domain: "S3StorageProvider", code: 400, userInfo: [
+                NSLocalizedDescriptionKey: "无法构建 S3 查询 URL"
+            ])
+        }
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
+        if let host = url.host {
+            request.setValue(host, forHTTPHeaderField: "Host")
+        }
 
         let sig = signer.signRequest(
             method: "GET",
@@ -204,8 +242,16 @@ public final class S3StorageProvider: StorageProvider, @unchecked Sendable {
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             let status = (response as? HTTPURLResponse)?.statusCode ?? 500
+            let errorMsg: String
+            if status == 403 {
+                errorMsg = "鉴权或区域不匹配 (HTTP 403)：请检查 AccessKey/SecretKey，且确保 Endpoint 与 Region 和存储桶实际区域一致（如华南-广东须填 cn-south-1）"
+            } else if status == 404 {
+                errorMsg = "存储桶不存在 (HTTP 404)：请检查存储桶 Bucket 名称是否与云平台完全一致"
+            } else {
+                errorMsg = "连接云存储失败，HTTP 状态码: \(status)"
+            }
             throw NSError(domain: "S3StorageProvider", code: status, userInfo: [
-                NSLocalizedDescriptionKey: "Failed to list S3 objects, HTTP status: \(status)"
+                NSLocalizedDescriptionKey: errorMsg
             ])
         }
 
@@ -218,6 +264,9 @@ public final class S3StorageProvider: StorageProvider, @unchecked Sendable {
         let url = makeURL(for: fullPath)
         var request = URLRequest(url: url)
         request.httpMethod = "HEAD"
+        if let host = url.host {
+            request.setValue(host, forHTTPHeaderField: "Host")
+        }
 
         let sig = signer.signRequest(
             method: "HEAD",
@@ -254,7 +303,8 @@ public final class S3StorageProvider: StorageProvider, @unchecked Sendable {
     }
 
     private func makeURL(for sanitizedKey: String) -> URL {
-        URL(string: config.endpoint)!
+        let base = URL(string: config.endpoint) ?? URL(string: "https://invalid-endpoint")!
+        return base
             .appendingPathComponent(config.bucket)
             .appendingPathComponent(sanitizedKey)
     }
@@ -297,5 +347,27 @@ final class S3ListBucketParser: NSObject, XMLParserDelegate, @unchecked Sendable
             summaries.append(StorageObjectSummary(key: currentKey, size: currentSize))
         }
         currentElement = ""
+    }
+}
+
+// MARK: - BYOC Session Delegate
+/// Custom URLSessionDelegate that trusts server certificates for BYOC self-hosted storage
+/// (e.g., self-signed MinIO, local NAS WebDAV, or corporate proxy/VPN networks).
+public final class BYOCSessionDelegate: NSObject, URLSessionDelegate, Sendable {
+    public override init() {
+        super.init()
+    }
+
+    public func urlSession(
+        _ session: URLSession,
+        didReceive challenge: URLAuthenticationChallenge,
+        completionHandler: @escaping @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+    ) {
+        if challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
+           let serverTrust = challenge.protectionSpace.serverTrust {
+            completionHandler(.useCredential, URLCredential(trust: serverTrust))
+        } else {
+            completionHandler(.performDefaultHandling, nil)
+        }
     }
 }

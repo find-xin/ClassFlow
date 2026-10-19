@@ -28,8 +28,46 @@ import androidx.compose.ui.platform.LocalContext
  * - "sky": 天空
  * Supports custom wallpaper image loaded from gallery/storage via customWallpaperUri.
  */
-fun isWallpaperDark(preset: String, isSystemDark: Boolean, usePureColor: Boolean = false): Boolean {
+fun isWallpaperDark(
+    preset: String,
+    isSystemDark: Boolean,
+    usePureColor: Boolean = false,
+    customWallpaperUri: String? = null
+): Boolean {
     if (usePureColor) return isSystemDark
+    if (!customWallpaperUri.isNullOrBlank()) {
+        try {
+            val file = java.io.File(customWallpaperUri)
+            if (file.exists() && file.canRead()) {
+                val opts = BitmapFactory.Options().apply { inSampleSize = 8 }
+                val bmp = BitmapFactory.decodeFile(file.absolutePath, opts)
+                if (bmp != null) {
+                    var totalLum = 0.0
+                    var count = 0
+                    val w = bmp.width
+                    val h = bmp.height
+                    val startY = (h * 0.65).toInt()
+                    val stepY = maxOf(1, (h - startY) / 10)
+                    val stepX = maxOf(1, w / 10)
+                    for (y in startY until h step stepY) {
+                        for (x in 0 until w step stepX) {
+                            val pixel = bmp.getPixel(x, y)
+                            val r = (pixel shr 16 and 0xFF) / 255.0
+                            val g = (pixel shr 8 and 0xFF) / 255.0
+                            val b = (pixel and 0xFF) / 255.0
+                            totalLum += 0.299 * r + 0.587 * g + 0.114 * b
+                            count++
+                        }
+                    }
+                    bmp.recycle()
+                    if (count > 0) {
+                        return (totalLum / count) < 0.55
+                    }
+                }
+            }
+        } catch (_: Throwable) {}
+        return isSystemDark
+    }
     return when (preset) {
         "aurora", "midnight" -> true
         else -> isSystemDark
@@ -47,13 +85,18 @@ fun WallpaperBackground(
 ) {
     val context = LocalContext.current
 
-    // Safely load custom image bitmap if URI provided
+    // Safely load custom image bitmap if URI or file path provided
     val customBitmap = remember(customWallpaperUri) {
         if (!customWallpaperUri.isNullOrBlank()) {
             try {
-                val uri = Uri.parse(customWallpaperUri)
-                context.contentResolver.openInputStream(uri)?.use { stream ->
-                    BitmapFactory.decodeStream(stream)
+                val file = java.io.File(customWallpaperUri)
+                if (file.exists() && file.canRead()) {
+                    BitmapFactory.decodeFile(file.absolutePath)
+                } else {
+                    val uri = Uri.parse(customWallpaperUri)
+                    context.contentResolver.openInputStream(uri)?.use { stream ->
+                        BitmapFactory.decodeStream(stream)
+                    }
                 }
             } catch (e: Throwable) {
                 null
@@ -99,7 +142,7 @@ fun WallpaperBackground(
             .fillMaxSize()
             .background(brush = backgroundBrush)
     ) {
-        if (customBitmap != null) {
+        if (!usePureColorBackground && customBitmap != null) {
             Image(
                 bitmap = customBitmap.asImageBitmap(),
                 contentDescription = null,

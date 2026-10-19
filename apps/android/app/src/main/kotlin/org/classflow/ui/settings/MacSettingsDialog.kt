@@ -31,7 +31,10 @@ import org.classflow.data.model.Course
 import org.classflow.data.model.SectionTime
 import org.classflow.sync.FullSyncBundle
 import org.classflow.sync.FullSyncManager
+import org.classflow.sync.WebDAVStorageProvider
+import org.classflow.sync.S3StorageProvider
 import org.classflow.ui.timetable.ImportType
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -58,6 +61,8 @@ fun MacSettingsDialog(
     onDeleteCourse: (Course) -> Unit = {},
     onImportRequest: (ImportType) -> Unit,
     onExportRequest: (Boolean) -> Unit, // true for classflow, false for ics
+    onClearFocusHistory: () -> Unit = {},
+    onSyncSuccess: () -> Unit = {},
     onDismiss: () -> Unit
 ) {
     var selectedCategory by remember { mutableStateOf("general") }
@@ -191,7 +196,8 @@ fun MacSettingsDialog(
                             cardBg = cardBg,
                             textPrimary = textPrimary,
                             textSecondary = textSecondary,
-                            onUpdateSettings = onUpdateSettings
+                            onUpdateSettings = onUpdateSettings,
+                            onSyncSuccess = onSyncSuccess
                         )
                         "notifications" -> NotificationsSettingsView(
                             isDark = isDark,
@@ -211,7 +217,8 @@ fun MacSettingsDialog(
                             isDark = isDark,
                             cardBg = cardBg,
                             textPrimary = textPrimary,
-                            textSecondary = textSecondary
+                            textSecondary = textSecondary,
+                            onClearFocusHistory = onClearFocusHistory
                         )
                     }
                 }
@@ -289,7 +296,13 @@ private fun GeneralSettingsView(
                 }
                 Switch(
                     checked = appSettings.showWeekends,
-                    onCheckedChange = { onUpdateSettings(appSettings.copy(showWeekends = it)) },
+                    onCheckedChange = {
+                        onUpdateSettings(appSettings.copy(
+                            showWeekends = it,
+                            showSaturday = it,
+                            showSunday = it
+                        ))
+                    },
                     colors = SwitchDefaults.colors(
                         checkedThumbColor = Color.White,
                         checkedTrackColor = Color(0xFFFF5A5F)
@@ -361,11 +374,62 @@ private fun SyncSettingsView(
     cardBg: Color,
     textPrimary: Color,
     textSecondary: Color,
-    onUpdateSettings: (AppSettings) -> Unit
+    onUpdateSettings: (AppSettings) -> Unit,
+    onSyncSuccess: () -> Unit = {}
 ) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    var isSyncing by remember { mutableStateOf(false) }
+    var syncStatusText by remember { mutableStateOf(FullSyncManager.lastSyncStatus) }
     var showWebDAVDialog by remember { mutableStateOf(false) }
     var showS3Dialog by remember { mutableStateOf(false) }
+
+    var isForcePulling by remember { mutableStateOf(false) }
+    var showForcePullDialog by remember { mutableStateOf(false) }
+
+    if (showForcePullDialog) {
+        AlertDialog(
+            onDismissRequest = { showForcePullDialog = false },
+            title = { Text("确认从云端全量覆盖本地？", fontWeight = FontWeight.Bold, fontSize = 15.sp) },
+            text = {
+                Text(
+                    "此操作将清除本地的删除标记与死锁状态，直接从云端下载其他设备最新的完整快照并全量覆盖本地课程、日程与待办。\n\n若您在当前设备清空了课程后希望重新拉取其他设备的云端数据，请确认执行。",
+                    fontSize = 12.5.sp,
+                    color = textSecondary
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showForcePullDialog = false
+                        coroutineScope.launch {
+                            isForcePulling = true
+                            syncStatusText = "正在强制全量覆盖..."
+                            val res = FullSyncManager.executeForcePullFromCloud(context)
+                            isForcePulling = false
+                            syncStatusText = FullSyncManager.lastSyncStatus
+                            if (res.isSuccess) {
+                                val summary = res.getOrThrow()
+                                onSyncSuccess()
+                                Toast.makeText(context, "全量覆盖成功！已恢复 ${summary.activeCoursesCount} 门课程", Toast.LENGTH_SHORT).show()
+                            } else {
+                                val err = res.exceptionOrNull()?.message ?: "强制覆盖失败"
+                                Toast.makeText(context, "全量覆盖失败: $err", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("确认全量覆盖", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showForcePullDialog = false }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
 
     Text("全量云端数据同步 (BYOC)", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = textPrimary)
     Text("私有云存储多端漫游：同步课程、日程、待办、学习统计与系统外观配置。", fontSize = 11.5.sp, color = textSecondary)
@@ -385,36 +449,102 @@ private fun SyncSettingsView(
                 Column(modifier = Modifier.weight(1f)) {
                     Text("当前同步状态", fontSize = 12.sp, color = textSecondary)
                     Text(
-                        text = FullSyncManager.lastSyncStatus,
+                        text = syncStatusText,
                         fontSize = 13.5.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFF4F46E5)
                     )
                 }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 Button(
                     onClick = {
-                        val nowStr = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
-                        FullSyncManager.lastSyncTimestamp = System.currentTimeMillis()
-                        FullSyncManager.lastSyncStatus = "全量数据同步完成 ($nowStr)"
-                        Toast.makeText(context, "全量数据已成功同步！", Toast.LENGTH_SHORT).show()
+                        if (!isSyncing && !isForcePulling) {
+                            coroutineScope.launch {
+                                isSyncing = true
+                                syncStatusText = "正在同步..."
+                                val res = FullSyncManager.executeFullSync(context)
+                                isSyncing = false
+                                syncStatusText = FullSyncManager.lastSyncStatus
+                                if (res.isSuccess) {
+                                    val summary = res.getOrThrow()
+                                    onSyncSuccess()
+                                    val msg = if (summary.downloadedCount > 0) {
+                                        "同步成功！本地已推送云端，已合并远程 ${summary.downloadedCount} 项变动"
+                                    } else {
+                                        "同步成功！本地已发布到云端 (云端暂无其它设备新变动)"
+                                    }
+                                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                } else {
+                                    val err = res.exceptionOrNull()?.message ?: "未知同步错误"
+                                    Toast.makeText(context, "同步失败: $err", Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        }
                     },
+                    enabled = !isSyncing && !isForcePulling,
                     shape = RoundedCornerShape(8.dp),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
                 ) {
                     Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("立即同步", fontSize = 12.5.sp)
+                    Text(if (isSyncing) "同步中..." else "立即同步", fontSize = 12.sp)
+                }
+
+                OutlinedButton(
+                    onClick = {
+                        if (!isSyncing && !isForcePulling) {
+                            showForcePullDialog = true
+                        }
+                    },
+                    enabled = !isSyncing && !isForcePulling,
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                ) {
+                    Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(if (isForcePulling) "覆盖中..." else "从云端全量覆盖", fontSize = 12.sp)
                 }
             }
 
             HorizontalDivider(color = if (isDark) Color.White.copy(alpha = 0.08f) else Color(0xFFF0F0F2))
 
+            // Step 1: Sync on Startup
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("自动云同步", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = textPrimary)
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("第一步：启动时自动同步", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = textPrimary)
+                    Text("应用启动打开时，在后台静默执行一次云同步", fontSize = 11.5.sp, color = textSecondary)
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Switch(
+                    checked = appSettings.syncOnStartup,
+                    onCheckedChange = { onUpdateSettings(appSettings.copy(syncOnStartup = it)) }
+                )
+            }
+
+            HorizontalDivider(color = if (isDark) Color.White.copy(alpha = 0.08f) else Color(0xFFF0F0F2))
+
+            // Step 2: Periodic Auto-Sync Interval
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("第二步：定时自动同步", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = textPrimary)
+                    Text("应用运行期间，按设定的时间间隔自动同步", fontSize = 11.5.sp, color = textSecondary)
+                }
+                Spacer(modifier = Modifier.width(8.dp))
                 Switch(
                     checked = appSettings.autoSyncEnabled,
                     onCheckedChange = { onUpdateSettings(appSettings.copy(autoSyncEnabled = it)) }
@@ -422,17 +552,17 @@ private fun SyncSettingsView(
             }
 
             if (appSettings.autoSyncEnabled) {
-                Text("同步时间间隔", fontSize = 12.sp, color = textSecondary)
+                Text("自动同步时间间隔", fontSize = 12.sp, color = textSecondary)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     listOf(
-                        "launch" to "启动时",
                         "15m" to "15分钟",
                         "30m" to "30分钟",
                         "1h" to "1小时",
-                        "manual" to "仅手动"
+                        "2h" to "2小时",
+                        "6h" to "6小时"
                     ).forEach { (code, label) ->
                         val isSel = (appSettings.syncInterval == code)
                         Box(
@@ -497,17 +627,20 @@ private fun SyncSettingsView(
             Icon(Icons.Default.Storage, contentDescription = null, tint = Color(0xFF4F46E5))
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text("S3 / 七牛云 Kodo 对象存储", fontWeight = FontWeight.SemiBold, fontSize = 13.5.sp, color = textPrimary)
-                Text("支持七牛云、Cloudflare R2、AWS S3", fontSize = 11.sp, color = textSecondary)
+                Text("S3 兼容对象存储", fontWeight = FontWeight.SemiBold, fontSize = 13.5.sp, color = textPrimary)
+                Text("支持各类对象存储服务、Cloudflare R2、AWS S3 等", fontSize = 11.sp, color = textSecondary)
             }
             Icon(Icons.Default.ChevronRight, contentDescription = null, tint = textSecondary)
         }
     }
 
     if (showWebDAVDialog) {
-        var serverUrl by remember { mutableStateOf("https://dav.jianguoyun.com/dav/") }
-        var username by remember { mutableStateOf("") }
-        var password by remember { mutableStateOf("") }
+        val currentCreds = remember { org.classflow.data.local.SettingsManager.loadSyncCredentials(context) }
+        var serverUrl by remember { mutableStateOf(currentCreds.webdavUrl) }
+        var username by remember { mutableStateOf(currentCreds.webdavUsername) }
+        var password by remember { mutableStateOf(currentCreds.webdavPassword) }
+        var isTesting by remember { mutableStateOf(false) }
+        var testMsg by remember { mutableStateOf<String?>(null) }
 
         AlertDialog(
             onDismissRequest = { showWebDAVDialog = false },
@@ -517,31 +650,67 @@ private fun SyncSettingsView(
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     OutlinedTextField(
                         value = serverUrl,
-                        onValueChange = { serverUrl = it },
+                        onValueChange = { serverUrl = it; testMsg = null },
                         label = { Text("服务器地址") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
                     OutlinedTextField(
                         value = username,
-                        onValueChange = { username = it },
+                        onValueChange = { username = it; testMsg = null },
                         label = { Text("账号") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
                     OutlinedTextField(
                         value = password,
-                        onValueChange = { password = it },
+                        onValueChange = { password = it; testMsg = null },
                         label = { Text("应用密码 / Token") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
+
+                    testMsg?.let { msg ->
+                        Text(
+                            text = msg,
+                            fontSize = 11.5.sp,
+                            color = if (msg.startsWith("✓")) Color(0xFF10B981) else MaterialTheme.colorScheme.error
+                        )
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            coroutineScope.launch {
+                                isTesting = true
+                                testMsg = "正在测试连接..."
+                                val provider = WebDAVStorageProvider(serverUrl, username, password)
+                                val res = provider.testConnection()
+                                isTesting = false
+                                if (res.isSuccess) {
+                                    testMsg = "✓ 连接成功！认证有效"
+                                } else {
+                                    testMsg = "连接失败: ${res.exceptionOrNull()?.message}"
+                                }
+                            }
+                        },
+                        enabled = !isTesting && username.isNotBlank(),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(if (isTesting) "正在测试..." else "测试连接")
+                    }
                 }
             },
             confirmButton = {
                 Button(onClick = {
+                    val updated = currentCreds.copy(
+                        providerType = "webdav",
+                        webdavUrl = serverUrl,
+                        webdavUsername = username,
+                        webdavPassword = password
+                    )
+                    org.classflow.data.local.SettingsManager.saveSyncCredentials(context, updated)
                     showWebDAVDialog = false
-                    Toast.makeText(context, "WebDAV 配置已安全存储至 Android KeyStore", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "WebDAV 配置已安全存储", Toast.LENGTH_SHORT).show()
                 }) {
                     Text("保存")
                 }
@@ -553,25 +722,71 @@ private fun SyncSettingsView(
     }
 
     if (showS3Dialog) {
-        var endpoint by remember { mutableStateOf("s3-cn-east-1.qiniucs.com") }
-        var bucket by remember { mutableStateOf("") }
-        var ak by remember { mutableStateOf("") }
-        var sk by remember { mutableStateOf("") }
+        val currentCreds = remember { org.classflow.data.local.SettingsManager.loadSyncCredentials(context) }
+        var endpoint by remember { mutableStateOf(currentCreds.s3Endpoint) }
+        var region by remember { mutableStateOf(currentCreds.s3Region) }
+        var bucket by remember { mutableStateOf(currentCreds.s3Bucket) }
+        var ak by remember { mutableStateOf(currentCreds.s3AccessKey) }
+        var sk by remember { mutableStateOf(currentCreds.s3SecretKey) }
+        var isTesting by remember { mutableStateOf(false) }
+        var testMsg by remember { mutableStateOf<String?>(null) }
 
         AlertDialog(
             onDismissRequest = { showS3Dialog = false },
             containerColor = if (isDark) Color(0xFF1E202B) else Color.White,
-            title = { Text("配置 S3 / 七牛云存储", fontWeight = FontWeight.Bold, color = textPrimary) },
+            title = { Text("配置 S3 兼容对象存储", fontWeight = FontWeight.Bold, color = textPrimary) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedTextField(value = endpoint, onValueChange = { endpoint = it }, label = { Text("Endpoint") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                    OutlinedTextField(value = bucket, onValueChange = { bucket = it }, label = { Text("Bucket 桶名") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                    OutlinedTextField(value = ak, onValueChange = { ak = it }, label = { Text("Access Key") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                    OutlinedTextField(value = sk, onValueChange = { sk = it }, label = { Text("Secret Key") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedTextField(value = endpoint, onValueChange = { endpoint = it; testMsg = null }, label = { Text("Endpoint") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(value = region, onValueChange = { region = it; testMsg = null }, label = { Text("Region (区域)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(value = bucket, onValueChange = { bucket = it; testMsg = null }, label = { Text("Bucket 桶名") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(value = ak, onValueChange = { ak = it; testMsg = null }, label = { Text("Access Key") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(value = sk, onValueChange = { sk = it; testMsg = null }, label = { Text("Secret Key") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+
+                    testMsg?.let { msg ->
+                        Text(
+                            text = msg,
+                            fontSize = 11.5.sp,
+                            color = if (msg.startsWith("✓")) Color(0xFF10B981) else MaterialTheme.colorScheme.error
+                        )
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            coroutineScope.launch {
+                                isTesting = true
+                                testMsg = "正在测试连接..."
+                                val provider = S3StorageProvider(endpoint, region, bucket, ak, sk)
+                                val res = provider.testConnection()
+                                isTesting = false
+                                if (res.isSuccess) {
+                                    testMsg = "✓ 连接成功！存储桶可正常读写"
+                                } else {
+                                    testMsg = "连接失败: ${res.exceptionOrNull()?.message}"
+                                }
+                            }
+                        },
+                        enabled = !isTesting && bucket.isNotBlank() && ak.isNotBlank(),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(if (isTesting) "正在测试..." else "测试连接")
+                    }
                 }
             },
             confirmButton = {
                 Button(onClick = {
+                    val updated = currentCreds.copy(
+                        providerType = "s3",
+                        s3Endpoint = endpoint,
+                        s3Region = region,
+                        s3Bucket = bucket,
+                        s3AccessKey = ak,
+                        s3SecretKey = sk
+                    )
+                    org.classflow.data.local.SettingsManager.saveSyncCredentials(context, updated)
                     showS3Dialog = false
                     Toast.makeText(context, "S3 凭据已安全保存", Toast.LENGTH_SHORT).show()
                 }) { Text("保存") }
@@ -751,11 +966,13 @@ private fun AboutSettingsView(
     isDark: Boolean,
     cardBg: Color,
     textPrimary: Color,
-    textSecondary: Color
+    textSecondary: Color,
+    onClearFocusHistory: () -> Unit = {}
 ) {
     val context = LocalContext.current
+    var showClearFocusConfirmDialog by remember { mutableStateOf(false) }
 
-    Text("关于与数据管理", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = textPrimary)
+    Text("关于与版本", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = textPrimary)
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -779,6 +996,76 @@ private fun AboutSettingsView(
                 Text("检查更新")
             }
         }
+    }
+
+    Spacer(modifier = Modifier.height(6.dp))
+
+    Text("历史数据管理", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = textPrimary)
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = cardBg)
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("专注成果与热力图记录", fontWeight = FontWeight.SemiBold, fontSize = 13.5.sp, color = textPrimary)
+            Text(
+                "长期积累的大量番茄专注成果与历史热力图打卡记录。堆积过多时可在此一键清空，释放存储空间并重置统计图谱。",
+                fontSize = 12.sp,
+                color = textSecondary
+            )
+
+            OutlinedButton(
+                onClick = { showClearFocusConfirmDialog = true },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(10.dp),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = Color(0xFFEF4444)
+                ),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.5f))
+            ) {
+                Icon(Icons.Default.DeleteOutline, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("清理所有历史专注数据", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
+    }
+
+    if (showClearFocusConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearFocusConfirmDialog = false },
+            title = {
+                Text(
+                    text = "确认清理历史专注数据？",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = textPrimary
+                )
+            },
+            text = {
+                Text(
+                    text = "该操作将永久清空番茄钟历史专注成果记录与热力图打卡统计，重置连续专注天数。该操作不可撤销，确定继续吗？",
+                    fontSize = 13.sp,
+                    color = textSecondary
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onClearFocusHistory()
+                        showClearFocusConfirmDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
+                ) {
+                    Text("确认清理", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearFocusConfirmDialog = false }) {
+                    Text("取消", color = textSecondary)
+                }
+            }
+        )
     }
 }
 

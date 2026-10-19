@@ -11,28 +11,31 @@ public struct ConflictDetector: Sendable {
 
         guard activeItems.count >= 2 else { return [] }
 
-        for i in 0..<activeItems.count {
-            for j in (i + 1)..<activeItems.count {
-                let a = activeItems[i]
-                let b = activeItems[j]
+        // Group by date first to avoid N^2 pairwise comparisons across different dates
+        let itemsByDate = Dictionary(grouping: activeItems, by: { $0.date })
 
-                // Must be on the exact same date
-                guard a.date == b.date else { continue }
+        for (date, dayItems) in itemsByDate {
+            guard dayItems.count >= 2 else { continue }
+            for i in 0..<dayItems.count {
+                for j in (i + 1)..<dayItems.count {
+                    let a = dayItems[i]
+                    let b = dayItems[j]
 
-                // Check section overlap
-                let startOverlap = max(a.startSection, b.startSection)
-                let endOverlap = min(a.endSection, b.endSection)
+                    // Check section overlap
+                    let startOverlap = max(a.startSection, b.startSection)
+                    let endOverlap = min(a.endSection, b.endSection)
 
-                if startOverlap <= endOverlap {
-                    let overlappingSections = Array(startOverlap...endOverlap)
-                    warnings.append(ConflictWarning(
-                        itemAId: a.id,
-                        itemBId: b.id,
-                        itemATitle: a.title,
-                        itemBTitle: b.title,
-                        date: a.date,
-                        overlappingSections: overlappingSections
-                    ))
+                    if startOverlap <= endOverlap {
+                        let overlappingSections = Array(startOverlap...endOverlap)
+                        warnings.append(ConflictWarning(
+                            itemAId: a.id,
+                            itemBId: b.id,
+                            itemATitle: a.title,
+                            itemBTitle: b.title,
+                            date: date,
+                            overlappingSections: overlappingSections
+                        ))
+                    }
                 }
             }
         }

@@ -3,6 +3,8 @@ package org.classflow
 import org.classflow.data.model.*
 import org.classflow.sync.FullSyncBundle
 import org.classflow.sync.FullSyncManager
+import org.json.JSONArray
+import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -124,5 +126,59 @@ class FullSyncTest {
         assertTrue(deserialized.studyTasks.isEmpty())
         assertTrue(deserialized.focusRecords.isEmpty())
         assertEquals("system", deserialized.settings.themeMode)
+    }
+
+    @Test
+    fun testPeerMergeCourseUnblockingWhenLocalCoursesEmptyEvenWithSchedules() {
+        // Local state: courses were deleted (empty), but schedule "晨读早自习" remains
+        val localCourses = mutableListOf<Course>()
+        val localSchedules = mutableListOf(
+            CalendarEvent(id = "sched_morning", title = "晨读早自习", startTime = "07:00", endTime = "07:40")
+        )
+        val localExceptions = mutableListOf<ScheduleException>()
+        val localSemesters = mutableListOf<Semester>()
+        val localFocusRecords = mutableListOf<FocusRecord>()
+        val localStudyTasks = mutableListOf<StudyTask>()
+
+        // Local has a tombstone for peer course c_oop because it was deleted locally earlier
+        val localTombstones = mutableListOf(
+            SyncTombstone(entityId = "c_oop", entityType = "course", deletedAt = System.currentTimeMillis() - 1000)
+        )
+
+        // Peer remote snapshot contains course c_oop
+        val peerCourseJson = JSONObject().apply {
+            put("id", "c_oop")
+            put("semesterId", "sem_1")
+            put("name", "面向对象程序设计")
+            put("schedules", JSONArray())
+        }
+        val peerSnapJson = JSONObject().apply {
+            put("courses", JSONArray().put(peerCourseJson))
+        }
+
+        val downloaded = FullSyncManager.mergePeerSnapshot(
+            peerSnapJson = peerSnapJson,
+            localCourses = localCourses,
+            localSchedules = localSchedules,
+            localExceptions = localExceptions,
+            localSemesters = localSemesters,
+            localFocusRecords = localFocusRecords,
+            localStudyTasks = localStudyTasks,
+            localTombstones = localTombstones
+        )
+
+        // Verifications:
+        // 1. The course c_oop MUST be unblocked and restored, not blocked by the unrelated schedule event
+        assertEquals(1, localCourses.size)
+        assertEquals("c_oop", localCourses[0].id)
+        assertEquals("面向对象程序设计", localCourses[0].name)
+        assertEquals(1, downloaded)
+
+        // 2. The tombstone for c_oop MUST have been removed from localTombstones
+        assertTrue(localTombstones.none { it.entityId == "c_oop" })
+
+        // 3. The existing schedule "晨读早自习" remains intact
+        assertEquals(1, localSchedules.size)
+        assertEquals("sched_morning", localSchedules[0].id)
     }
 }

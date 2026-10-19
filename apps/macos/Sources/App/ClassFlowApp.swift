@@ -41,7 +41,7 @@ struct ClassFlowApp: App {
                 }
                 .keyboardShortcut("t", modifiers: .command)
 
-                Button("已选课程列表...") {
+                Button("事项管理...") {
                     appState.isShowingCourseList = true
                 }
                 .keyboardShortcut("l", modifiers: .command)

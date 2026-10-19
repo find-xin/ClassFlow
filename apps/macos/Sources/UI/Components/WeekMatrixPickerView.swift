@@ -8,9 +8,11 @@ public struct WeekMatrixPickerView: View {
     public let maxWeeks: Int
     public let accentColor: Color
 
+    @State private var internalTrigger: Int = 0
+
     public init(
         selectedWeeks: Binding<Set<Int>>,
-        maxWeeks: Int = 25,
+        maxWeeks: Int = 20,
         accentColor: Color = Color(hex: "#FF5A5F")
     ) {
         self._selectedWeeks = selectedWeeks
@@ -21,6 +23,7 @@ public struct WeekMatrixPickerView: View {
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 6), count: 5)
 
     public var body: some View {
+        let _ = internalTrigger
         VStack(alignment: .leading, spacing: 10) {
             // Quick preset action pills (direct HStack without nested ScrollView to ensure instant click responsiveness in macOS AppKit)
             HStack(spacing: 6) {
@@ -42,7 +45,7 @@ public struct WeekMatrixPickerView: View {
                     selectedWeeks = (start <= end) ? Set(start...end) : []
                 }
                 presetButton("清空") {
-                    selectedWeeks.removeAll()
+                    selectedWeeks = []
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -57,11 +60,14 @@ public struct WeekMatrixPickerView: View {
                             if week <= maxWeeks {
                                 let isSelected = selectedWeeks.contains(week)
                                 Button(action: {
-                                    if isSelected {
-                                        selectedWeeks.remove(week)
+                                    var next = selectedWeeks
+                                    if next.contains(week) {
+                                        next.remove(week)
                                     } else {
-                                        selectedWeeks.insert(week)
+                                        next.insert(week)
                                     }
+                                    selectedWeeks = next
+                                    internalTrigger &+= 1
                                 }) {
                                     Text("\(week)")
                                         .font(.system(size: 12, weight: isSelected ? .bold : .medium, design: .monospaced))
@@ -72,9 +78,9 @@ public struct WeekMatrixPickerView: View {
                                             RoundedRectangle(cornerRadius: 6, style: .continuous)
                                                 .fill(isSelected ? accentColor : Color(nsColor: .textBackgroundColor).opacity(0.6))
                                         )
-                                        .contentShape(Rectangle())
                                 }
                                 .buttonStyle(.plain)
+                                .contentShape(Rectangle())
                             } else {
                                 Spacer()
                                     .frame(maxWidth: .infinity)
@@ -101,7 +107,10 @@ public struct WeekMatrixPickerView: View {
     }
 
     private func presetButton(_ title: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
+        Button(action: {
+            action()
+            internalTrigger &+= 1
+        }) {
             Text(title)
                 .font(.system(size: 11.5, weight: .medium))
                 .foregroundColor(.primary)
@@ -115,9 +124,9 @@ public struct WeekMatrixPickerView: View {
                     Capsule()
                         .stroke(Color(nsColor: .separatorColor).opacity(0.6), lineWidth: 0.8)
                 )
-                .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+        .contentShape(Capsule())
     }
 
     private var summaryText: String {

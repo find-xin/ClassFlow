@@ -12,6 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -21,6 +22,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.classflow.data.model.AppSettings
+import org.classflow.data.model.CalendarEvent
 import org.classflow.data.model.Course
 import org.classflow.data.model.SectionTime
 import org.classflow.ui.components.parseHexColor
@@ -426,10 +428,61 @@ fun SectionTimesDialog(
 fun TimetableSettingsDialog(
     appSettings: AppSettings,
     onUpdateSettings: (AppSettings) -> Unit,
+    onSyncSuccess: () -> Unit = {},
     onDismiss: () -> Unit
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    var isSyncing by remember { mutableStateOf(false) }
+    var isForcePulling by remember { mutableStateOf(false) }
+    var showForcePullDialog by remember { mutableStateOf(false) }
+    var syncStatusText by remember { mutableStateOf(org.classflow.sync.FullSyncManager.lastSyncStatus) }
     var showWebDAVDialog by remember { mutableStateOf(false) }
     var showS3Dialog by remember { mutableStateOf(false) }
+
+    if (showForcePullDialog) {
+        AlertDialog(
+            onDismissRequest = { showForcePullDialog = false },
+            title = { Text("确认从云端全量覆盖本地？", fontWeight = FontWeight.Bold, fontSize = 15.sp) },
+            text = {
+                Text(
+                    "此操作将清除本地的删除标记与死锁状态，直接从云端下载其他设备最新的完整快照并全量覆盖本地课程、日程与待办。\n\n若您在当前设备清空了课程后希望重新拉取其他设备的云端数据，请确认执行。",
+                    fontSize = 12.5.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showForcePullDialog = false
+                        coroutineScope.launch {
+                            isForcePulling = true
+                            syncStatusText = "正在强制全量覆盖..."
+                            val res = org.classflow.sync.FullSyncManager.executeForcePullFromCloud(context)
+                            isForcePulling = false
+                            syncStatusText = org.classflow.sync.FullSyncManager.lastSyncStatus
+                            if (res.isSuccess) {
+                                val summary = res.getOrThrow()
+                                onSyncSuccess()
+                                android.widget.Toast.makeText(context, "全量覆盖成功！已恢复 ${summary.activeCoursesCount} 门课程", android.widget.Toast.LENGTH_SHORT).show()
+                            } else {
+                                val err = res.exceptionOrNull()?.message ?: "强制覆盖失败"
+                                android.widget.Toast.makeText(context, "全量覆盖失败: $err", android.widget.Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("确认全量覆盖", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showForcePullDialog = false }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -503,38 +556,97 @@ fun TimetableSettingsDialog(
                             Column(modifier = Modifier.weight(1f)) {
                                 Text("同步状态", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Text(
-                                    text = org.classflow.sync.FullSyncManager.lastSyncStatus,
+                                    text = syncStatusText,
                                     fontSize = 13.5.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     color = MaterialTheme.colorScheme.primary
                                 )
                             }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
                             Button(
                                 onClick = {
-                                    // Trigger immediate full sync
-                                    org.classflow.sync.FullSyncManager.lastSyncStatus = "正在全量同步..."
-                                    val nowStr = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
-                                    org.classflow.sync.FullSyncManager.lastSyncTimestamp = System.currentTimeMillis()
-                                    org.classflow.sync.FullSyncManager.lastSyncStatus = "全量数据同步完成 ($nowStr)"
+                                    if (!isSyncing && !isForcePulling) {
+                                        coroutineScope.launch {
+                                            isSyncing = true
+                                            syncStatusText = "正在全量同步..."
+                                            val res = org.classflow.sync.FullSyncManager.executeFullSync(context)
+                                            isSyncing = false
+                                            syncStatusText = org.classflow.sync.FullSyncManager.lastSyncStatus
+                                            if (res.isSuccess) {
+                                                val s = res.getOrThrow()
+                                                onSyncSuccess()
+                                                android.widget.Toast.makeText(context, "全量数据同步完成！发现 ${s.peerDevicesCount} 台协同设备", android.widget.Toast.LENGTH_SHORT).show()
+                                            } else {
+                                                val err = res.exceptionOrNull()?.message ?: "同步失败"
+                                                android.widget.Toast.makeText(context, "同步失败: $err", android.widget.Toast.LENGTH_LONG).show()
+                                            }
+                                        }
+                                    }
                                 },
+                                enabled = !isSyncing && !isForcePulling,
                                 shape = RoundedCornerShape(8.dp),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                modifier = Modifier.weight(1f),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
                             ) {
                                 Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("立即全量同步", fontSize = 12.5.sp)
+                                Text(if (isSyncing) "同步中..." else "立即同步", fontSize = 12.sp)
+                            }
+
+                            OutlinedButton(
+                                onClick = {
+                                    if (!isSyncing && !isForcePulling) {
+                                        showForcePullDialog = true
+                                    }
+                                },
+                                enabled = !isSyncing && !isForcePulling,
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.weight(1f),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                            ) {
+                                Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(if (isForcePulling) "覆盖中..." else "从云端全量覆盖", fontSize = 12.sp)
                             }
                         }
 
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
 
-                        // Auto-sync Toggle
+                        // Step 1: Sync on Startup
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("开启自动同步", fontSize = 13.5.sp, fontWeight = FontWeight.Medium)
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("第一步：启动时自动同步", fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold)
+                                Text("应用打开时静默执行一次云同步", fontSize = 11.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Switch(
+                                checked = appSettings.syncOnStartup,
+                                onCheckedChange = { onUpdateSettings(appSettings.copy(syncOnStartup = it)) }
+                            )
+                        }
+
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+
+                        // Step 2: Periodic Auto-Sync Interval
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("第二步：定时自动同步", fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold)
+                                Text("运行期间按设定间隔自动同步", fontSize = 11.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
                             Switch(
                                 checked = appSettings.autoSyncEnabled,
                                 onCheckedChange = { onUpdateSettings(appSettings.copy(autoSyncEnabled = it)) }
@@ -543,17 +655,17 @@ fun TimetableSettingsDialog(
 
                         // Sync Interval Selection
                         if (appSettings.autoSyncEnabled) {
-                            Text("同步时间间隔", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("自动同步时间间隔", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 val intervals = listOf(
-                                    "launch" to "启动时",
                                     "15m" to "15分钟",
                                     "30m" to "30分钟",
                                     "1h" to "1小时",
-                                    "manual" to "仅手动"
+                                    "2h" to "2小时",
+                                    "6h" to "6小时"
                                 )
                                 intervals.forEach { (code, label) ->
                                     FilterChip(
@@ -611,7 +723,7 @@ fun TimetableSettingsDialog(
                         Spacer(modifier = Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text("S3 兼容对象存储同步", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                            Text("支持七牛云 Kodo、Cloudflare R2、AWS S3 等", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("支持各类对象存储服务、Cloudflare R2、AWS S3 等", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
@@ -636,9 +748,12 @@ fun TimetableSettingsDialog(
 
 @Composable
 fun WebDAVSettingsDialog(onDismiss: () -> Unit) {
-    var serverUrl by remember { mutableStateOf("") }
-    var username by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val creds = remember { org.classflow.data.local.SettingsManager.loadSyncCredentials(context) }
+    var serverUrl by remember { mutableStateOf(creds.webdavUrl) }
+    var username by remember { mutableStateOf(creds.webdavUsername) }
+    var password by remember { mutableStateOf(creds.webdavPassword) }
     var isTesting by remember { mutableStateOf(false) }
     var testResult by remember { mutableStateOf<String?>(null) }
 
@@ -651,7 +766,7 @@ fun WebDAVSettingsDialog(onDismiss: () -> Unit) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedTextField(
                     value = serverUrl,
-                    onValueChange = { serverUrl = it },
+                    onValueChange = { serverUrl = it; testResult = null },
                     label = { Text("服务器地址 (URL)") },
                     placeholder = { Text("https://dav.jianguoyun.com/dav/") },
                     singleLine = true,
@@ -660,7 +775,7 @@ fun WebDAVSettingsDialog(onDismiss: () -> Unit) {
                 )
                 OutlinedTextField(
                     value = username,
-                    onValueChange = { username = it },
+                    onValueChange = { username = it; testResult = null },
                     label = { Text("账号") },
                     singleLine = true,
                     shape = RoundedCornerShape(10.dp),
@@ -668,21 +783,53 @@ fun WebDAVSettingsDialog(onDismiss: () -> Unit) {
                 )
                 OutlinedTextField(
                     value = password,
-                    onValueChange = { password = it },
+                    onValueChange = { password = it; testResult = null },
                     label = { Text("密码 / 应用授权码") },
                     singleLine = true,
                     shape = RoundedCornerShape(10.dp),
                     modifier = Modifier.fillMaxWidth()
                 )
                 testResult?.let { msg ->
-                    Text(msg, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                    Text(
+                        text = msg,
+                        fontSize = 11.5.sp,
+                        color = if (msg.startsWith("✓")) Color(0xFF10B981) else MaterialTheme.colorScheme.error
+                    )
+                }
+
+                OutlinedButton(
+                    onClick = {
+                        coroutineScope.launch {
+                            isTesting = true
+                            testResult = "正在测试连接..."
+                            val provider = org.classflow.sync.WebDAVStorageProvider(serverUrl, username, password)
+                            val res = provider.testConnection()
+                            isTesting = false
+                            if (res.isSuccess) {
+                                testResult = "✓ 连接成功！认证有效"
+                            } else {
+                                testResult = "连接失败: ${res.exceptionOrNull()?.message}"
+                            }
+                        }
+                    },
+                    enabled = !isTesting && username.isNotBlank(),
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text(if (isTesting) "正在测试..." else "测试连接")
                 }
             }
         },
         confirmButton = {
             Button(
                 onClick = {
-                    testResult = "已保存配置 (本地 KeyStore 安全加密存储)"
+                    val updated = creds.copy(
+                        providerType = "webdav",
+                        webdavUrl = serverUrl,
+                        webdavUsername = username,
+                        webdavPassword = password
+                    )
+                    org.classflow.data.local.SettingsManager.saveSyncCredentials(context, updated)
                     onDismiss()
                 },
                 shape = RoundedCornerShape(10.dp)
@@ -700,30 +847,47 @@ fun WebDAVSettingsDialog(onDismiss: () -> Unit) {
 
 @Composable
 fun S3SettingsDialog(onDismiss: () -> Unit) {
-    var endpoint by remember { mutableStateOf("") }
-    var bucket by remember { mutableStateOf("") }
-    var accessKey by remember { mutableStateOf("") }
-    var secretKey by remember { mutableStateOf("") }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val creds = remember { org.classflow.data.local.SettingsManager.loadSyncCredentials(context) }
+    var endpoint by remember { mutableStateOf(creds.s3Endpoint) }
+    var region by remember { mutableStateOf(creds.s3Region) }
+    var bucket by remember { mutableStateOf(creds.s3Bucket) }
+    var accessKey by remember { mutableStateOf(creds.s3AccessKey) }
+    var secretKey by remember { mutableStateOf(creds.s3SecretKey) }
+    var isTesting by remember { mutableStateOf(false) }
+    var testResult by remember { mutableStateOf<String?>(null) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Text("配置 S3 / 七牛云 Kodo 同步", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            Text("配置 S3 兼容对象存储同步", fontWeight = FontWeight.Bold, fontSize = 16.sp)
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 OutlinedTextField(
                     value = endpoint,
-                    onValueChange = { endpoint = it },
+                    onValueChange = { endpoint = it; testResult = null },
                     label = { Text("Endpoint 地址") },
-                    placeholder = { Text("s3-cn-east-1.qiniucs.com") },
+                    placeholder = { Text("https://s3.cn-east-1.qiniucs.com") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = region,
+                    onValueChange = { region = it; testResult = null },
+                    label = { Text("Region (区域)") },
                     singleLine = true,
                     shape = RoundedCornerShape(10.dp),
                     modifier = Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(
                     value = bucket,
-                    onValueChange = { bucket = it },
+                    onValueChange = { bucket = it; testResult = null },
                     label = { Text("Bucket 存储桶名") },
                     singleLine = true,
                     shape = RoundedCornerShape(10.dp),
@@ -731,7 +895,7 @@ fun S3SettingsDialog(onDismiss: () -> Unit) {
                 )
                 OutlinedTextField(
                     value = accessKey,
-                    onValueChange = { accessKey = it },
+                    onValueChange = { accessKey = it; testResult = null },
                     label = { Text("Access Key (AK)") },
                     singleLine = true,
                     shape = RoundedCornerShape(10.dp),
@@ -739,17 +903,58 @@ fun S3SettingsDialog(onDismiss: () -> Unit) {
                 )
                 OutlinedTextField(
                     value = secretKey,
-                    onValueChange = { secretKey = it },
+                    onValueChange = { secretKey = it; testResult = null },
                     label = { Text("Secret Key (SK)") },
                     singleLine = true,
                     shape = RoundedCornerShape(10.dp),
                     modifier = Modifier.fillMaxWidth()
                 )
+
+                testResult?.let { msg ->
+                    Text(
+                        text = msg,
+                        fontSize = 11.5.sp,
+                        color = if (msg.startsWith("✓")) Color(0xFF10B981) else MaterialTheme.colorScheme.error
+                    )
+                }
+
+                OutlinedButton(
+                    onClick = {
+                        coroutineScope.launch {
+                            isTesting = true
+                            testResult = "正在测试连接..."
+                            val provider = org.classflow.sync.S3StorageProvider(endpoint, region, bucket, accessKey, secretKey)
+                            val res = provider.testConnection()
+                            isTesting = false
+                            if (res.isSuccess) {
+                                testResult = "✓ 连接成功！存储桶可正常读写"
+                            } else {
+                                testResult = "连接失败: ${res.exceptionOrNull()?.message}"
+                            }
+                        }
+                    },
+                    enabled = !isTesting && bucket.isNotBlank() && accessKey.isNotBlank(),
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text(if (isTesting) "正在测试..." else "测试连接")
+                }
             }
         },
         confirmButton = {
             Button(
-                onClick = onDismiss,
+                onClick = {
+                    val updated = creds.copy(
+                        providerType = "s3",
+                        s3Endpoint = endpoint,
+                        s3Region = region,
+                        s3Bucket = bucket,
+                        s3AccessKey = accessKey,
+                        s3SecretKey = secretKey
+                    )
+                    org.classflow.data.local.SettingsManager.saveSyncCredentials(context, updated)
+                    onDismiss()
+                },
                 shape = RoundedCornerShape(10.dp)
             ) {
                 Text("保存")
@@ -764,57 +969,279 @@ fun S3SettingsDialog(onDismiss: () -> Unit) {
 }
 
 /**
- * Course List Dialog allowing course deletion and inspection.
+ * Course List Dialog allowing course deletion, inspection and editing.
  */
 @Composable
-fun CourseListDialog(
+fun UnifiedItemManagerDialog(
     courses: List<Course>,
-    onDeleteCourse: (Course) -> Unit,
+    schedules: List<CalendarEvent> = emptyList(),
+    tasks: List<org.classflow.data.model.StudyTask> = emptyList(),
+    onDeleteCourse: (Course) -> Unit = {},
+    onDeleteSchedule: (CalendarEvent, org.classflow.data.model.EditingScope) -> Unit = { _, _ -> },
+    onDeleteTask: (org.classflow.data.model.StudyTask) -> Unit = {},
+    onEditCourse: (Course) -> Unit = {},
+    onEditSchedule: (CalendarEvent) -> Unit = {},
+    onEditTask: (org.classflow.data.model.StudyTask) -> Unit = {},
     onDismiss: () -> Unit
 ) {
+    var selectedTab by remember { mutableIntStateOf(0) }
+    var searchQuery by remember { mutableStateOf("") }
+    var scheduleToDelete by remember { mutableStateOf<CalendarEvent?>(null) }
+    var showDeleteScheduleConfirm by remember { mutableStateOf(false) }
+
+    val query = searchQuery.trim().lowercase()
+
+    val filteredCourses = remember(courses, query) {
+        if (query.isEmpty()) courses
+        else courses.filter {
+            it.name.lowercase().contains(query) ||
+            (it.teacher?.lowercase()?.contains(query) == true) ||
+            (it.notes?.lowercase()?.contains(query) == true)
+        }
+    }
+
+    val filteredSchedules = remember(schedules, query) {
+        if (query.isEmpty()) schedules
+        else schedules.filter {
+            it.title.lowercase().contains(query) ||
+            (it.location?.lowercase()?.contains(query) == true) ||
+            (it.description?.lowercase()?.contains(query) == true)
+        }
+    }
+
+    val filteredTasks = remember(tasks, query) {
+        if (query.isEmpty()) tasks
+        else tasks.filter {
+            it.title.lowercase().contains(query) ||
+            (it.courseName?.lowercase()?.contains(query) == true) ||
+            (it.notes?.lowercase()?.contains(query) == true)
+        }
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Text("已选课程列表 (${courses.size}门)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text("事项管理", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         },
         text = {
-            if (courses.isEmpty()) {
-                Box(modifier = Modifier.fillMaxWidth().padding(20.dp), contentAlignment = Alignment.Center) {
-                    Text("暂无添加的课程", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            } else {
-                Column(
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 500.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // Search bar
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text("搜索课程、日程或待办事项...", fontSize = 13.sp) },
+                    singleLine = true,
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { searchQuery = "" }, modifier = Modifier.size(24.dp)) {
+                                Icon(Icons.Default.Clear, contentDescription = "清除", modifier = Modifier.size(16.dp))
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp)
+                )
+
+                // Segmented Tabs: [课程 | 日程 | 待办]
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 420.dp)
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                        .padding(3.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    courses.forEach { course ->
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = parseHexColor(course.color).copy(alpha = 0.12f)
-                            )
+                    val tabs = listOf(
+                        0 to "课程 (${filteredCourses.size})",
+                        1 to "日程 (${filteredSchedules.size})",
+                        2 to "待办 (${filteredTasks.size})"
+                    )
+                    tabs.forEach { (idx, label) ->
+                        val isSelected = selectedTab == idx
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (isSelected) MaterialTheme.colorScheme.surface else Color.Transparent)
+                                .clickable { selectedTab = idx }
+                                .padding(vertical = 6.dp),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(14.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(course.name, fontWeight = FontWeight.Bold, fontSize = 14.5.sp)
-                                    course.teacher?.let {
-                                        Text("教师：$it", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                text = label,
+                                fontSize = 12.5.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+
+                // Content List
+                Box(
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .heightIn(max = 380.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    when (selectedTab) {
+                        0 -> {
+                            if (filteredCourses.isEmpty()) {
+                                Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                                    Text("未找到相关课程", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.5.sp)
+                                }
+                            } else {
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    filteredCourses.forEach { course ->
+                                        Card(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(12.dp),
+                                            colors = CardDefaults.cardColors(
+                                                containerColor = parseHexColor(course.color).copy(alpha = 0.12f)
+                                            )
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(10.dp)
+                                                        .clip(CircleShape)
+                                                        .background(parseHexColor(course.color))
+                                                )
+                                                Spacer(modifier = Modifier.width(10.dp))
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(course.name, fontWeight = FontWeight.Bold, fontSize = 14.5.sp)
+                                                    val teacherText = course.teacher ?: "暂无任课教师"
+                                                    val schedCount = "${course.schedules.size} 个上课时段"
+                                                    Text("$teacherText · $schedCount", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                }
+                                                IconButton(
+                                                    onClick = { onEditCourse(course) },
+                                                    modifier = Modifier.size(32.dp)
+                                                ) {
+                                                    Icon(Icons.Default.Edit, contentDescription = "编辑课程", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                                                }
+                                                IconButton(
+                                                    onClick = { onDeleteCourse(course) },
+                                                    modifier = Modifier.size(32.dp)
+                                                ) {
+                                                    Icon(Icons.Default.Delete, contentDescription = "删除课程", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
+                                                }
+                                            }
+                                        }
                                     }
                                 }
-                                IconButton(
-                                    onClick = { onDeleteCourse(course) },
-                                    modifier = Modifier.size(32.dp)
-                                ) {
-                                    Icon(Icons.Default.Delete, contentDescription = "删除课程", tint = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                        1 -> {
+                            if (filteredSchedules.isEmpty()) {
+                                Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                                    Text("未找到相关日程", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.5.sp)
+                                }
+                            } else {
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    filteredSchedules.forEach { event ->
+                                        Card(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(12.dp),
+                                            colors = CardDefaults.cardColors(
+                                                containerColor = parseHexColor(event.color).copy(alpha = 0.12f)
+                                            )
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(10.dp)
+                                                        .clip(CircleShape)
+                                                        .background(parseHexColor(event.color))
+                                                )
+                                                Spacer(modifier = Modifier.width(10.dp))
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(event.title, fontWeight = FontWeight.Bold, fontSize = 14.5.sp)
+                                                    val timeInfo = "${event.startTime} · ${event.frequency ?: "不重复"}"
+                                                    val loc = if (!event.location.isNullOrBlank()) " · ${event.location}" else ""
+                                                    Text("$timeInfo$loc", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                }
+                                                IconButton(
+                                                    onClick = { onEditSchedule(event) },
+                                                    modifier = Modifier.size(32.dp)
+                                                ) {
+                                                    Icon(Icons.Default.Edit, contentDescription = "编辑日程", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                                                }
+                                                IconButton(
+                                                    onClick = {
+                                                        scheduleToDelete = event
+                                                        showDeleteScheduleConfirm = true
+                                                    },
+                                                    modifier = Modifier.size(32.dp)
+                                                ) {
+                                                    Icon(Icons.Default.Delete, contentDescription = "删除日程", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        2 -> {
+                            if (filteredTasks.isEmpty()) {
+                                Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                                    Text("未找到相关待办", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.5.sp)
+                                }
+                            } else {
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    filteredTasks.forEach { task ->
+                                        Card(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(12.dp),
+                                            colors = CardDefaults.cardColors(
+                                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                                            )
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Icon(
+                                                    imageVector = if (task.isCompleted) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+                                                    contentDescription = null,
+                                                    tint = if (task.isCompleted) Color(0xFF34C759) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(10.dp))
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(task.title, fontWeight = FontWeight.Bold, fontSize = 14.5.sp)
+                                                    val course = if (!task.courseName.isNullOrBlank()) "${task.courseName} · " else ""
+                                                    val due = if (!task.dueDate.isNullOrBlank()) "截止: ${task.dueDate} · " else ""
+                                                    val pomodoros = "${task.targetMinutes}分钟"
+                                                    Text("$course$due$pomodoros", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                }
+                                                IconButton(
+                                                    onClick = { onEditTask(task) },
+                                                    modifier = Modifier.size(32.dp)
+                                                ) {
+                                                    Icon(Icons.Default.Edit, contentDescription = "编辑待办", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                                                }
+                                                IconButton(
+                                                    onClick = { onDeleteTask(task) },
+                                                    modifier = Modifier.size(32.dp)
+                                                ) {
+                                                    Icon(Icons.Default.Delete, contentDescription = "删除待办", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -827,6 +1254,113 @@ fun CourseListDialog(
                 Text("完成")
             }
         }
+    )
+
+    if (showDeleteScheduleConfirm && scheduleToDelete != null) {
+        val ev = scheduleToDelete!!
+        val isRecurring = ev.frequency != "none" && ev.frequency != "不重复"
+        if (isRecurring) {
+            AlertDialog(
+                onDismissRequest = {
+                    showDeleteScheduleConfirm = false
+                    scheduleToDelete = null
+                },
+                title = { Text("删除重复日程", fontWeight = FontWeight.Bold) },
+                text = { Text("「${ev.title}」是循环重复日程，请选择删除范围：") },
+                confirmButton = {},
+                dismissButton = {
+                    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        OutlinedButton(
+                            onClick = {
+                                onDeleteSchedule(ev, org.classflow.data.model.EditingScope.THIS_ONLY)
+                                showDeleteScheduleConfirm = false
+                                scheduleToDelete = null
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("仅删除本次日程")
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                onDeleteSchedule(ev, org.classflow.data.model.EditingScope.THIS_AND_FUTURE)
+                                showDeleteScheduleConfirm = false
+                                scheduleToDelete = null
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("删除此日程及以后的所有重复")
+                        }
+                        Button(
+                            onClick = {
+                                onDeleteSchedule(ev, org.classflow.data.model.EditingScope.ALL)
+                                showDeleteScheduleConfirm = false
+                                scheduleToDelete = null
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF5A5F)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("删除所有重复日程", color = Color.White)
+                        }
+                    }
+                }
+            )
+        } else {
+            AlertDialog(
+                onDismissRequest = {
+                    showDeleteScheduleConfirm = false
+                    scheduleToDelete = null
+                },
+                title = { Text("删除日程", fontWeight = FontWeight.Bold) },
+                text = { Text("确定要删除日程「${ev.title}」吗？") },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            onDeleteSchedule(ev, org.classflow.data.model.EditingScope.ALL)
+                            showDeleteScheduleConfirm = false
+                            scheduleToDelete = null
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF5A5F))
+                    ) {
+                        Text("删除", color = Color.White)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = {
+                        showDeleteScheduleConfirm = false
+                        scheduleToDelete = null
+                    }) {
+                        Text("取消")
+                    }
+                }
+            )
+        }
+    }
+}
+
+@Composable
+fun CourseListDialog(
+    courses: List<Course>,
+    schedules: List<CalendarEvent> = emptyList(),
+    tasks: List<org.classflow.data.model.StudyTask> = emptyList(),
+    onDeleteCourse: (Course) -> Unit = {},
+    onDeleteSchedule: (CalendarEvent) -> Unit = {},
+    onEditCourse: (Course) -> Unit = {},
+    onEditSchedule: (CalendarEvent) -> Unit = {},
+    onEditTask: (org.classflow.data.model.StudyTask) -> Unit = {},
+    onDeleteTask: (org.classflow.data.model.StudyTask) -> Unit = {},
+    onDismiss: () -> Unit
+) {
+    UnifiedItemManagerDialog(
+        courses = courses,
+        schedules = schedules,
+        tasks = tasks,
+        onDeleteCourse = onDeleteCourse,
+        onDeleteSchedule = { event, _ -> onDeleteSchedule(event) },
+        onDeleteTask = onDeleteTask,
+        onEditCourse = onEditCourse,
+        onEditSchedule = onEditSchedule,
+        onEditTask = onEditTask,
+        onDismiss = onDismiss
     )
 }
 

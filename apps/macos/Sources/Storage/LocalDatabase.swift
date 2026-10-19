@@ -14,6 +14,9 @@ public struct LocalDatabase: Sendable {
         public var pomodoroTasks: [PomodoroTask]
         public var pomodoroRecords: [PomodoroRecord]
         public var calendarEvents: [CalendarEvent]
+        public var tombstones: [SyncTombstone]
+        public var syncDeviceId: String?
+        public var syncSequence: Int?
 
         public init(
             semesters: [Semester] = [],
@@ -25,7 +28,10 @@ public struct LocalDatabase: Sendable {
             activeProfileId: UUID? = nil,
             pomodoroTasks: [PomodoroTask] = PomodoroTask.defaultSampleTasks(),
             pomodoroRecords: [PomodoroRecord] = PomodoroRecord.defaultSampleRecords(),
-            calendarEvents: [CalendarEvent] = []
+            calendarEvents: [CalendarEvent] = [],
+            tombstones: [SyncTombstone] = [],
+            syncDeviceId: String? = nil,
+            syncSequence: Int? = nil
         ) {
             self.semesters = semesters
             self.courses = courses
@@ -37,6 +43,9 @@ public struct LocalDatabase: Sendable {
             self.pomodoroTasks = pomodoroTasks
             self.pomodoroRecords = pomodoroRecords
             self.calendarEvents = calendarEvents
+            self.tombstones = tombstones
+            self.syncDeviceId = syncDeviceId
+            self.syncSequence = syncSequence
         }
 
         public init(from decoder: Decoder) throws {
@@ -51,6 +60,9 @@ public struct LocalDatabase: Sendable {
             self.pomodoroTasks = try container.decodeIfPresent([PomodoroTask].self, forKey: .pomodoroTasks) ?? PomodoroTask.defaultSampleTasks()
             self.pomodoroRecords = try container.decodeIfPresent([PomodoroRecord].self, forKey: .pomodoroRecords) ?? PomodoroRecord.defaultSampleRecords()
             self.calendarEvents = try container.decodeIfPresent([CalendarEvent].self, forKey: .calendarEvents) ?? []
+            self.tombstones = try container.decodeIfPresent([SyncTombstone].self, forKey: .tombstones) ?? []
+            self.syncDeviceId = try container.decodeIfPresent(String.self, forKey: .syncDeviceId)
+            self.syncSequence = try container.decodeIfPresent(Int.self, forKey: .syncSequence)
         }
     }
 

@@ -23,6 +23,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -51,12 +52,18 @@ fun WakeUpHeaderView(
     selectedWeek: Int,
     totalWeeks: Int,
     semesterName: String,
+    activeSemesterId: String = "",
+    semestersList: List<Semester> = emptyList(),
     displayMode: String = "week", // "week" or "day"
     isDark: Boolean = false,
     isWallpaperDark: Boolean = true,
     onWeekChange: (Int) -> Unit,
     onToggleDisplayMode: (String) -> Unit = {},
     onSemesterChange: (String) -> Unit = {},
+    onSelectSemester: (Semester) -> Unit = {},
+    onCreateSemester: (Semester) -> Unit = {},
+    onUpdateSemester: (Semester) -> Unit = {},
+    onDeleteSemester: (Semester) -> Unit = {},
     onAddCourseClick: () -> Unit,
     onAddScheduleClick: () -> Unit,
     onImportClick: (ImportType) -> Unit,
@@ -74,13 +81,14 @@ fun WakeUpHeaderView(
     var semesterToDelete by remember { mutableStateOf<Semester?>(null) }
     var showDeleteSemesterConfirm by remember { mutableStateOf(false) }
 
-    val semesters = remember {
-        mutableStateListOf(
-            Semester(id = "sem_main", name = semesterName.ifEmpty { "大四上学期" }, startDate = "2026-09-01", endDate = "2027-01-20", totalWeeks = totalWeeks),
-            Semester(id = "sem_prev", name = "大三下学期", startDate = "2026-02-25", endDate = "2026-07-15", totalWeeks = 20)
-        )
+    val context = LocalContext.current
+    val fallbackSemesters = remember {
+        mutableStateListOf<Semester>().apply {
+            addAll(org.classflow.data.local.CourseDataManager.loadSemesters(context))
+        }
     }
-    var activeSemesterId by remember { mutableStateOf("sem_main") }
+    val semesters = if (semestersList.isNotEmpty()) semestersList else fallbackSemesters
+    val effectiveActiveSemId = if (activeSemesterId.isNotBlank()) activeSemesterId else (semesters.firstOrNull()?.id ?: "sem_main")
 
     val textPrimary = if (isWallpaperDark) Color.White else Color(0xFF1F2937)
     val textSecondary = if (isWallpaperDark) Color.White.copy(alpha = 0.85f) else Color(0xFF6B7280)
@@ -133,22 +141,6 @@ fun WakeUpHeaderView(
                     fontWeight = FontWeight.Medium,
                     color = textSecondary
                 )
-                if (selectedWeek != currentWeek) {
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0xFFFF5A5F))
-                            .padding(horizontal = 5.dp, vertical = 1.5.dp)
-                    ) {
-                        Text(
-                            text = "非本周",
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
-                    }
-                }
                 Spacer(modifier = Modifier.width(4.dp))
                 Icon(
                     if (showWeekDrawer) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
@@ -582,13 +574,13 @@ fun WakeUpHeaderView(
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         semesters.forEach { sem ->
-                            val isSelected = (sem.id == activeSemesterId)
+                            val isSelected = (sem.id == effectiveActiveSemId)
                             Column(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 modifier = Modifier
                                     .width(68.dp)
                                     .clickable {
-                                        activeSemesterId = sem.id
+                                        onSelectSemester(sem)
                                         onSemesterChange(sem.name)
                                     }
                             ) {
@@ -715,9 +707,9 @@ fun WakeUpHeaderView(
                     onClick = {
                         val name = semNameInput.trim().ifEmpty { "新课表" }
                         val weeks = semWeeksInput.toIntOrNull()?.coerceIn(1, 35) ?: 20
-                        val newSem = Semester(id = UUID.randomUUID().toString(), name = name, startDate = "2026-09-01", endDate = "2027-01-20", totalWeeks = weeks)
-                        semesters.add(newSem)
-                        activeSemesterId = newSem.id
+                        val newSem = Semester(id = UUID.randomUUID().toString(), name = name, startDate = "2026-09-01", endDate = "2027-01-20", totalWeeks = weeks, isCurrent = true)
+                        onCreateSemester(newSem)
+                        onSelectSemester(newSem)
                         onSemesterChange(newSem.name)
                         showCreateSemesterDialog = false
                     },
@@ -811,7 +803,7 @@ fun WakeUpHeaderView(
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         semesters.forEach { sem ->
-                            val isCurrent = (sem.id == activeSemesterId)
+                            val isCurrent = (sem.id == effectiveActiveSemId)
                             Surface(
                                 shape = RoundedCornerShape(12.dp),
                                 color = if (isDark) Color(0xFF262838) else Color(0xFFF9FAFB),
@@ -897,7 +889,7 @@ fun WakeUpHeaderView(
                                         if (!isCurrent) {
                                             TextButton(
                                                 onClick = {
-                                                    activeSemesterId = sem.id
+                                                    onSelectSemester(sem)
                                                     onSemesterChange(sem.name)
                                                 },
                                                 contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
@@ -996,13 +988,10 @@ fun WakeUpHeaderView(
                     onClick = {
                         val trimmedName = editName.trim().ifEmpty { sem.name }
                         val weeks = editWeeks.toIntOrNull()?.coerceIn(1, 35) ?: sem.totalWeeks
-                        val idx = semesters.indexOfFirst { it.id == sem.id }
-                        if (idx >= 0) {
-                            val updated = sem.copy(name = trimmedName, totalWeeks = weeks, startDate = editStart.trim().ifEmpty { sem.startDate })
-                            semesters[idx] = updated
-                            if (updated.id == activeSemesterId) {
-                                onSemesterChange(updated.name)
-                            }
+                        val updated = sem.copy(name = trimmedName, totalWeeks = weeks, startDate = editStart.trim().ifEmpty { sem.startDate })
+                        onUpdateSemester(updated)
+                        if (updated.id == effectiveActiveSemId) {
+                            onSemesterChange(updated.name)
                         }
                         editingSemester = null
                     },
@@ -1045,13 +1034,7 @@ fun WakeUpHeaderView(
             confirmButton = {
                 Button(
                     onClick = {
-                        val wasActive = (targetSem.id == activeSemesterId)
-                        semesters.remove(targetSem)
-                        if (wasActive && semesters.isNotEmpty()) {
-                            val nextActive = semesters.first()
-                            activeSemesterId = nextActive.id
-                            onSemesterChange(nextActive.name)
-                        }
+                        onDeleteSemester(targetSem)
                         showDeleteSemesterConfirm = false
                         semesterToDelete = null
                     },

@@ -18,6 +18,9 @@ final class WallpaperImageCache {
         cache.setObject(img, forKey: key)
         return img
     }
+    func clearCache() {
+        cache.removeAllObjects()
+    }
 }
 
 /// Renders seamless, aesthetic wallpapers inspired by WakeUp's signature palettes (Image 3).
@@ -57,13 +60,12 @@ public struct WallpaperBackgroundView: View {
                         .frame(width: w, height: h)
                 }
 
-                // Safety baseboard: prevents vivid or busy wallpapers from ruining text contrast
-                Rectangle()
-                    .fill(
-                        (isDarkMode ? Color.black : Color(nsColor: .windowBackgroundColor))
-                            .opacity(settings.usePureColorBackground ? 0 : (isDarkMode ? 0.35 : 0.12))
-                    )
-                    .frame(width: w, height: h)
+                // Safety baseboard: only applied for custom photo wallpapers to preserve text contrast
+                if !settings.usePureColorBackground && settings.customBackgroundPath != nil {
+                    Rectangle()
+                        .fill(Color.black.opacity(isDarkMode ? 0.35 : 0.08))
+                        .frame(width: w, height: h)
+                }
             }
             .frame(width: w, height: h)
             .clipped()

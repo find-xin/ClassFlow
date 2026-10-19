@@ -16,19 +16,40 @@ public final class WebDAVStorageProvider: StorageProvider, @unchecked Sendable {
             password: String = "",
             pathPrefix: String = "ClassFlow/"
         ) {
-            self.serverURL = serverURL.hasSuffix("/") ? serverURL : serverURL + "/"
-            self.username = username
-            self.password = password
-            self.pathPrefix = pathPrefix.hasSuffix("/") ? pathPrefix : pathPrefix + "/"
+            var url = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !url.isEmpty && !url.contains("://") {
+                url = "https://" + url
+            }
+            if !url.isEmpty && !url.hasSuffix("/") {
+                url += "/"
+            }
+            self.serverURL = url
+            self.username = username.trimmingCharacters(in: .whitespacesAndNewlines)
+            self.password = password.trimmingCharacters(in: .whitespacesAndNewlines)
+            var prefix = pathPrefix.trimmingCharacters(in: .whitespacesAndNewlines)
+            while prefix.hasPrefix("/") {
+                prefix.removeFirst()
+            }
+            if !prefix.isEmpty && !prefix.hasSuffix("/") {
+                prefix += "/"
+            }
+            self.pathPrefix = prefix.isEmpty ? "ClassFlow/" : prefix
         }
     }
 
     public let config: Configuration
     private let session: URLSession
 
-    public init(config: Configuration, session: URLSession = .shared) {
+    public static func makeDefaultSession() -> URLSession {
+        let configuration = URLSessionConfiguration.default
+        configuration.timeoutIntervalForRequest = 15
+        configuration.timeoutIntervalForResource = 30
+        return URLSession(configuration: configuration, delegate: BYOCSessionDelegate(), delegateQueue: nil)
+    }
+
+    public init(config: Configuration, session: URLSession? = nil) {
         self.config = config
-        self.session = session
+        self.session = session ?? Self.makeDefaultSession()
     }
 
     // MARK: - Validation & Connectivity

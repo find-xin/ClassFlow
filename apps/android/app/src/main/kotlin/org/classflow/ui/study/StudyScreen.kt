@@ -17,16 +17,20 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -38,6 +42,8 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import org.classflow.data.model.FocusRecord
 import org.classflow.data.model.StudyTask
+import org.classflow.ui.components.showDatePicker
+import org.classflow.ui.components.showDateTimePicker
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -64,7 +70,14 @@ fun StudyScreen(
     initialTaskTitle: String? = null,
     initialCourseName: String? = null,
     autoStart: Boolean = false,
-    onFocusConsumed: () -> Unit = {}
+    onFocusConsumed: () -> Unit = {},
+    tasks: List<StudyTask>? = null,
+    onAddTask: ((StudyTask) -> Unit)? = null,
+    onToggleTask: ((StudyTask) -> Unit)? = null,
+    onDeleteTask: ((StudyTask) -> Unit)? = null,
+    focusRecords: MutableList<FocusRecord>? = null,
+    dailyMinutesMap: MutableMap<String, Int>? = null,
+    onClearFocusHistory: (() -> Unit)? = null
 ) {
     var selectedSubTab by remember { mutableIntStateOf(0) } // 0: 专注时钟, 1: 统计与热力图
 
@@ -84,8 +97,8 @@ fun StudyScreen(
     var showGoalDropdown by remember { mutableStateOf(false) }
     var showCustomDurationDialog by remember { mutableStateOf(false) }
 
-    // Tasks list
-    val tasks = remember {
+    // Tasks list (uses hoisted tasks if provided, otherwise fallback)
+    val localTasks = remember {
         mutableStateListOf(
             StudyTask(
                 id = "st_1",
@@ -113,18 +126,19 @@ fun StudyScreen(
             )
         )
     }
+    val effectiveTasks = tasks ?: localTasks
 
     // Auto-start focus linkage from Agenda or Course click
     LaunchedEffect(autoStart, initialTaskTitle) {
         if (autoStart && !initialTaskTitle.isNullOrBlank()) {
-            val existing = tasks.firstOrNull { it.title == initialTaskTitle }
+            val existing = effectiveTasks.firstOrNull { it.title == initialTaskTitle }
             val target = existing ?: run {
                 val created = StudyTask(
                     title = initialTaskTitle,
                     courseName = initialCourseName,
                     targetMinutes = 25
                 )
-                tasks.add(0, created)
+                onAddTask?.invoke(created) ?: localTasks.add(0, created)
                 created
             }
             activeTaskId = target.id
@@ -137,12 +151,12 @@ fun StudyScreen(
         }
     }
 
-    val activeTask = remember(tasks, activeTaskId) {
-        tasks.firstOrNull { it.id == activeTaskId }
+    val activeTask = remember(effectiveTasks, activeTaskId) {
+        effectiveTasks.firstOrNull { it.id == activeTaskId }
     }
 
     // Recent Focus Sessions Log
-    val focusRecords = remember {
+    val fallbackFocusRecords = remember {
         mutableStateListOf(
             FocusRecord(
                 id = "rec_1",
@@ -167,9 +181,10 @@ fun StudyScreen(
             )
         )
     }
+    val actualFocusRecords = focusRecords ?: fallbackFocusRecords
 
     // Daily focus minutes history for heatmap & analytics
-    val dailyMinutesMap = remember {
+    val fallbackDailyMinutesMap = remember {
         val map = mutableStateMapOf<String, Int>()
         val cal = Calendar.getInstance()
         val df = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
@@ -190,6 +205,7 @@ fun StudyScreen(
         }
         map
     }
+    val actualDailyMinutesMap = dailyMinutesMap ?: fallbackDailyMinutesMap
 
     // Timer Ticker - robust while(isRunning) loop without frequent coroutine teardown
     LaunchedEffect(isRunning, focusMode) {
@@ -209,10 +225,10 @@ fun StudyScreen(
                     val df = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
                     val todayKey = df.format(Date())
                     val added = focusDurationMinutes
-                    dailyMinutesMap[todayKey] = (dailyMinutesMap[todayKey] ?: 0) + added
+                    actualDailyMinutesMap[todayKey] = (actualDailyMinutesMap[todayKey] ?: 0) + added
 
                     val timeStr = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-                    focusRecords.add(
+                    actualFocusRecords.add(
                         0,
                         FocusRecord(
                             taskTitle = activeTask?.title ?: "自由专注",
@@ -224,13 +240,14 @@ fun StudyScreen(
 
                     // Update active task
                     if (activeTask != null) {
-                        val idx = tasks.indexOf(activeTask)
+                        val idx = effectiveTasks.indexOf(activeTask)
                         if (idx >= 0) {
                             val newCompleted = activeTask.completedMinutes + added
-                            tasks[idx] = activeTask.copy(
+                            val updated = activeTask.copy(
                                 completedMinutes = newCompleted,
                                 isCompleted = newCompleted >= activeTask.targetMinutes
                             )
+                            onToggleTask?.invoke(updated) ?: run { localTasks.indexOfFirst { it.id == updated.id }.takeIf { it >= 0 }?.let { localTasks[it] = updated } }
                         }
                     }
                 }
@@ -330,147 +347,150 @@ fun StudyScreen(
             }
         }
 
-        // 2. Scrollable Content Area
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            contentPadding = PaddingValues(bottom = 28.dp)
+        // 2. Scrollable Content Area with buttery-smooth single-pass GPU rendering
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             if (selectedSubTab == 0) {
                 // Focus Arena Card (macOS 1:1 Parity)
-                item {
-                    FocusArenaCard(
-                        focusMode = focusMode,
-                        timerPhase = timerPhase,
-                        isRunning = isRunning,
-                        activeTask = activeTask,
-                        focusDurationMinutes = focusDurationMinutes,
-                        secondsRemaining = secondsRemaining,
-                        countUpSeconds = countUpSeconds,
-                        quote = quote,
-                        onModeChange = { mode ->
-                            if (!isRunning) {
-                                focusMode = mode
-                                isRunning = false
-                                timerPhase = TimerPhase.IDLE
-                                if (mode == StudyFocusMode.POMODORO) {
-                                    secondsRemaining = focusDurationMinutes * 60
-                                } else {
-                                    countUpSeconds = 0
-                                }
-                            }
-                        },
-                        onOpenGoalSelector = { showGoalDropdown = true },
-                        onDurationSelect = { mins ->
-                            if (!isRunning) {
-                                focusDurationMinutes = mins
-                                secondsRemaining = mins * 60
-                            }
-                        },
-                        onOpenCustomDuration = { showCustomDurationDialog = true },
-                        onToggleRunning = {
-                            isRunning = !isRunning
-                            timerPhase = if (isRunning) TimerPhase.FOCUSING else TimerPhase.IDLE
-                        },
-                        onHarvest = {
-                            // Early settlement
-                            val earnedMinutes = if (focusMode == StudyFocusMode.POMODORO) {
-                                (focusDurationMinutes * 60 - secondsRemaining) / 60
-                            } else {
-                                countUpSeconds / 60
-                            }
-                            if (earnedMinutes > 0) {
-                                val df = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-                                val todayKey = df.format(Date())
-                                dailyMinutesMap[todayKey] = (dailyMinutesMap[todayKey] ?: 0) + earnedMinutes
-
-                                val timeStr = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-                                focusRecords.add(
-                                    0,
-                                    FocusRecord(
-                                        taskTitle = activeTask?.title ?: "自由专注",
-                                        courseName = activeTask?.courseName,
-                                        durationMinutes = earnedMinutes,
-                                        completedAt = "今日 $timeStr"
-                                    )
-                                )
-
-                                if (activeTask != null) {
-                                    val idx = tasks.indexOf(activeTask)
-                                    if (idx >= 0) {
-                                        val newCompleted = activeTask.completedMinutes + earnedMinutes
-                                        tasks[idx] = activeTask.copy(
-                                            completedMinutes = newCompleted,
-                                            isCompleted = newCompleted >= activeTask.targetMinutes
-                                        )
-                                    }
-                                }
-                            }
+                FocusArenaCard(
+                    focusMode = focusMode,
+                    timerPhase = timerPhase,
+                    isRunning = isRunning,
+                    activeTask = activeTask,
+                    focusDurationMinutes = focusDurationMinutes,
+                    secondsRemaining = secondsRemaining,
+                    countUpSeconds = countUpSeconds,
+                    quote = quote,
+                    onModeChange = { mode ->
+                        if (!isRunning) {
+                            focusMode = mode
                             isRunning = false
                             timerPhase = TimerPhase.IDLE
-                            if (focusMode == StudyFocusMode.POMODORO) {
-                                secondsRemaining = focusDurationMinutes * 60
-                            } else {
-                                countUpSeconds = 0
-                            }
-                        },
-                        onReset = {
-                            isRunning = false
-                            timerPhase = TimerPhase.IDLE
-                            if (focusMode == StudyFocusMode.POMODORO) {
+                            if (mode == StudyFocusMode.POMODORO) {
                                 secondsRemaining = focusDurationMinutes * 60
                             } else {
                                 countUpSeconds = 0
                             }
                         }
-                    )
-                }
+                    },
+                    onOpenGoalSelector = { showGoalDropdown = true },
+                    onDurationSelect = { mins ->
+                        if (!isRunning) {
+                            focusDurationMinutes = mins
+                            secondsRemaining = mins * 60
+                        }
+                    },
+                    onOpenCustomDuration = { showCustomDurationDialog = true },
+                    onToggleRunning = {
+                        isRunning = !isRunning
+                        timerPhase = if (isRunning) TimerPhase.FOCUSING else TimerPhase.IDLE
+                    },
+                    onHarvest = {
+                        // Early settlement
+                        val earnedMinutes = if (focusMode == StudyFocusMode.POMODORO) {
+                            (focusDurationMinutes * 60 - secondsRemaining) / 60
+                        } else {
+                            countUpSeconds / 60
+                        }
+                        if (earnedMinutes > 0) {
+                            val df = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                            val todayKey = df.format(Date())
+                            actualDailyMinutesMap[todayKey] = (actualDailyMinutesMap[todayKey] ?: 0) + earnedMinutes
+
+                            val timeStr = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+                            actualFocusRecords.add(
+                                0,
+                                FocusRecord(
+                                    taskTitle = activeTask?.title ?: "自由专注",
+                                    courseName = activeTask?.courseName,
+                                    durationMinutes = earnedMinutes,
+                                    completedAt = "今日 $timeStr"
+                                )
+                            )
+
+                            if (activeTask != null) {
+                                val idx = effectiveTasks.indexOf(activeTask)
+                                if (idx >= 0) {
+                                    val newCompleted = activeTask.completedMinutes + earnedMinutes
+                                    val updated = activeTask.copy(
+                                        completedMinutes = newCompleted,
+                                        isCompleted = newCompleted >= activeTask.targetMinutes
+                                    )
+                                    onToggleTask?.invoke(updated) ?: run { localTasks.indexOfFirst { it.id == updated.id }.takeIf { it >= 0 }?.let { localTasks[it] = updated } }
+                                }
+                            }
+                        }
+                        isRunning = false
+                        timerPhase = TimerPhase.IDLE
+                        if (focusMode == StudyFocusMode.POMODORO) {
+                            secondsRemaining = focusDurationMinutes * 60
+                        } else {
+                            countUpSeconds = 0
+                        }
+                    },
+                    onReset = {
+                        isRunning = false
+                        timerPhase = TimerPhase.IDLE
+                        if (focusMode == StudyFocusMode.POMODORO) {
+                            secondsRemaining = focusDurationMinutes * 60
+                        } else {
+                            countUpSeconds = 0
+                        }
+                    }
+                )
 
                 // Study ToDo Task Management Card
-                item {
-                    FocusTaskListCard(
-                        tasks = tasks,
-                        taskFilter = taskFilter,
-                        activeTaskId = activeTaskId,
-                        onFilterChange = { taskFilter = it },
-                        onNewTaskClick = { showCreateTaskDialog = true },
-                        onToggleTask = { task ->
-                            val idx = tasks.indexOf(task)
-                            if (idx >= 0) {
-                                tasks[idx] = task.copy(isCompleted = !task.isCompleted)
-                            }
-                        },
-                        onStartTask = { task ->
-                            activeTaskId = task.id
-                            focusMode = StudyFocusMode.POMODORO
-                            focusDurationMinutes = 25
-                            secondsRemaining = 25 * 60
-                            isRunning = true
-                            timerPhase = TimerPhase.FOCUSING
-                        },
-                        onDeleteTask = { task ->
-                            tasks.remove(task)
-                            if (activeTaskId == task.id) activeTaskId = null
+                FocusTaskListCard(
+                    tasks = effectiveTasks,
+                    taskFilter = taskFilter,
+                    activeTaskId = activeTaskId,
+                    onFilterChange = { taskFilter = it },
+                    onNewTaskClick = { showCreateTaskDialog = true },
+                    onToggleTask = { task ->
+                        val updated = task.copy(isCompleted = !task.isCompleted)
+                        onToggleTask?.invoke(updated) ?: run {
+                            localTasks.indexOfFirst { it.id == task.id }.takeIf { it >= 0 }?.let { localTasks[it] = updated }
                         }
-                    )
-                }
+                    },
+                    onStartTask = { task ->
+                        activeTaskId = task.id
+                        focusMode = StudyFocusMode.POMODORO
+                        focusDurationMinutes = 25
+                        secondsRemaining = 25 * 60
+                        isRunning = true
+                        timerPhase = TimerPhase.FOCUSING
+                    },
+                    onDeleteTask = { task ->
+                        onDeleteTask?.invoke(task) ?: localTasks.removeAll { it.id == task.id }
+                        if (activeTaskId == task.id) activeTaskId = null
+                    }
+                )
 
                 // Recent Focus Records Card
-                if (focusRecords.isNotEmpty()) {
-                    item {
-                        RecentFocusRecordsCard(records = focusRecords)
-                    }
+                if (actualFocusRecords.isNotEmpty()) {
+                    RecentFocusRecordsCard(
+                        records = actualFocusRecords,
+                        onClearRecords = {
+                            onClearFocusHistory?.invoke() ?: run {
+                                actualFocusRecords.clear()
+                                actualDailyMinutesMap.clear()
+                            }
+                        }
+                    )
                 }
             } else {
                 // Statistics & Heatmap Tab
-                item {
-                    PomodoroStatisticsCard(
-                        dailyMinutesMap = dailyMinutesMap,
-                        completedPomodoroCount = completedPomodoroCount,
-                        tasks = tasks,
-                        focusRecords = focusRecords
-                    )
-                }
+                PomodoroStatisticsCard(
+                    dailyMinutesMap = actualDailyMinutesMap,
+                    completedPomodoroCount = completedPomodoroCount,
+                    tasks = effectiveTasks,
+                    focusRecords = actualFocusRecords
+                )
             }
         }
     }
@@ -507,7 +527,7 @@ fun StudyScreen(
 
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
 
-                    tasks.filter { !it.isCompleted }.forEach { task ->
+                    effectiveTasks.filter { !it.isCompleted }.forEach { task ->
                         val isSelected = (task.id == activeTaskId)
                         Surface(
                             onClick = {
@@ -581,18 +601,29 @@ fun StudyScreen(
         )
     }
 
-    // Create Task Dialog
+    // Create Task Dialog (Google Tasks Parity)
     if (showCreateTaskDialog) {
+        val context = androidx.compose.ui.platform.LocalContext.current
+        val todayStr = remember { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()) }
         var taskTitle by remember { mutableStateOf("") }
         var courseName by remember { mutableStateOf("") }
         var targetMinutesStr by remember { mutableStateOf("45") }
+        var hasStartDate by remember { mutableStateOf(false) }
+        var startDateStr by remember { mutableStateOf(todayStr) }
+        var hasDueDate by remember { mutableStateOf(false) }
+        var dueDateStr by remember { mutableStateOf("$todayStr 18:00") }
+        var taskFrequency by remember { mutableStateOf("不重复") }
+        var showTaskFreqMenu by remember { mutableStateOf(false) }
+        val taskFrequencies = listOf("不重复", "每天", "工作日 (周一至周五)", "每周", "每月")
 
         AlertDialog(
             onDismissRequest = { showCreateTaskDialog = false },
             title = { Text("新建待办任务", fontSize = 16.sp, fontWeight = FontWeight.Bold) },
             text = {
                 Column(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     OutlinedTextField(
@@ -619,6 +650,114 @@ fun StudyScreen(
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
+
+                    // Start date row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Checkbox(
+                                checked = hasStartDate,
+                                onCheckedChange = { hasStartDate = it },
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Text("开始日期", fontSize = 13.sp)
+                        }
+                        if (hasStartDate) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                modifier = Modifier.clickable {
+                                    showDatePicker(context, startDateStr) { picked -> startDateStr = picked }
+                                }
+                            ) {
+                                Text(
+                                    text = startDateStr,
+                                    fontSize = 12.sp,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    // Due date row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Checkbox(
+                                checked = hasDueDate,
+                                onCheckedChange = { hasDueDate = it },
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Text("截止时间", fontSize = 13.sp)
+                        }
+                        if (hasDueDate) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                modifier = Modifier.clickable {
+                                    showDateTimePicker(context, dueDateStr) { picked -> dueDateStr = picked }
+                                }
+                            ) {
+                                Text(
+                                    text = dueDateStr,
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    // Recurrence frequency row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("重复频次", fontSize = 13.sp)
+                        Box {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                modifier = Modifier.clickable { showTaskFreqMenu = true }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text(text = taskFrequency, fontSize = 12.sp)
+                                    Icon(Icons.Default.ArrowDropDown, contentDescription = null, modifier = Modifier.size(16.dp))
+                                }
+                            }
+                            DropdownMenu(
+                                expanded = showTaskFreqMenu,
+                                onDismissRequest = { showTaskFreqMenu = false }
+                            ) {
+                                taskFrequencies.forEach { freq ->
+                                    DropdownMenuItem(
+                                        text = { Text(freq, fontSize = 12.5.sp) },
+                                        onClick = {
+                                            taskFrequency = freq
+                                            showTaskFreqMenu = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             },
             confirmButton = {
@@ -626,14 +765,22 @@ fun StudyScreen(
                     onClick = {
                         if (taskTitle.isNotBlank()) {
                             val mins = targetMinutesStr.toIntOrNull()?.coerceIn(5, 360) ?: 45
-                            tasks.add(
-                                0,
-                                StudyTask(
-                                    title = taskTitle.trim(),
-                                    courseName = courseName.trim().ifEmpty { null },
-                                    targetMinutes = mins
-                                )
+                            val freqCode = when (taskFrequency) {
+                                "每天" -> "daily"
+                                "工作日 (周一至周五)" -> "workday"
+                                "每周" -> "weekly"
+                                "每月" -> "monthly"
+                                else -> "none"
+                            }
+                            val created = StudyTask(
+                                title = taskTitle.trim(),
+                                courseName = courseName.trim().ifEmpty { null },
+                                targetMinutes = mins,
+                                startDate = if (hasStartDate) startDateStr else null,
+                                dueDate = if (hasDueDate) dueDateStr else null,
+                                frequency = freqCode
                             )
+                            onAddTask?.invoke(created) ?: localTasks.add(0, created)
                             showCreateTaskDialog = false
                         }
                     }
@@ -827,13 +974,15 @@ private fun FocusArenaCard(
             }
 
             val trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f)
-            val ringGradient = Brush.sweepGradient(
-                listOf(
-                    Color(0xFF2563EB),
-                    Color(0xFF60A5FA),
-                    Color(0xFF2563EB)
+            val ringGradient = remember {
+                Brush.sweepGradient(
+                    listOf(
+                        Color(0xFF2563EB),
+                        Color(0xFF60A5FA),
+                        Color(0xFF2563EB)
+                    )
                 )
-            )
+            }
 
             Box(
                 contentAlignment = Alignment.Center,
@@ -1210,11 +1359,46 @@ private fun FocusTaskListCard(
                                         }
 
                                         Text(
-                                            text = "⏱ ${task.completedMinutes}/${task.targetMinutes}m",
+                                            text = "${task.completedMinutes}/${task.targetMinutes}m",
                                             fontSize = 10.5.sp,
                                             fontFamily = FontFamily.Monospace,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                                         )
+
+                                        if (!task.dueDate.isNullOrBlank()) {
+                                            Surface(
+                                                shape = RoundedCornerShape(4.dp),
+                                                color = Color(0xFFFF5A5F).copy(alpha = 0.12f)
+                                            ) {
+                                                Text(
+                                                    text = "截止 ${task.dueDate!!.takeLast(11)}",
+                                                    fontSize = 9.sp,
+                                                    color = Color(0xFFFF5A5F),
+                                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                )
+                                            }
+                                        }
+
+                                        if (!task.frequency.isNullOrBlank() && task.frequency != "none") {
+                                            val fLabel = when (task.frequency) {
+                                                "daily" -> "每天"
+                                                "workday" -> "工作日"
+                                                "weekly" -> "每周"
+                                                "monthly" -> "每月"
+                                                else -> task.frequency
+                                            }
+                                            Surface(
+                                                shape = RoundedCornerShape(4.dp),
+                                                color = Color(0xFF2563EB).copy(alpha = 0.12f)
+                                            ) {
+                                                Text(
+                                                    text = "↻ $fLabel",
+                                                    fontSize = 9.sp,
+                                                    color = Color(0xFF2563EB),
+                                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                )
+                                            }
+                                        }
                                     }
                                 }
 
@@ -1270,7 +1454,10 @@ private fun FocusTaskListCard(
 // Recent Focus Records Card
 // -------------------------------------------------------------
 @Composable
-private fun RecentFocusRecordsCard(records: List<FocusRecord>) {
+private fun RecentFocusRecordsCard(
+    records: List<FocusRecord>,
+    onClearRecords: (() -> Unit)? = null
+) {
     Surface(
         shape = RoundedCornerShape(20.dp),
         color = MaterialTheme.colorScheme.surface,
@@ -1278,7 +1465,7 @@ private fun RecentFocusRecordsCard(records: List<FocusRecord>) {
             0.5.dp,
             MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
         ),
-        shadowElevation = 2.dp,
+        shadowElevation = 0.dp,
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
@@ -1287,12 +1474,31 @@ private fun RecentFocusRecordsCard(records: List<FocusRecord>) {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Text(
-                text = "最近专注成果",
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "最近专注成果",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+
+                if (onClearRecords != null) {
+                    Text(
+                        text = "清空",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Color(0xFFEF4444),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable(onClick = onClearRecords)
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            }
 
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 records.take(5).forEach { rec ->
@@ -1388,9 +1594,8 @@ private fun PomodoroStatisticsCard(
     tasks: List<StudyTask>,
     focusRecords: List<FocusRecord> = emptyList()
 ) {
-    val df = remember { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()) }
     val now = remember { Date() }
-    val todayKey = remember { df.format(now) }
+    val todayKey = remember { StudyDateUtils.formatDay(now) }
 
     // Streak calculation matching macOS
     val streakDays = remember(dailyMinutesMap, todayKey) {
@@ -1402,7 +1607,7 @@ private fun PomodoroStatisticsCard(
             cal.add(Calendar.DAY_OF_YEAR, -1)
         } else {
             cal.add(Calendar.DAY_OF_YEAR, -1)
-            val yKey = df.format(cal.time)
+            val yKey = StudyDateUtils.formatDay(cal.time)
             if ((dailyMinutesMap[yKey] ?: 0) > 0) {
                 streak++
                 cal.add(Calendar.DAY_OF_YEAR, -1)
@@ -1410,7 +1615,7 @@ private fun PomodoroStatisticsCard(
         }
         if (streak > 0) {
             while (true) {
-                val key = df.format(cal.time)
+                val key = StudyDateUtils.formatDay(cal.time)
                 if ((dailyMinutesMap[key] ?: 0) > 0) {
                     streak++
                     cal.add(Calendar.DAY_OF_YEAR, -1)
@@ -1440,7 +1645,51 @@ private fun PomodoroStatisticsCard(
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        // 1. Metric Overview Cards (2x2 Grid)
+        // 1. Metric Overview Section (2x2 Grid)
+        MetricOverviewSection(
+            streakDays = streakDays,
+            totalActiveDays = totalActiveDays,
+            avgMinutes = avgMinutes,
+            totalHours = totalHours,
+            completedPomodoroCount = completedPomodoroCount,
+            completionRate = completionRate,
+            completedTasks = completedTasks,
+            totalTasks = tasks.size
+        )
+
+        // 2. Full-Width Heatmap Card (Isolated State & Tap Scope)
+        HeatmapSection(
+            dailyMinutesMap = dailyMinutesMap,
+            todayKey = todayKey,
+            now = now
+        )
+
+        // 3. Focus Trend Insight (Isolated Period Scope)
+        TrendInsightSection(
+            dailyMinutesMap = dailyMinutesMap,
+            todayKey = todayKey
+        )
+
+        // 4. Subject Distribution Donut (Isolated Slice Scope)
+        SubjectDonutSection(
+            tasks = tasks,
+            focusRecords = focusRecords
+        )
+    }
+}
+
+@Composable
+private fun MetricOverviewSection(
+    streakDays: Int,
+    totalActiveDays: Int,
+    avgMinutes: Int,
+    totalHours: String,
+    completedPomodoroCount: Int,
+    completionRate: Int,
+    completedTasks: Int,
+    totalTasks: Int
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -1449,7 +1698,7 @@ private fun PomodoroStatisticsCard(
                 title = "连续专注",
                 value = "$streakDays",
                 unit = "天",
-                subtitle = if (streakDays > 0) "心流保持中 🔥" else "今日待打卡",
+                subtitle = if (streakDays > 0) "心流保持中" else "今日待打卡",
                 color = Color(0xFFFF5A5F),
                 modifier = Modifier.weight(1f)
             )
@@ -1479,497 +1728,561 @@ private fun PomodoroStatisticsCard(
                 title = "任务完成率",
                 value = "$completionRate%",
                 unit = "",
-                subtitle = "已完成 $completedTasks/${tasks.size} 项",
+                subtitle = "已完成 $completedTasks/$totalTasks 项",
                 color = Color(0xFF56A3A6),
                 modifier = Modifier.weight(1f)
             )
         }
+    }
+}
 
-        // 2. Full-Width Heatmap Card (专注热力图谱)
-        var selectedDayInfo by remember {
-            val todayMins = dailyMinutesMap[todayKey] ?: 0
-            val todayCount = if (todayMins > 0) (todayMins / 25).coerceAtLeast(1) else 0
-            mutableStateOf(DayHeatInfo(todayKey, todayMins, todayCount))
+@Composable
+private fun HeatmapSection(
+    dailyMinutesMap: Map<String, Int>,
+    todayKey: String,
+    now: Date
+) {
+    var selectedDayInfo by remember(todayKey) {
+        val todayMins = dailyMinutesMap[todayKey] ?: 0
+        val todayCount = if (todayMins > 0) (todayMins / 25).coerceAtLeast(1) else 0
+        mutableStateOf(DayHeatInfo(todayKey, todayMins, todayCount))
+    }
+
+    val weekDaysLabels = remember { listOf("一", "二", "三", "四", "五", "六", "日") }
+    val totalWeeks = 24
+
+    val heatmapWeeks = remember(dailyMinutesMap, todayKey) {
+        val currentDow = Calendar.getInstance().get(Calendar.DAY_OF_WEEK)
+        val mondayOffset = if (currentDow == Calendar.SUNDAY) -6 else 2 - currentDow
+        val thisMondayCal = Calendar.getInstance().apply {
+            add(Calendar.DAY_OF_YEAR, mondayOffset)
         }
+        val thisMondayTime = thisMondayCal.timeInMillis
+        val oneDayMs = 86_400_000L
+        val cellCal = Calendar.getInstance()
 
-        val weekDaysLabels = listOf("一", "二", "三", "四", "五", "六", "日")
-        val totalWeeks = 24
+        (0 until totalWeeks).map { w ->
+            val weekOffset = totalWeeks - 1 - w
+            (0..6).map { d ->
+                cellCal.timeInMillis = thisMondayTime + (-(weekOffset * 7) + d) * oneDayMs
+                val dateKey = StudyDateUtils.formatDay(cellCal.time)
+                val isToday = (dateKey == todayKey)
+                val isFuture = cellCal.time.after(now) && !isToday
+                val mins = if (isFuture) 0 else (dailyMinutesMap[dateKey] ?: 0)
+                val count = if (mins > 0) (mins / 25).coerceAtLeast(1) else 0
 
-        Surface(
-            shape = RoundedCornerShape(18.dp),
-            color = MaterialTheme.colorScheme.surface,
-            border = androidx.compose.foundation.BorderStroke(
-                0.5.dp,
-                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
-            ),
-            shadowElevation = 2.dp,
-            modifier = Modifier.fillMaxWidth()
+                val heatLevel = when {
+                    mins == 0 -> 0
+                    mins <= 25 -> 1
+                    mins <= 50 -> 2
+                    mins <= 100 -> 3
+                    else -> 4
+                }
+                Triple(DayHeatInfo(dateKey, mins, count), heatLevel, isToday to isFuture)
+            }
+        }
+    }
+
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = androidx.compose.foundation.BorderStroke(
+            0.5.dp,
+            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
+        ),
+        shadowElevation = 0.dp,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+            // Header
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                // Header
+                Text(
+                    text = "专注热力图谱",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+
+                // Legend: 少 -> 多
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Text("🧱", fontSize = 16.sp)
-                        Text(
-                            text = "专注热力图谱",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
+                    Text("少", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    (0..4).forEach { lvl ->
+                        Box(
+                            modifier = Modifier
+                                .size(10.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(getHeatColor(lvl))
                         )
                     }
+                    Text("多", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
 
-                    // Legend: 少 -> 多
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Text("少", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        (0..4).forEach { lvl ->
-                            Box(
-                                modifier = Modifier
-                                    .size(10.dp)
-                                    .clip(RoundedCornerShape(2.dp))
-                                    .background(getHeatColor(lvl))
+            // Grid with Y-Axis Weekday Labels
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.Top
+            ) {
+                // Weekday Labels
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.padding(top = 1.dp)
+                ) {
+                    weekDaysLabels.forEach { label ->
+                        Box(
+                            modifier = Modifier.size(width = 14.dp, height = 14.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = label,
+                                fontSize = 9.5.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
                             )
                         }
-                        Text("多", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
 
-                // Grid with Y-Axis Weekday Labels
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.Top
+                // 24 Weeks Heatmap Grid (GPU Hardware Accelerated Canvas: 1 node vs 192 nodes)
+                val outlineColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f)
+                val cellWidthDp = 15.dp
+                val cellHeightDp = 14.dp
+                val spacingDp = 4.dp
+                val cornerRadiusDp = 3.5.dp
+
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .horizontalScroll(rememberScrollState())
                 ) {
-                    // Weekday Labels
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                        modifier = Modifier.padding(top = 1.dp)
-                    ) {
-                        weekDaysLabels.forEach { label ->
-                            Box(
-                                modifier = Modifier.size(width = 14.dp, height = 14.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = label,
-                                    fontSize = 9.5.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
-                                )
-                            }
-                        }
-                    }
-
-                    // 24 Weeks Columns
-                    Row(
+                    Canvas(
                         modifier = Modifier
-                            .weight(1f)
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        val currentDow = Calendar.getInstance().get(Calendar.DAY_OF_WEEK)
-                        val mondayOffset = if (currentDow == Calendar.SUNDAY) -6 else 2 - currentDow
-                        val thisMondayCal = Calendar.getInstance().apply {
-                            add(Calendar.DAY_OF_YEAR, mondayOffset)
-                        }
-
-                        for (w in 0 until totalWeeks) {
-                            val weekOffset = totalWeeks - 1 - w
-                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                for (d in 0..6) {
-                                    val cellCal = Calendar.getInstance().apply {
-                                        time = thisMondayCal.time
-                                        add(Calendar.DAY_OF_YEAR, -(weekOffset * 7) + d)
-                                    }
-                                    val dateKey = df.format(cellCal.time)
-                                    val isToday = (dateKey == todayKey)
-                                    val isFuture = cellCal.time.after(now) && !isToday
-                                    val mins = if (isFuture) 0 else (dailyMinutesMap[dateKey] ?: 0)
-                                    val count = if (mins > 0) (mins / 25).coerceAtLeast(1) else 0
-
-                                    val heatLevel = when {
-                                        mins == 0 -> 0
-                                        mins <= 25 -> 1
-                                        mins <= 50 -> 2
-                                        mins <= 100 -> 3
-                                        else -> 4
-                                    }
-
-                                    Box(
-                                        modifier = Modifier
-                                            .size(width = 15.dp, height = 14.dp)
-                                            .clip(RoundedCornerShape(3.5.dp))
-                                            .background(
-                                                if (isFuture) Color.Transparent else getHeatColor(heatLevel)
-                                            )
-                                            .then(
-                                                if (isToday) {
-                                                    Modifier.border(
-                                                        1.5.dp,
-                                                        Color(0xFFFF5A5F),
-                                                        RoundedCornerShape(3.5.dp)
-                                                    )
-                                                } else {
-                                                    Modifier.border(
-                                                        0.5.dp,
-                                                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f),
-                                                        RoundedCornerShape(3.5.dp)
-                                                    )
-                                                }
-                                            )
-                                            .clickable(enabled = !isFuture) {
-                                                selectedDayInfo = DayHeatInfo(dateKey, mins, count)
+                            .size(
+                                width = (totalWeeks * 19 - 4).dp,
+                                height = (7 * 18 - 4).dp
+                            )
+                            .pointerInput(heatmapWeeks) {
+                                detectTapGestures { offset ->
+                                    val colW = (cellWidthDp + spacingDp).toPx()
+                                    val rowH = (cellHeightDp + spacingDp).toPx()
+                                    val col = (offset.x / colW).toInt()
+                                    val row = (offset.y / rowH).toInt()
+                                    if (col in 0 until totalWeeks && row in 0..6) {
+                                        val cell = heatmapWeeks.getOrNull(col)?.getOrNull(row)
+                                        if (cell != null) {
+                                            val (info, _, flags) = cell
+                                            val (_, isFuture) = flags
+                                            if (!isFuture) {
+                                                selectedDayInfo = info
                                             }
+                                        }
+                                    }
+                                }
+                            }
+                    ) {
+                        val colW = cellWidthDp.toPx()
+                        val rowH = cellHeightDp.toPx()
+                        val spacePx = spacingDp.toPx()
+                        val cr = CornerRadius(cornerRadiusDp.toPx(), cornerRadiusDp.toPx())
+                        val todayStroke = 1.5.dp.toPx()
+                        val regularStroke = 0.5.dp.toPx()
+
+                        for (col in 0 until totalWeeks) {
+                            val weekList = heatmapWeeks.getOrNull(col) ?: continue
+                            val x = col * (colW + spacePx)
+                            for (row in 0..6) {
+                                val cell = weekList.getOrNull(row) ?: continue
+                                val (_, heatLevel, flags) = cell
+                                val (isToday, isFuture) = flags
+                                val y = row * (rowH + spacePx)
+
+                                if (!isFuture) {
+                                    drawRoundRect(
+                                        color = getHeatColor(heatLevel),
+                                        topLeft = Offset(x, y),
+                                        size = Size(colW, rowH),
+                                        cornerRadius = cr
+                                    )
+                                }
+
+                                if (isToday) {
+                                    drawRoundRect(
+                                        color = Color(0xFFFF5A5F),
+                                        topLeft = Offset(x, y),
+                                        size = Size(colW, rowH),
+                                        cornerRadius = cr,
+                                        style = Stroke(width = todayStroke)
+                                    )
+                                } else if (!isFuture) {
+                                    drawRoundRect(
+                                        color = outlineColor,
+                                        topLeft = Offset(x, y),
+                                        size = Size(colW, rowH),
+                                        cornerRadius = cr,
+                                        style = Stroke(width = regularStroke)
                                     )
                                 }
                             }
                         }
                     }
                 }
+            }
 
-                // Selected Day Info Banner
+            // Selected Day Info Banner
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.04f),
+                        shape = RoundedCornerShape(8.dp)
+                    )
+                    .padding(horizontal = 12.dp, vertical = 7.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(
+                            when {
+                                selectedDayInfo.minutes == 0 -> Color.Gray
+                                selectedDayInfo.minutes <= 25 -> Color(0xFFFF5A5F).copy(alpha = 0.32f)
+                                selectedDayInfo.minutes <= 50 -> Color(0xFFFF5A5F).copy(alpha = 0.58f)
+                                selectedDayInfo.minutes <= 100 -> Color(0xFFFF5A5F).copy(alpha = 0.82f)
+                                else -> Color(0xFFFF5A5F)
+                            }
+                        )
+                )
+                Text(
+                    text = selectedDayInfo.dateKey,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text("•", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    text = "专注 ${selectedDayInfo.minutes} 分钟 (${selectedDayInfo.count} 次番茄专注)",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+@Composable
+private fun TrendInsightSection(
+    dailyMinutesMap: Map<String, Int>,
+    todayKey: String
+) {
+    var selectedTrendPeriod by remember { mutableStateOf(TrendPeriod.PAST_7_DAYS) }
+
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = androidx.compose.foundation.BorderStroke(
+            0.5.dp,
+            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
+        ),
+        shadowElevation = 0.dp,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            // Header with Period Toggle
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "专注趋势洞察",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+
+                // Capsule Switcher
                 Row(
                     modifier = Modifier
-                        .fillMaxWidth()
                         .background(
-                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.04f),
-                            shape = RoundedCornerShape(8.dp)
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            CircleShape
                         )
-                        .padding(horizontal = 12.dp, vertical = 7.dp),
+                        .padding(2.dp)
+                ) {
+                    TrendPeriod.values().forEach { period ->
+                        val isSelected = (selectedTrendPeriod == period)
+                        Box(
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(if (isSelected) MaterialTheme.colorScheme.surface else Color.Transparent)
+                                .clickable { selectedTrendPeriod = period }
+                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = period.label,
+                                fontSize = 10.5.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Data Points
+            val dataPoints = remember(selectedTrendPeriod, dailyMinutesMap, todayKey) {
+                computeTrendPoints(selectedTrendPeriod, dailyMinutesMap, todayKey)
+            }
+            val maxMinutes = remember(dataPoints) { (dataPoints.maxOfOrNull { it.minutes } ?: 60).coerceAtLeast(60) }
+            val maxCount = remember(dataPoints) { (dataPoints.maxOfOrNull { it.count } ?: 4).coerceAtLeast(4) }
+
+            // Chart Canvas (Bars + Line Overlay)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(160.dp)
+            ) {
+                // Bars Row
+                Row(
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Bottom
+                ) {
+                    dataPoints.forEach { point ->
+                        val barRatio = (point.minutes.toFloat() / maxMinutes).coerceIn(0.04f, 1f)
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Bottom
+                        ) {
+                            // Value above bar (e.g. 75m)
+                            Text(
+                                text = if (point.minutes > 0) "${point.minutes}m" else "",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace,
+                                color = if (point.isCurrent) Color(0xFFFF5A5F) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.height(14.dp)
+                            )
+
+                            Spacer(modifier = Modifier.height(2.dp))
+
+                            // The Bar
+                            Box(
+                                modifier = Modifier
+                                    .width(if (selectedTrendPeriod == TrendPeriod.PAST_7_DAYS) 20.dp else 14.dp)
+                                    .fillMaxHeight(barRatio * 0.72f)
+                                    .clip(RoundedCornerShape(topStart = 5.dp, topEnd = 5.dp))
+                                    .background(
+                                        if (point.isCurrent) {
+                                            Brush.verticalGradient(
+                                                listOf(Color(0xFFFF5A5F), Color(0xFFFF8E53))
+                                            )
+                                        } else {
+                                            Brush.verticalGradient(
+                                                listOf(Color(0xFF5B7FB5), Color(0xFF7A9FD3))
+                                            )
+                                        }
+                                    )
+                            )
+
+                            Spacer(modifier = Modifier.height(6.dp))
+
+                            // X-axis label
+                            Text(
+                                text = point.label,
+                                fontSize = 10.sp,
+                                fontWeight = if (point.isCurrent) FontWeight.Bold else FontWeight.Medium,
+                                color = if (point.isCurrent) Color(0xFFFF5A5F) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1
+                            )
+                        }
+                    }
+                }
+
+                // Orange Dashed Line Overlay for Session Count
+                val dashEffect = remember { PathEffect.dashPathEffect(floatArrayOf(10f, 8f)) }
+                val trendPath = remember { androidx.compose.ui.graphics.Path() }
+
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val count = dataPoints.size
+                    if (count > 1) {
+                        val stepX = size.width / count
+                        val availableHeight = size.height - 35.dp.toPx()
+                        trendPath.reset()
+
+                        dataPoints.forEachIndexed { idx, pt ->
+                            val x = stepX * idx + stepX / 2
+                            val ratio = (pt.count.toFloat() / maxCount).coerceIn(0f, 1f)
+                            val y = availableHeight - (ratio * (availableHeight - 20.dp.toPx()))
+
+                            if (idx == 0) {
+                                trendPath.moveTo(x, y)
+                            } else {
+                                trendPath.lineTo(x, y)
+                            }
+                        }
+
+                        // Draw dashed stroke
+                        drawPath(
+                            path = trendPath,
+                            color = Color(0xFFE8A87C),
+                            style = Stroke(
+                                width = 2.dp.toPx(),
+                                cap = StrokeCap.Round,
+                                pathEffect = dashEffect
+                            )
+                        )
+
+                        // Draw dots
+                        dataPoints.forEachIndexed { idx, pt ->
+                            val x = stepX * idx + stepX / 2
+                            val ratio = (pt.count.toFloat() / maxCount).coerceIn(0f, 1f)
+                            val y = availableHeight - (ratio * (availableHeight - 20.dp.toPx()))
+
+                            drawCircle(
+                                color = Color(0xFFE8A87C),
+                                radius = 3.dp.toPx(),
+                                center = Offset(x, y)
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Legend Footer
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(10.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(
+                                Brush.verticalGradient(listOf(Color(0xFF5B7FB5), Color(0xFF7A9FD3)))
+                            )
+                    )
+                    Text(
+                        text = "专注时长 (柱状)",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
                 ) {
                     Box(
                         modifier = Modifier
                             .size(8.dp)
-                            .clip(CircleShape)
-                            .background(
-                                when {
-                                    selectedDayInfo.minutes == 0 -> Color.Gray
-                                    selectedDayInfo.minutes <= 25 -> Color(0xFFFF5A5F).copy(alpha = 0.32f)
-                                    selectedDayInfo.minutes <= 50 -> Color(0xFFFF5A5F).copy(alpha = 0.58f)
-                                    selectedDayInfo.minutes <= 100 -> Color(0xFFFF5A5F).copy(alpha = 0.82f)
-                                    else -> Color(0xFFFF5A5F)
-                                }
-                            )
+                            .border(2.dp, Color(0xFFE8A87C), CircleShape)
                     )
                     Text(
-                        text = selectedDayInfo.dateKey,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text("•", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(
-                        text = "专注 ${selectedDayInfo.minutes} 分钟 (${selectedDayInfo.count} 次番茄专注)",
-                        fontSize = 12.sp,
+                        text = "专注频次 (趋势折线)",
+                        fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
         }
+    }
+}
 
-        // 3. Focus Trend Insight (专注趋势洞察)
-        var selectedTrendPeriod by remember { mutableStateOf(TrendPeriod.PAST_7_DAYS) }
+@Composable
+private fun SubjectDonutSection(
+    tasks: List<StudyTask>,
+    focusRecords: List<FocusRecord>
+) {
+    var selectedDonutRange by remember { mutableStateOf(DonutTimeRange.MONTH) }
+    var selectedSliceIndex by remember { mutableStateOf<Int?>(null) }
 
-        Surface(
-            shape = RoundedCornerShape(18.dp),
-            color = MaterialTheme.colorScheme.surface,
-            border = androidx.compose.foundation.BorderStroke(
-                0.5.dp,
-                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
-            ),
-            shadowElevation = 2.dp,
-            modifier = Modifier.fillMaxWidth()
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = androidx.compose.foundation.BorderStroke(
+            0.5.dp,
+            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
+        ),
+        shadowElevation = 0.dp,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+            // Header with Time Range Toggle
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                // Header with Period Toggle
+                Text(
+                    text = "学科投入环形分布",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "专注趋势洞察",
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-
-                    // Capsule Switcher
-                    Row(
-                        modifier = Modifier
-                            .background(
-                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                CircleShape
-                            )
-                            .padding(2.dp)
-                    ) {
-                        TrendPeriod.values().forEach { period ->
-                            val isSelected = (selectedTrendPeriod == period)
-                            Box(
-                                modifier = Modifier
-                                    .clip(CircleShape)
-                                    .background(if (isSelected) MaterialTheme.colorScheme.surface else Color.Transparent)
-                                    .clickable { selectedTrendPeriod = period }
-                                    .padding(horizontal = 8.dp, vertical = 4.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = period.label,
-                                    fontSize = 10.5.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                    color = if (isSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // Data Points
-                val dataPoints = remember(selectedTrendPeriod, dailyMinutesMap) {
-                    computeTrendPoints(selectedTrendPeriod, dailyMinutesMap, todayKey)
-                }
-                val maxMinutes = (dataPoints.maxOfOrNull { it.minutes } ?: 60).coerceAtLeast(60)
-                val maxCount = (dataPoints.maxOfOrNull { it.count } ?: 4).coerceAtLeast(4)
-
-                // Chart Canvas (Bars + Line Overlay)
-                Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .height(160.dp)
+                        .background(
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            CircleShape
+                        )
+                        .padding(2.dp)
                 ) {
-                    // Bars Row
-                    Row(
-                        modifier = Modifier.fillMaxSize(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.Bottom
-                    ) {
-                        dataPoints.forEach { point ->
-                            val barRatio = (point.minutes.toFloat() / maxMinutes).coerceIn(0.04f, 1f)
-                            Column(
-                                modifier = Modifier.weight(1f),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Bottom
-                            ) {
-                                // Value above bar (e.g. 75m)
-                                Text(
-                                    text = if (point.minutes > 0) "${point.minutes}m" else "",
-                                    fontSize = 9.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = FontFamily.Monospace,
-                                    color = if (point.isCurrent) Color(0xFFFF5A5F) else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.height(14.dp)
-                                )
-
-                                Spacer(modifier = Modifier.height(2.dp))
-
-                                // The Bar
-                                Box(
-                                    modifier = Modifier
-                                        .width(if (selectedTrendPeriod == TrendPeriod.PAST_7_DAYS) 20.dp else 14.dp)
-                                        .fillMaxHeight(barRatio * 0.72f)
-                                        .clip(RoundedCornerShape(topStart = 5.dp, topEnd = 5.dp))
-                                        .background(
-                                            if (point.isCurrent) {
-                                                Brush.verticalGradient(
-                                                    listOf(Color(0xFFFF5A5F), Color(0xFFFF8E53))
-                                                )
-                                            } else {
-                                                Brush.verticalGradient(
-                                                    listOf(Color(0xFF5B7FB5), Color(0xFF7A9FD3))
-                                                )
-                                            }
-                                        )
-                                )
-
-                                Spacer(modifier = Modifier.height(6.dp))
-
-                                // X-axis label
-                                Text(
-                                    text = point.label,
-                                    fontSize = 10.sp,
-                                    fontWeight = if (point.isCurrent) FontWeight.Bold else FontWeight.Medium,
-                                    color = if (point.isCurrent) Color(0xFFFF5A5F) else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1
-                                )
-                            }
-                        }
-                    }
-
-                    // Orange Dashed Line Overlay for Session Count
-                    Canvas(modifier = Modifier.fillMaxSize()) {
-                        val count = dataPoints.size
-                        if (count > 1) {
-                            val stepX = size.width / count
-                            val availableHeight = size.height - 35.dp.toPx()
-                            val path = androidx.compose.ui.graphics.Path()
-
-                            dataPoints.forEachIndexed { idx, pt ->
-                                val x = stepX * idx + stepX / 2
-                                val ratio = (pt.count.toFloat() / maxCount).coerceIn(0f, 1f)
-                                val y = availableHeight - (ratio * (availableHeight - 20.dp.toPx()))
-
-                                if (idx == 0) {
-                                    path.moveTo(x, y)
-                                } else {
-                                    path.lineTo(x, y)
-                                }
-                            }
-
-                            // Draw dashed stroke
-                            drawPath(
-                                path = path,
-                                color = Color(0xFFE8A87C),
-                                style = Stroke(
-                                    width = 2.dp.toPx(),
-                                    cap = StrokeCap.Round,
-                                    pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(10f, 8f))
-                                )
+                    DonutTimeRange.values().forEach { range ->
+                        val isSelected = (selectedDonutRange == range)
+                        Box(
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(if (isSelected) MaterialTheme.colorScheme.surface else Color.Transparent)
+                                .clickable { selectedDonutRange = range }
+                                .padding(horizontal = 7.dp, vertical = 3.5.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = range.label,
+                                fontSize = 10.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
                             )
-
-                            // Draw dots
-                            dataPoints.forEachIndexed { idx, pt ->
-                                val x = stepX * idx + stepX / 2
-                                val ratio = (pt.count.toFloat() / maxCount).coerceIn(0f, 1f)
-                                val y = availableHeight - (ratio * (availableHeight - 20.dp.toPx()))
-
-                                drawCircle(
-                                    color = Color(0xFFE8A87C),
-                                    radius = 3.dp.toPx(),
-                                    center = Offset(x, y)
-                                )
-                            }
                         }
-                    }
-                }
-
-                // Legend Footer
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(5.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(10.dp)
-                                .clip(RoundedCornerShape(2.dp))
-                                .background(
-                                    Brush.verticalGradient(listOf(Color(0xFF5B7FB5), Color(0xFF7A9FD3)))
-                                )
-                        )
-                        Text(
-                            text = "专注时长 (柱状)",
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(5.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(8.dp)
-                                .border(2.dp, Color(0xFFE8A87C), CircleShape)
-                        )
-                        Text(
-                            text = "专注频次 (趋势折线)",
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
                     }
                 }
             }
-        }
 
-        // 4. Subject Distribution Donut Chart (学科投入环形分布)
-        var selectedDonutRange by remember { mutableStateOf(DonutTimeRange.MONTH) }
-        var selectedSliceIndex by remember { mutableStateOf<Int?>(null) }
-
-        Surface(
-            shape = RoundedCornerShape(18.dp),
-            color = MaterialTheme.colorScheme.surface,
-            border = androidx.compose.foundation.BorderStroke(
-                0.5.dp,
-                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
-            ),
-            shadowElevation = 2.dp,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
-                // Header with Time Range Toggle
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "学科投入环形分布",
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-
-                    Row(
-                        modifier = Modifier
-                            .background(
-                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                CircleShape
-                            )
-                            .padding(2.dp)
-                    ) {
-                        DonutTimeRange.values().forEach { range ->
-                            val isSelected = (selectedDonutRange == range)
-                            Box(
-                                modifier = Modifier
-                                    .clip(CircleShape)
-                                    .background(if (isSelected) MaterialTheme.colorScheme.surface else Color.Transparent)
-                                    .clickable { selectedDonutRange = range }
-                                    .padding(horizontal = 7.dp, vertical = 3.5.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = range.label,
-                                    fontSize = 10.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                    color = if (isSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // Slices calculation
-                val donutPalette = listOf(
+            // Slices calculation
+            val donutPalette = remember {
+                listOf(
                     Color(0xFF4F46E5), // Indigo
                     Color(0xFF059669), // Green
                     Color(0xFFE07A5F), // Coral
@@ -1977,175 +2290,177 @@ private fun PomodoroStatisticsCard(
                     Color(0xFF8B5CF6), // Purple
                     Color(0xFF06B6D4)  // Cyan
                 )
+            }
 
-                val slices = remember(selectedDonutRange, tasks, focusRecords) {
-                    computeDonutSlices(tasks, focusRecords, donutPalette)
+            val slices = remember(selectedDonutRange, tasks, focusRecords) {
+                computeDonutSlices(tasks, focusRecords, donutPalette)
+            }
+            val totalDonutMinutes = remember(slices) { slices.sumOf { it.minutes } }
+            val totalDonutHours = remember(totalDonutMinutes) {
+                String.format(Locale.getDefault(), "%.1f", totalDonutMinutes / 60.0)
+            }
+
+            if (slices.isEmpty()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Timelapse,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                        modifier = Modifier.size(36.dp)
+                    )
+                    Text(
+                        text = "暂无学科专注数据",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "在待办中关联课表课程即可生成环形投入图",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    )
                 }
-                val totalDonutMinutes = slices.sumOf { it.minutes }
-                val totalDonutHours = String.format(Locale.getDefault(), "%.1f", totalDonutMinutes / 60.0)
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Donut Ring (Canvas + Center Text)
+                    Box(
+                        modifier = Modifier.size(130.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Canvas(modifier = Modifier.fillMaxSize()) {
+                            val strokeWidth = 22.dp.toPx()
+                            val arcRadius = (size.minDimension - strokeWidth) / 2
+                            val arcTopLeft = Offset(
+                                (size.width - arcRadius * 2) / 2,
+                                (size.height - arcRadius * 2) / 2
+                            )
+                            val arcSize = Size(arcRadius * 2, arcRadius * 2)
 
-                if (slices.isEmpty()) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.Timelapse,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                            modifier = Modifier.size(36.dp)
-                        )
-                        Text(
-                            text = "暂无学科专注数据",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = "在待办中关联课表课程即可生成环形投入图",
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                        )
-                    }
-                } else {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // Donut Ring (Canvas + Center Text)
-                        Box(
-                            modifier = Modifier.size(130.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Canvas(modifier = Modifier.fillMaxSize()) {
-                                val strokeWidth = 22.dp.toPx()
-                                val arcRadius = (size.minDimension - strokeWidth) / 2
-                                val arcTopLeft = Offset(
-                                    (size.width - arcRadius * 2) / 2,
-                                    (size.height - arcRadius * 2) / 2
+                            var currentStartAngle = -90f
+                            slices.forEachIndexed { idx, slice ->
+                                val sweep = (slice.percentage.toFloat() * 360f).coerceAtLeast(2f)
+                                val isHighlighted = (selectedSliceIndex == idx)
+                                drawArc(
+                                    color = slice.color,
+                                    startAngle = currentStartAngle,
+                                    sweepAngle = sweep - 1.5f,
+                                    useCenter = false,
+                                    topLeft = arcTopLeft,
+                                    size = arcSize,
+                                    style = Stroke(
+                                        width = if (isHighlighted) strokeWidth + 4.dp.toPx() else strokeWidth,
+                                        cap = StrokeCap.Round
+                                    )
                                 )
-                                val arcSize = Size(arcRadius * 2, arcRadius * 2)
-
-                                var currentStartAngle = -90f
-                                slices.forEachIndexed { idx, slice ->
-                                    val sweep = (slice.percentage.toFloat() * 360f).coerceAtLeast(2f)
-                                    val isHighlighted = (selectedSliceIndex == idx)
-                                    drawArc(
-                                        color = slice.color,
-                                        startAngle = currentStartAngle,
-                                        sweepAngle = sweep - 1.5f,
-                                        useCenter = false,
-                                        topLeft = arcTopLeft,
-                                        size = arcSize,
-                                        style = Stroke(
-                                            width = if (isHighlighted) strokeWidth + 4.dp.toPx() else strokeWidth,
-                                            cap = StrokeCap.Round
-                                        )
-                                    )
-                                    currentStartAngle += sweep
-                                }
-                            }
-
-                            // Center text
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(1.dp)
-                            ) {
-                                if (selectedSliceIndex != null && selectedSliceIndex!! < slices.size) {
-                                    val selectedSlice = slices[selectedSliceIndex!!]
-                                    Text(
-                                        text = selectedSlice.name,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        maxLines = 1
-                                    )
-                                    Text(
-                                        text = "${selectedSlice.minutes}m",
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = selectedSlice.color
-                                    )
-                                    Text(
-                                        text = "${(selectedSlice.percentage * 100).toInt()}%",
-                                        fontSize = 10.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                } else {
-                                    Text(
-                                        text = "总投入",
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    Text(
-                                        text = totalDonutHours,
-                                        fontSize = 18.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                    Text(
-                                        text = "小时",
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
+                                currentStartAngle += sweep
                             }
                         }
 
-                        // Right: Subject breakdown list
+                        // Center text
                         Column(
-                            modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(1.dp)
                         ) {
-                            slices.take(5).forEachIndexed { idx, slice ->
-                                val isSelected = (selectedSliceIndex == idx)
-                                Row(
+                            if (selectedSliceIndex != null && selectedSliceIndex!! < slices.size) {
+                                val selectedSlice = slices[selectedSliceIndex!!]
+                                Text(
+                                    text = selectedSlice.name,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1
+                                )
+                                Text(
+                                    text = "${selectedSlice.minutes}m",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = selectedSlice.color
+                                )
+                                Text(
+                                    text = "${(selectedSlice.percentage * 100).toInt()}%",
+                                    fontSize = 10.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            } else {
+                                Text(
+                                    text = "总投入",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = totalDonutHours,
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "小时",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
+                    // Right: Subject breakdown list
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        slices.take(5).forEachIndexed { idx, slice ->
+                            val isSelected = (selectedSliceIndex == idx)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(
+                                        if (isSelected) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f) else Color.Transparent
+                                    )
+                                    .clickable {
+                                        selectedSliceIndex = if (isSelected) null else idx
+                                    }
+                                    .padding(horizontal = 4.dp, vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Box(
                                     modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .background(
-                                            if (isSelected) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f) else Color.Transparent
-                                        )
-                                        .clickable {
-                                            selectedSliceIndex = if (isSelected) null else idx
-                                        }
-                                        .padding(horizontal = 4.dp, vertical = 2.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(8.dp)
-                                            .clip(CircleShape)
-                                            .background(slice.color)
-                                    )
-                                    Text(
-                                        text = slice.name,
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        maxLines = 1,
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                    Text(
-                                        text = "${(slice.percentage * 100).toInt()}%",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    Text(
-                                        text = "${slice.minutes}m",
-                                        fontSize = 10.5.sp,
-                                        fontFamily = FontFamily.Monospace,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
-                                    )
-                                }
+                                        .size(8.dp)
+                                        .clip(CircleShape)
+                                        .background(slice.color)
+                                )
+                                Text(
+                                    text = slice.name,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Text(
+                                    text = "${(slice.percentage * 100).toInt()}%",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = "${slice.minutes}m",
+                                    fontSize = 10.5.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+                                )
                             }
                         }
                     }
@@ -2165,36 +2480,48 @@ private fun getHeatColor(level: Int): Color {
     }
 }
 
+private object StudyDateUtils {
+    private val dfDayLocal = ThreadLocal.withInitial { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()) }
+    private val dfMonthLocal = ThreadLocal.withInitial { SimpleDateFormat("M月", Locale.CHINESE) }
+    private val dfYearMonthLocal = ThreadLocal.withInitial { SimpleDateFormat("yyyy-MM", Locale.getDefault()) }
+    private val dfWeekdayLocal = ThreadLocal.withInitial { SimpleDateFormat("E", Locale.CHINESE) }
+
+    fun formatDay(date: Date): String = dfDayLocal.get()!!.format(date)
+    fun formatMonth(date: Date): String = dfMonthLocal.get()!!.format(date)
+    fun formatYearMonth(date: Date): String = dfYearMonthLocal.get()!!.format(date)
+    fun formatWeekday(date: Date): String = dfWeekdayLocal.get()!!.format(date)
+}
+
 private fun computeTrendPoints(
     period: TrendPeriod,
     dailyMinutes: Map<String, Int>,
     todayKey: String
 ): List<TrendPoint> {
-    val dfDay = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+    val cal = Calendar.getInstance()
 
     return when (period) {
         TrendPeriod.PAST_7_DAYS -> {
-            val dfWeekday = SimpleDateFormat("E", Locale.CHINESE)
             (0..6).reversed().map { i ->
-                val c = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -i) }
-                val key = dfDay.format(c.time)
+                cal.time = Date()
+                cal.add(Calendar.DAY_OF_YEAR, -i)
+                val key = StudyDateUtils.formatDay(cal.time)
                 val mins = dailyMinutes[key] ?: 0
                 val count = if (mins > 0) (mins / 25).coerceAtLeast(1) else 0
-                val label = dfWeekday.format(c.time).replace("周", "")
+                val label = StudyDateUtils.formatWeekday(cal.time).replace("周", "")
                 TrendPoint(key, label, mins, count, key == todayKey)
             }
         }
         TrendPeriod.WEEKLY -> {
             (0..7).reversed().map { w ->
-                val c = Calendar.getInstance().apply { add(Calendar.WEEK_OF_YEAR, -w) }
-                val weekNum = c.get(Calendar.WEEK_OF_YEAR)
+                cal.time = Date()
+                cal.add(Calendar.WEEK_OF_YEAR, -w)
+                val weekNum = cal.get(Calendar.WEEK_OF_YEAR)
+                val baseTime = cal.timeInMillis
                 var totalMins = 0
+                val oneDayMs = 86_400_000L
                 for (d in 0..6) {
-                    val dayCal = Calendar.getInstance().apply {
-                        time = c.time
-                        add(Calendar.DAY_OF_YEAR, d - 3)
-                    }
-                    val k = dfDay.format(dayCal.time)
+                    cal.timeInMillis = baseTime + (d - 3) * oneDayMs
+                    val k = StudyDateUtils.formatDay(cal.time)
                     totalMins += dailyMinutes[k] ?: 0
                 }
                 val count = if (totalMins > 0) (totalMins / 25).coerceAtLeast(1) else 0
@@ -2202,12 +2529,17 @@ private fun computeTrendPoints(
             }
         }
         TrendPeriod.MONTHLY -> {
-            val dfMonth = SimpleDateFormat("M月", Locale.CHINESE)
             (0..5).reversed().map { m ->
-                val c = Calendar.getInstance().apply { add(Calendar.MONTH, -m) }
-                val mLabel = dfMonth.format(c.time)
-                val prefix = SimpleDateFormat("yyyy-MM", Locale.getDefault()).format(c.time)
-                val totalMins = dailyMinutes.filter { it.key.startsWith(prefix) }.values.sum()
+                cal.time = Date()
+                cal.add(Calendar.MONTH, -m)
+                val mLabel = StudyDateUtils.formatMonth(cal.time)
+                val prefix = StudyDateUtils.formatYearMonth(cal.time)
+                var totalMins = 0
+                for (entry in dailyMinutes.entries) {
+                    if (entry.key.startsWith(prefix)) {
+                        totalMins += entry.value
+                    }
+                }
                 val count = if (totalMins > 0) (totalMins / 25).coerceAtLeast(1) else 0
                 TrendPoint(mLabel, mLabel, totalMins, count, m == 0)
             }
@@ -2264,7 +2596,7 @@ private fun MacMetricBox(
             0.5.dp,
             MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
         ),
-        shadowElevation = 1.dp,
+        shadowElevation = 0.dp,
         modifier = modifier
     ) {
         Column(

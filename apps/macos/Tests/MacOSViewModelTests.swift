@@ -398,6 +398,11 @@ struct MacOSViewModelTests {
         // 5. Delete task
         state.deletePomodoroTask(id: task.id)
         #expect(!state.pomodoroTasks.contains(where: { $0.id == task.id }))
+
+        // 6. Clear pomodoro records
+        #expect(!state.pomodoroRecords.isEmpty)
+        state.clearPomodoroRecords()
+        #expect(state.pomodoroRecords.isEmpty)
     }
 
     @Test("CalendarEvent lifecycle and occurrence projection")
@@ -481,13 +486,14 @@ struct MacOSViewModelTests {
     @MainActor
     func testAllDayAndOutOfBoundsEvents() {
         let state = makeIsolatedAppState()
+        let targetDate = state.currentWeekDates.indices.contains(2) ? state.currentWeekDates[2] : "2026-10-14"
 
         // 1. All-Day Event
         let allDayEvent = CalendarEvent(
             id: UUID(),
             title: "全天科研创新实践展",
-            startTime: "2026-10-14T00:00:00",
-            endTime: "2026-10-14T23:59:59",
+            startTime: "\(targetDate)T00:00:00",
+            endTime: "\(targetDate)T23:59:59",
             isAllDay: true
         )
         state.addCalendarEvent(allDayEvent)
@@ -496,8 +502,8 @@ struct MacOSViewModelTests {
         let earlyMorningEvent = CalendarEvent(
             id: UUID(),
             title: "晨间长跑与体能训练",
-            startTime: "2026-10-14T06:30:00",
-            endTime: "2026-10-14T07:30:00",
+            startTime: "\(targetDate)T06:30:00",
+            endTime: "\(targetDate)T07:30:00",
             isAllDay: false
         )
         state.addCalendarEvent(earlyMorningEvent)
@@ -506,8 +512,8 @@ struct MacOSViewModelTests {
         let lateNightEvent = CalendarEvent(
             id: UUID(),
             title: "实验室夜间数据复盘会",
-            startTime: "2026-10-14T22:00:00",
-            endTime: "2026-10-14T23:00:00",
+            startTime: "\(targetDate)T22:00:00",
+            endTime: "\(targetDate)T23:00:00",
             isAllDay: false
         )
         state.addCalendarEvent(lateNightEvent)
@@ -604,6 +610,134 @@ struct MacOSViewModelTests {
         let week4Items = state.currentWeekOccurrences.filter { $0.calendarEventId == event.id }
         #expect(week4Items.isEmpty)
     }
+
+    @Test("CalendarEvent with weekly frequency and custom weeks matrix linkage")
+    @MainActor
+    func testCalendarEventWeeklyFrequencyWithCustomWeeks() {
+        let state = makeIsolatedAppState()
+        state.selectedWeek = 1
+
+        // Default semester starts 2026-09-01 (Tuesday, dayOfWeek = 2)
+        let weeklyEvent = CalendarEvent(
+            id: UUID(),
+            title: "单双周交替周二研讨",
+            startTime: "2026-09-01 10:00",
+            endTime: "2026-09-01 11:30",
+            frequency: "weekly",
+            customWeeks: [1, 3, 5],
+            startDate: "2026-09-01",
+            endDate: "2027-01-20"
+        )
+        state.addCalendarEvent(weeklyEvent)
+
+        // Week 1: within customWeeks [1, 3, 5], should project on Tuesday
+        let week1Items = state.currentWeekOccurrences.filter { $0.calendarEventId == weeklyEvent.id }
+        #expect(week1Items.count == 1)
+        #expect(week1Items.first?.dayOfWeek == 2)
+
+        // Week 2: not in [1, 3, 5], should NOT project
+        state.selectedWeek = 2
+        let week2Items = state.currentWeekOccurrences.filter { $0.calendarEventId == weeklyEvent.id }
+        #expect(week2Items.isEmpty)
+
+        // Week 3: in [1, 3, 5], should project
+        state.selectedWeek = 3
+        let week3Items = state.currentWeekOccurrences.filter { $0.calendarEventId == weeklyEvent.id }
+        #expect(week3Items.count == 1)
+        #expect(week3Items.first?.dayOfWeek == 2)
+    }
+
+    @Test("TimetableGridView visibleDays respects showWeekends and individual day toggles")
+    @MainActor
+    func testVisibleDaysWithWeekendSettings() {
+        let state = makeIsolatedAppState()
+        guard let semester = state.currentSemester else { return }
+
+        // Case 1: showWeekends = true, both Saturday and Sunday enabled -> 7 days [1,2,3,4,5,6,7]
+        var settings7 = state.settings
+        settings7.showWeekends = true
+        settings7.showSaturday = true
+        settings7.showSunday = true
+        let view7 = TimetableGridView(
+            semester: semester,
+            occurrences: [],
+            dateStrings: ["2026-09-01", "2026-09-02", "2026-09-03", "2026-09-04", "2026-09-05", "2026-09-06", "2026-09-07"],
+            todayDateString: "2026-09-01",
+            displayMode: .week,
+            selectedDayOfWeek: 1,
+            settings: settings7
+        )
+        #expect(view7.visibleDays == [1, 2, 3, 4, 5, 6, 7])
+
+        // Case 2: showWeekends = false -> 5 days [1,2,3,4,5]
+        var settings5 = settings7
+        settings5.showWeekends = false
+        let view5 = TimetableGridView(
+            semester: semester,
+            occurrences: [],
+            dateStrings: ["2026-09-01", "2026-09-02", "2026-09-03", "2026-09-04", "2026-09-05"],
+            todayDateString: "2026-09-01",
+            displayMode: .week,
+            selectedDayOfWeek: 1,
+            settings: settings5
+        )
+        #expect(view5.visibleDays == [1, 2, 3, 4, 5])
+
+        // Case 3: showWeekends = true, showSaturday = false, showSunday = true -> [1,2,3,4,5,7]
+        var settingsSunOnly = settings7
+        settingsSunOnly.showSaturday = false
+        settingsSunOnly.showSunday = true
+        let viewSun = TimetableGridView(
+            semester: semester,
+            occurrences: [],
+            dateStrings: ["2026-09-01", "2026-09-02", "2026-09-03", "2026-09-04", "2026-09-05", "2026-09-06", "2026-09-07"],
+            todayDateString: "2026-09-01",
+            displayMode: .week,
+            selectedDayOfWeek: 1,
+            settings: settingsSunOnly
+        )
+        #expect(viewSun.visibleDays == [1, 2, 3, 4, 5, 7])
+    }
+
+    @Test("Timetable grid dynamic sections adapt to semester sections and out-of-bounds occurrences")
+    @MainActor
+    func testDynamicSectionsInTimetableGrid() {
+        let state = makeIsolatedAppState()
+        guard let currentSem = state.currentSemester else {
+            Issue.record("Expected current semester")
+            return
+        }
+
+        // 1. Update semester sections to 8 periods
+        let eightSlots: [SectionTime] = (1...8).map { s in
+            SectionTime(section: s, startTime: String(format: "%02d:00", 7 + s), endTime: String(format: "%02d:45", 7 + s))
+        }
+        state.updateSectionTimes(semesterId: currentSem.id, sections: eightSlots)
+        #expect(state.currentSemester?.sections.count == 8)
+
+        // 2. Add course with endSection 10 (exceeding 8)
+        let lateCourse = Course(
+            id: UUID(),
+            semesterId: currentSem.id,
+            name: "晚课",
+            color: "#4F46E5",
+            schedules: [
+                CourseSchedule(
+                    id: UUID(),
+                    courseId: UUID(),
+                    dayOfWeek: 1,
+                    startSection: 9,
+                    endSection: 10,
+                    weekPattern: .all
+                )
+            ]
+        )
+        state.addCourse(lateCourse)
+
+        let occs = state.currentWeekOccurrences
+        #expect(occs.contains(where: { $0.title == "晚课" && $0.endSection == 10 }))
+    }
 }
+
 
 

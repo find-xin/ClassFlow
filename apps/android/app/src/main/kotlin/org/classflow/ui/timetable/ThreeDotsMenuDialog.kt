@@ -68,7 +68,7 @@ fun ThreeDotsMenuDialog(
                     QuickGridItem(
                         modifier = Modifier.weight(1f),
                         icon = Icons.AutoMirrored.Filled.MenuBook,
-                        title = "已选课程",
+                        title = "事项管理",
                         onClick = { onOpenAction(QuickActionSheetType.COURSE_LIST) }
                     )
                 }

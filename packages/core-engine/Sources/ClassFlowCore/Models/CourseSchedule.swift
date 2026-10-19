@@ -48,16 +48,43 @@ public struct CourseSchedule: Codable, Sendable, Identifiable, Equatable, Hashab
         self.customEndTime = customEndTime
     }
 
+    private enum AdditionalCodingKeys: String, CodingKey {
+        case customWeeks
+    }
+
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.id = try container.decode(UUID.self, forKey: .id)
-        self.courseId = try container.decode(UUID.self, forKey: .courseId)
+        if let directId = try? container.decode(UUID.self, forKey: .id) {
+            self.id = directId
+        } else if let idStr = try? container.decode(String.self, forKey: .id), let parsed = UUID(uuidString: idStr) {
+            self.id = parsed
+        } else {
+            self.id = UUID()
+        }
+
+        if let directCourseId = try? container.decode(UUID.self, forKey: .courseId) {
+            self.courseId = directCourseId
+        } else if let cIdStr = try? container.decode(String.self, forKey: .courseId), let parsed = UUID(uuidString: cIdStr) {
+            self.courseId = parsed
+        } else {
+            self.courseId = UUID()
+        }
+
         self.dayOfWeek = try container.decode(Int.self, forKey: .dayOfWeek)
         self.startSection = try container.decode(Int.self, forKey: .startSection)
         self.endSection = try container.decode(Int.self, forKey: .endSection)
         self.classroom = try container.decodeIfPresent(String.self, forKey: .classroom)
         self.teacher = try container.decodeIfPresent(String.self, forKey: .teacher)
-        self.weekPattern = try container.decode(WeekPattern.self, forKey: .weekPattern)
+        var pattern = (try? container.decode(WeekPattern.self, forKey: .weekPattern)) ?? .all
+
+        // Check for schedule-level customWeeks (e.g. from Android legacy JSON)
+        if let additionalContainer = try? decoder.container(keyedBy: AdditionalCodingKeys.self),
+           let schedCustomWeeks = try? additionalContainer.decode([Int].self, forKey: .customWeeks),
+           !schedCustomWeeks.isEmpty && (pattern.customWeeks == nil || pattern.customWeeks?.isEmpty == true) {
+            pattern.customWeeks = schedCustomWeeks.sorted()
+        }
+        self.weekPattern = pattern
+
         self.customStartTime = try container.decodeIfPresent(String.self, forKey: .customStartTime)
         self.customEndTime = try container.decodeIfPresent(String.self, forKey: .customEndTime)
     }

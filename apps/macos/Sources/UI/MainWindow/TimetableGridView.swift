@@ -34,11 +34,11 @@ public struct TimetableGridView: View {
         displayMode: AppState.TimetableDisplayMode = .week,
         selectedDayOfWeek: Int = 1,
         settings: AppSettings = AppSettings(),
-        onSelectOccurrence: @escaping (TimelineItem) -> Void,
+        onSelectOccurrence: @escaping (TimelineItem) -> Void = { _ in },
         onSelectDayOfWeek: ((Int) -> Void)? = nil,
         onAddCourseAt: ((Int, Int) -> Void)? = nil,
         onAddCalendarEventAt: ((Int, Int) -> Void)? = nil,
-        onQuickImport: @escaping () -> Void,
+        onQuickImport: (() -> Void)? = nil,
         onPreviousWeek: (() -> Void)? = nil,
         onNextWeek: (() -> Void)? = nil,
         onPreviousDay: (() -> Void)? = nil,
@@ -56,7 +56,7 @@ public struct TimetableGridView: View {
         self.onSelectDayOfWeek = onSelectDayOfWeek
         self.onAddCourseAt = onAddCourseAt
         self.onAddCalendarEventAt = onAddCalendarEventAt
-        self.onQuickImport = onQuickImport
+        self.onQuickImport = onQuickImport ?? {}
         self.onPreviousWeek = onPreviousWeek
         self.onNextWeek = onNextWeek
         self.onPreviousDay = onPreviousDay
@@ -64,17 +64,24 @@ public struct TimetableGridView: View {
         self.onToday = onToday
     }
 
+    public var visibleDays: [Int] {
+        var days = [1, 2, 3, 4, 5]
+        if settings.showWeekends {
+            if settings.showSaturday {
+                days.append(6)
+            }
+            if settings.showSunday {
+                days.append(7)
+            }
+        }
+        return days
+    }
+
     private var visibleDayCount: Int {
         if displayMode == .day {
             return 1
         }
-        if !settings.showSaturday && !settings.showSunday {
-            return 5
-        } else if settings.showSaturday && !settings.showSunday {
-            return 6
-        } else {
-            return 7
-        }
+        return visibleDays.count
     }
 
     private var currentMonthComponents: (String, String) {
@@ -93,10 +100,9 @@ public struct TimetableGridView: View {
         return ""
     }
 
-    /// Dynamically expands the section schedule to accommodate early morning and late night events.
+    /// Dynamically expands the section schedule to accommodate early morning, late night events, and custom section counts.
     private var effectiveSections: [SectionTime] {
-        let base = semester.sections
-        guard !base.isEmpty else { return [] }
+        let base = semester.sections.isEmpty ? AppState.standardSectionTimes() : semester.sections
 
         var result = base
         let baseFirstStart = parseTimeToMinutes(base.first?.startTime ?? "08:00") ?? 480
@@ -127,10 +133,31 @@ public struct TimetableGridView: View {
             result.insert(earlySec, at: 0)
         }
 
-        if latestEnd > baseLastEnd {
+        // Accommodate any course whose endSection is beyond the base section count
+        let maxOccurrenceSection = occurrences.filter { !$0.isAllDay }.map { $0.endSection }.max() ?? 0
+        if let lastSec = result.filter({ $0.section < 90 }).last, maxOccurrenceSection > lastSec.section {
+            var currentSec = lastSec.section
+            var currentEnd = parseTimeToMinutes(lastSec.endTime) ?? 1290
+            while currentSec < maxOccurrenceSection {
+                currentSec += 1
+                let nextStart = currentEnd + 10
+                let nextEnd = nextStart + 45
+                let sH = (nextStart / 60) % 24
+                let sM = nextStart % 60
+                let eH = (nextEnd / 60) % 24
+                let eM = nextEnd % 60
+                let sStr = String(format: "%02d:%02d", sH, sM)
+                let eStr = String(format: "%02d:%02d", eH, eM)
+                result.append(SectionTime(section: currentSec, startTime: sStr, endTime: eStr))
+                currentEnd = nextEnd
+            }
+        }
+
+        let updatedLastEnd = parseTimeToMinutes(result.last?.endTime ?? "21:30") ?? 1290
+        if latestEnd > updatedLastEnd {
             let h = min(23, (latestEnd + 59) / 60)
             let lateEndStr = String(format: "%02d:00", h)
-            let lateSec = SectionTime(section: 99, startTime: base.last?.endTime ?? "21:30", endTime: lateEndStr)
+            let lateSec = SectionTime(section: 99, startTime: result.last?.endTime ?? "21:30", endTime: lateEndStr)
             result.append(lateSec)
         }
 
@@ -244,6 +271,8 @@ public struct TimetableGridView: View {
                     allDayRow(axisWidth: axisWidth, columnWidth: columnWidth)
 
                     // 2. Main Timetable Canvas
+                    let itemsByDay = Dictionary(grouping: occurrences.filter { !$0.isAllDay }, by: { $0.dayOfWeek })
+
                     ZStack(alignment: .topLeading) {
                         HStack(alignment: .top, spacing: 4) {
                             // Left Section Axis
@@ -257,15 +286,15 @@ public struct TimetableGridView: View {
                             if displayMode == .day {
                                 // Single Day Column for Day View
                                 let dayOfWeek = selectedDayOfWeek
-                                let dayItems = occurrences.filter { $0.dayOfWeek == dayOfWeek && !$0.isAllDay }
+                                let dayItems = itemsByDay[dayOfWeek] ?? []
                                 let isToday = (dayOfWeek - 1 < dateStrings.count) && (dateStrings[dayOfWeek - 1] == todayDateString)
 
                                 dayColumn(dayOfWeek: dayOfWeek, items: dayItems, isToday: isToday, columnWidth: columnWidth, periodHeight: dynamicPeriodHeight)
                                     .frame(width: columnWidth)
                             } else {
                                 // Multi-day Columns for Week View
-                                ForEach(1...visibleDayCount, id: \.self) { dayOfWeek in
-                                    let dayItems = occurrences.filter { $0.dayOfWeek == dayOfWeek && !$0.isAllDay }
+                                ForEach(visibleDays, id: \.self) { dayOfWeek in
+                                    let dayItems = itemsByDay[dayOfWeek] ?? []
                                     let isToday = (dayOfWeek - 1 < dateStrings.count) && (dateStrings[dayOfWeek - 1] == todayDateString)
 
                                     dayColumn(dayOfWeek: dayOfWeek, items: dayItems, isToday: isToday, columnWidth: columnWidth, periodHeight: dynamicPeriodHeight)
@@ -394,9 +423,9 @@ public struct TimetableGridView: View {
             }
             .frame(width: axisWidth)
 
-            // 7-day selector strip using identical stacked typography
+            // Visible days selector strip using identical stacked typography
             HStack(spacing: 4) {
-                ForEach(1...7, id: \.self) { day in
+                ForEach(visibleDays, id: \.self) { day in
                     let idx = day - 1
                     let dateStr = idx < dateStrings.count ? dateStrings[idx] : ""
                     let isSelected = (day == selectedDayOfWeek)
@@ -468,7 +497,7 @@ public struct TimetableGridView: View {
                     let items = dayAllDayMap[selectedDayOfWeek] ?? []
                     allDayItemsContainer(items: items, width: columnWidth)
                 } else {
-                    ForEach(1...visibleDayCount, id: \.self) { dow in
+                    ForEach(visibleDays, id: \.self) { dow in
                         let items = dayAllDayMap[dow] ?? []
                         allDayItemsContainer(items: items, width: columnWidth)
                     }
@@ -521,7 +550,7 @@ public struct TimetableGridView: View {
             .frame(width: axisWidth)
 
             // Day columns
-            ForEach(1...visibleDayCount, id: \.self) { dayOfWeek in
+            ForEach(visibleDays, id: \.self) { dayOfWeek in
                 let index = dayOfWeek - 1
                 let dateStr = index < dateStrings.count ? dateStrings[index] : ""
                 let isToday = (dateStr == todayDateString)

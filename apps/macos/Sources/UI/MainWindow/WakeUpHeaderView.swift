@@ -44,16 +44,6 @@ public struct WakeUpHeaderView: View {
                                 .font(.system(size: 21, weight: .bold))
                                 .foregroundColor(.primary)
 
-                            if !appState.isViewingCurrentWeek {
-                                Text("非本周")
-                                    .font(.system(size: 10, weight: .bold))
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(Color(hex: "#FF5A5F"))
-                                    .clipShape(Capsule())
-                            }
-
                             Image(systemName: isShowingWeekPopover ? "chevron.up" : "chevron.down")
                                 .font(.system(size: 11, weight: .bold))
                                 .foregroundColor(.secondary.opacity(0.7))
@@ -263,7 +253,7 @@ public struct WakeUpQuickGridPopover: View {
                     appState.isShowingSettings = true
                 }
 
-                gridItem(icon: "archivebox", label: "已选课程") {
+                gridItem(icon: "archivebox", label: "事项管理") {
                     isPresented = false
                     appState.isShowingCourseList = true
                 }

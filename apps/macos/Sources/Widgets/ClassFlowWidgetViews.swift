@@ -301,13 +301,18 @@ public struct TodayClassesWidgetView: View {
 
             // 3. Right Column: Course Cards Flow
             VStack(alignment: .leading, spacing: 5) {
+                let dfTime = DateFormatter()
+                let _ = { dfTime.dateFormat = "HH:mm" }()
+                let nowTimeStr = dfTime.string(from: Date())
+                let upcomingCourses = payload.todayClasses.filter { $0.endTime >= nowTimeStr || $0.isOngoing }
+
                 if payload.todayClasses.isEmpty {
                     Spacer()
                     VStack(spacing: 5) {
                         Image(systemName: "sun.max.fill")
                             .font(.system(size: 22))
                             .foregroundStyle(Color(hex: "#FF9500", defaultColor: .orange))
-                        Text("今日无课")
+                        Text("今日无安排")
                             .font(.system(size: 12.5, weight: .bold))
                             .foregroundStyle(.primary.opacity(0.8))
                         Text("去图书馆或尽情放松吧 ☕")
@@ -316,8 +321,23 @@ public struct TodayClassesWidgetView: View {
                     }
                     .frame(maxWidth: .infinity)
                     Spacer()
+                } else if upcomingCourses.isEmpty {
+                    Spacer()
+                    VStack(spacing: 5) {
+                        Image(systemName: "checkmark.seal.fill")
+                            .font(.system(size: 22))
+                            .foregroundStyle(Color(hex: "#34C759", defaultColor: .green))
+                        Text("今日安排已结束")
+                            .font(.system(size: 12.5, weight: .bold))
+                            .foregroundStyle(.primary.opacity(0.8))
+                        Text("早点休息，明天加油 ✨")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    Spacer()
                 } else {
-                    let displayCourses = Array(payload.todayClasses.prefix(3))
+                    let displayCourses = Array(upcomingCourses.prefix(3))
                     ForEach(displayCourses) { item in
                         Link(destination: URL(string: "classflow://occurrence/\(item.id)")!) {
                             HStack(spacing: 7) {

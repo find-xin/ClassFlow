@@ -92,11 +92,19 @@ fun TimetableAppearanceDialog(
     val textSecondary = if (isDark) Color(0xFFA1A3AC) else Color(0xFF6B7280)
     val dividerColor = if (isDark) Color.White.copy(alpha = 0.08f) else Color(0xFFF0F0F2)
 
+    val context = androidx.compose.ui.platform.LocalContext.current
     val photoPickerLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
     ) { uri: android.net.Uri? ->
         if (uri != null) {
-            onUpdateSettings(settings.copy(customWallpaperUri = uri.toString()))
+            val savedPath = org.classflow.data.local.SettingsManager.saveCustomWallpaperFromUri(context, uri)
+            onUpdateSettings(
+                settings.copy(
+                    customWallpaperUri = savedPath ?: uri.toString(),
+                    wallpaperPreset = "custom",
+                    usePureColorBackground = false
+                )
+            )
         }
     }
 
@@ -158,13 +166,21 @@ fun TimetableAppearanceDialog(
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         skinPresets.forEach { preset ->
-                            val isSelected = (settings.wallpaperPreset == preset.id)
+                            val isSelected = (settings.wallpaperPreset == preset.id && settings.customWallpaperUri.isNullOrBlank() && !settings.usePureColorBackground)
                             val colors = if (isDark) preset.darkColors else preset.lightColors
 
                             Column(
                                 modifier = Modifier
                                     .width(110.dp)
-                                    .clickable { onUpdateSettings(settings.copy(wallpaperPreset = preset.id)) },
+                                    .clickable {
+                                        onUpdateSettings(
+                                            settings.copy(
+                                                wallpaperPreset = preset.id,
+                                                customWallpaperUri = null,
+                                                usePureColorBackground = false
+                                            )
+                                        )
+                                    },
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
                                 Box(
@@ -250,7 +266,7 @@ fun TimetableAppearanceDialog(
                                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                                     if (!settings.customWallpaperUri.isNullOrBlank()) {
                                         OutlinedButton(
-                                            onClick = { onUpdateSettings(settings.copy(customWallpaperUri = null)) },
+                                            onClick = { onUpdateSettings(settings.copy(customWallpaperUri = null, wallpaperPreset = "default")) },
                                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
                                             shape = RoundedCornerShape(8.dp),
                                             modifier = Modifier.height(28.dp)

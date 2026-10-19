@@ -134,10 +134,6 @@ public struct CourseCardView: View {
                                 .foregroundColor(.yellow)
                         }
 
-                        if !item.isCurrentWeek {
-                            statusPill("非本周", color: isDarkMode ? Color.white.opacity(0.22) : Color.black.opacity(0.28))
-                        }
-
                         if item.status == .cancelled {
                             statusPill("已停", color: .red)
                         } else if item.status == .rescheduled {

@@ -6,6 +6,7 @@ import ClassFlowCore
 public struct CourseAddSheet: View {
     public let semesterId: UUID
     public let availableSections: [SectionTime]
+    public let totalWeeks: Int
     public let onSave: (Course) -> Void
     public let onDismiss: () -> Void
 
@@ -35,8 +36,34 @@ public struct CourseAddSheet: View {
         public var classroom: String = ""
         public var teacher: String = ""
         public var startWeek: Int = 1
-        public var endWeek: Int = 16
-        public var customWeeks: Set<Int> = Set(1...16)
+        public var endWeek: Int = 20
+        public var customWeeks: Set<Int> = Set(1...20)
+
+        public init(
+            dayOfWeek: Int = 1,
+            timeMode: TimeMode = .bySection,
+            startSection: Int = 1,
+            endSection: Int = 2,
+            customStartTime: String = "08:00",
+            customEndTime: String = "09:35",
+            classroom: String = "",
+            teacher: String = "",
+            startWeek: Int = 1,
+            endWeek: Int = 20,
+            customWeeks: Set<Int>? = nil
+        ) {
+            self.dayOfWeek = dayOfWeek
+            self.timeMode = timeMode
+            self.startSection = startSection
+            self.endSection = endSection
+            self.customStartTime = customStartTime
+            self.customEndTime = customEndTime
+            self.classroom = classroom
+            self.teacher = teacher
+            self.startWeek = startWeek
+            self.endWeek = endWeek
+            self.customWeeks = customWeeks ?? Set(startWeek...endWeek)
+        }
     }
 
     @State private var schedules: [ScheduleDraft]
@@ -49,6 +76,8 @@ public struct CourseAddSheet: View {
     public init(
         semesterId: UUID,
         availableSections: [SectionTime],
+        totalWeeks: Int = 20,
+        defaultDayOfWeek: Int = 1,
         initialSlot: (dayOfWeek: Int, startSection: Int, endSection: Int)? = nil,
         courseNameSuggestions: [String] = [],
         teacherSuggestions: [String] = [],
@@ -58,18 +87,36 @@ public struct CourseAddSheet: View {
     ) {
         self.semesterId = semesterId
         self.availableSections = availableSections
+        self.totalWeeks = max(1, totalWeeks)
         self.courseNameSuggestions = courseNameSuggestions
         self.teacherSuggestions = teacherSuggestions
         self.classroomSuggestions = classroomSuggestions
         self.onSave = onSave
         self.onDismiss = onDismiss
 
+        let clampedWeeks = max(1, totalWeeks)
         if let slot = initialSlot {
             _schedules = State(initialValue: [
-                ScheduleDraft(dayOfWeek: slot.dayOfWeek, startSection: slot.startSection, endSection: slot.endSection)
+                ScheduleDraft(
+                    dayOfWeek: slot.dayOfWeek,
+                    startSection: slot.startSection,
+                    endSection: slot.endSection,
+                    startWeek: 1,
+                    endWeek: clampedWeeks,
+                    customWeeks: Set(1...clampedWeeks)
+                )
             ])
         } else {
-            _schedules = State(initialValue: [ScheduleDraft()])
+            _schedules = State(initialValue: [
+                ScheduleDraft(
+                    dayOfWeek: defaultDayOfWeek,
+                    startSection: 1,
+                    endSection: 2,
+                    startWeek: 1,
+                    endWeek: clampedWeeks,
+                    customWeeks: Set(1...clampedWeeks)
+                )
+            ])
         }
     }
 
@@ -314,7 +361,7 @@ public struct CourseAddSheet: View {
                                         .foregroundColor(.secondary)
 
                                     Picker("", selection: $draft.startWeek) {
-                                        ForEach(1...25, id: \.self) { w in
+                                        ForEach(1...totalWeeks, id: \.self) { w in
                                             Text("第 \(w) 周").tag(w)
                                         }
                                     }
@@ -332,7 +379,7 @@ public struct CourseAddSheet: View {
                                         .foregroundColor(.secondary)
 
                                     Picker("", selection: $draft.endWeek) {
-                                        ForEach(1...25, id: \.self) { w in
+                                        ForEach(1...totalWeeks, id: \.self) { w in
                                             Text("第 \(w) 周").tag(w)
                                         }
                                     }
@@ -348,7 +395,7 @@ public struct CourseAddSheet: View {
 
                                 WeekMatrixPickerView(
                                     selectedWeeks: $draft.customWeeks,
-                                    maxWeeks: 25,
+                                    maxWeeks: totalWeeks,
                                     accentColor: Color(hex: colorHex)
                                 )
                             }
@@ -373,7 +420,16 @@ public struct CourseAddSheet: View {
 
     private func addScheduleDraft() {
         let nextDay = min(7, (schedules.last?.dayOfWeek ?? 1) + 2)
-        schedules.append(ScheduleDraft(dayOfWeek: nextDay, startSection: 1, endSection: 2))
+        schedules.append(
+            ScheduleDraft(
+                dayOfWeek: nextDay,
+                startSection: 1,
+                endSection: 2,
+                startWeek: 1,
+                endWeek: totalWeeks,
+                customWeeks: Set(1...totalWeeks)
+            )
+        )
     }
 
     private func saveCourse() {

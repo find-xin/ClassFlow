@@ -4,6 +4,7 @@ import Foundation
 public struct CalendarEvent: Codable, Sendable, Identifiable, Equatable, Hashable {
     public var id: UUID
     public var calendarId: UUID
+    public var semesterId: UUID?
     public var title: String
     /// ISO 8601 DateTime string
     public var startTime: String
@@ -38,6 +39,7 @@ public struct CalendarEvent: Codable, Sendable, Identifiable, Equatable, Hashabl
     public init(
         id: UUID = UUID(),
         calendarId: UUID = UUID(),
+        semesterId: UUID? = nil,
         title: String,
         startTime: String,
         endTime: String,
@@ -61,6 +63,7 @@ public struct CalendarEvent: Codable, Sendable, Identifiable, Equatable, Hashabl
     ) {
         self.id = id
         self.calendarId = calendarId
+        self.semesterId = semesterId
         self.title = title
         self.startTime = startTime
         self.endTime = endTime
@@ -85,8 +88,29 @@ public struct CalendarEvent: Codable, Sendable, Identifiable, Equatable, Hashabl
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.id = try container.decode(UUID.self, forKey: .id)
-        self.calendarId = try container.decode(UUID.self, forKey: .calendarId)
+        if let directId = try? container.decode(UUID.self, forKey: .id) {
+            self.id = directId
+        } else if let idStr = try? container.decode(String.self, forKey: .id), let parsed = UUID(uuidString: idStr) {
+            self.id = parsed
+        } else {
+            self.id = UUID()
+        }
+        if let directCalId = try? container.decode(UUID.self, forKey: .calendarId) {
+            self.calendarId = directCalId
+        } else if let calIdStr = try? container.decode(String.self, forKey: .calendarId), let parsed = UUID(uuidString: calIdStr) {
+            self.calendarId = parsed
+        } else {
+            self.calendarId = UUID()
+        }
+        if let directSemId = try? container.decode(UUID.self, forKey: .semesterId) {
+            self.semesterId = directSemId
+        } else if let semIdStr = try? container.decode(String.self, forKey: .semesterId), let parsed = UUID(uuidString: semIdStr) {
+            self.semesterId = parsed
+        } else if let semIdStr = try? container.decode(String.self, forKey: .semesterId), !semIdStr.isEmpty {
+            self.semesterId = Semester.parseOrDeriveUUID(semIdStr)
+        } else {
+            self.semesterId = nil
+        }
         self.title = try container.decode(String.self, forKey: .title)
         self.startTime = try container.decode(String.self, forKey: .startTime)
         self.endTime = try container.decode(String.self, forKey: .endTime)

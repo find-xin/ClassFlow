@@ -357,7 +357,7 @@ public struct WakeUpWeekPopoverView: View {
 
             // 3. Quick Week Jump Pills Grid
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 5), spacing: 6) {
-                ForEach(1...min(25, totalWeeks), id: \.self) { w in
+                ForEach(1...max(1, totalWeeks), id: \.self) { w in
                     let isSel = (w == appState.selectedWeek)
                     let isCur = (w == appState.calculatedCurrentWeek)
 

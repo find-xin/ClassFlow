@@ -86,7 +86,7 @@ public struct TimetableAppearanceSheet: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 14) {
                     ForEach(presets) { preset in
-                        let isSelected = (appState.settings.wallpaperPreset == preset.id)
+                        let isSelected = (appState.settings.wallpaperPreset == preset.id && appState.settings.customBackgroundPath == nil && !appState.settings.usePureColorBackground)
 
                         VStack(alignment: .leading, spacing: 6) {
                             ZStack(alignment: .bottomLeading) {
@@ -123,6 +123,8 @@ public struct TimetableAppearanceSheet: View {
                         .onTapGesture {
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                                 appState.settings.wallpaperPreset = preset.id
+                                appState.settings.customBackgroundPath = nil
+                                appState.settings.usePureColorBackground = false
                                 appState.save()
                             }
                         }
@@ -151,6 +153,9 @@ public struct TimetableAppearanceSheet: View {
                     if appState.settings.customBackgroundPath != nil {
                         Button("恢复默认") {
                             appState.settings.customBackgroundPath = nil
+                            appState.settings.wallpaperPreset = "default"
+                            appState.settings.usePureColorBackground = false
+                            WallpaperImageCache.shared.clearCache()
                             appState.save()
                         }
                         .font(.caption)
@@ -336,8 +341,21 @@ public struct TimetableAppearanceSheet: View {
         panel.allowsMultipleSelection = false
         panel.allowedContentTypes = [.image]
         if panel.runModal() == .OK, let url = panel.url {
-            appState.settings.customBackgroundPath = url.path
+            let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
+            let appDir = appSupport.appendingPathComponent("ClassFlow", isDirectory: true)
+            try? FileManager.default.createDirectory(at: appDir, withIntermediateDirectories: true)
+            let destUrl = appDir.appendingPathComponent("custom_wallpaper.\(url.pathExtension)")
+            try? FileManager.default.removeItem(at: destUrl)
+            do {
+                try FileManager.default.copyItem(at: url, to: destUrl)
+                WallpaperImageCache.shared.clearCache()
+                appState.settings.customBackgroundPath = destUrl.path
+            } catch {
+                WallpaperImageCache.shared.clearCache()
+                appState.settings.customBackgroundPath = url.path
+            }
             appState.settings.wallpaperPreset = "custom"
+            appState.settings.usePureColorBackground = false
             appState.save()
         }
     }

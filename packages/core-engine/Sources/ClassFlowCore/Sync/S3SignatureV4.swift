@@ -26,6 +26,15 @@ public struct S3SignatureV4: Sendable {
         public var payloadHashHeader: String
     }
 
+    public static func uriEncode(_ string: String, encodeSlash: Bool = true) -> String {
+        var allowed = CharacterSet.alphanumerics
+        allowed.insert(charactersIn: "-_.~")
+        if !encodeSlash {
+            allowed.insert(charactersIn: "/")
+        }
+        return string.addingPercentEncoding(withAllowedCharacters: allowed) ?? string
+    }
+
     /// Computes SigV4 authentication headers for an outgoing HTTP request.
     public func signRequest(
         method: String,
@@ -69,7 +78,7 @@ public struct S3SignatureV4: Sendable {
         let queryItems = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
         let canonicalQuery = queryItems
             .sorted { $0.name < $1.name }
-            .map { "\($0.name)=\($0.value ?? "")" }
+            .map { "\(Self.uriEncode($0.name))=\(Self.uriEncode($0.value ?? ""))" }
             .joined(separator: "&")
 
         // 4. Canonical Request

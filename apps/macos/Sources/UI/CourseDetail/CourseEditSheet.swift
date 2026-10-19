@@ -7,6 +7,7 @@ public struct CourseEditSheet: View {
     public let course: Course
     public let occurrence: TimelineItem?
     public let availableSections: [SectionTime]
+    public let totalWeeks: Int
     public let onSaveCourse: (Course) -> Void
     public let onApplyMutation: ((EditingScope, Int, Int, Int, String?) -> Void)?
     public let onDismiss: () -> Void
@@ -53,8 +54,8 @@ public struct CourseEditSheet: View {
         public var classroom: String = ""
         public var teacher: String = ""
         public var startWeek: Int = 1
-        public var endWeek: Int = 16
-        public var customWeeks: Set<Int> = Set(1...16)
+        public var endWeek: Int = 20
+        public var customWeeks: Set<Int> = Set(1...20)
     }
 
     @State private var schedules: [ScheduleDraft] = []
@@ -69,6 +70,7 @@ public struct CourseEditSheet: View {
         occurrence: TimelineItem? = nil,
         initialMode: EditMode = .fullCourse,
         availableSections: [SectionTime],
+        totalWeeks: Int = 20,
         courseNameSuggestions: [String] = [],
         teacherSuggestions: [String] = [],
         classroomSuggestions: [String] = [],
@@ -79,6 +81,7 @@ public struct CourseEditSheet: View {
         self.course = course
         self.occurrence = occurrence
         self.availableSections = availableSections
+        self.totalWeeks = max(1, totalWeeks)
         self.courseNameSuggestions = courseNameSuggestions
         self.teacherSuggestions = teacherSuggestions
         self.classroomSuggestions = classroomSuggestions
@@ -471,7 +474,7 @@ public struct CourseEditSheet: View {
                                             .foregroundColor(.secondary)
 
                                         Picker("", selection: $draft.startWeek) {
-                                            ForEach(1...25, id: \.self) { w in
+                                            ForEach(1...totalWeeks, id: \.self) { w in
                                                 Text("第 \(w) 周").tag(w)
                                             }
                                         }
@@ -489,7 +492,7 @@ public struct CourseEditSheet: View {
                                             .foregroundColor(.secondary)
 
                                         Picker("", selection: $draft.endWeek) {
-                                            ForEach(1...25, id: \.self) { w in
+                                            ForEach(1...totalWeeks, id: \.self) { w in
                                                 Text("第 \(w) 周").tag(w)
                                             }
                                         }
@@ -505,7 +508,7 @@ public struct CourseEditSheet: View {
 
                                     WeekMatrixPickerView(
                                         selectedWeeks: $draft.customWeeks,
-                                        maxWeeks: 25,
+                                        maxWeeks: totalWeeks,
                                         accentColor: Color(hex: colorHex)
                                     )
                                 }
@@ -531,7 +534,16 @@ public struct CourseEditSheet: View {
 
     private func addScheduleDraft() {
         let nextDay = min(7, (schedules.last?.dayOfWeek ?? 1) + 2)
-        schedules.append(ScheduleDraft(dayOfWeek: nextDay, startSection: 1, endSection: 2))
+        schedules.append(
+            ScheduleDraft(
+                dayOfWeek: nextDay,
+                startSection: 1,
+                endSection: 2,
+                startWeek: 1,
+                endWeek: totalWeeks,
+                customWeeks: Set(1...totalWeeks)
+            )
+        )
     }
 
     private func handleSave() {

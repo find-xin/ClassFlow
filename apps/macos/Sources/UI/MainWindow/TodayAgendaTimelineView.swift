@@ -90,13 +90,14 @@ public struct TodayAgendaTimelineView: View {
     }
 
     private var filteredTasks: [PomodoroTask] {
+        let tasks = appState.currentSemesterPomodoroTasks
         switch taskFilter {
         case .inProgress:
-            return appState.pomodoroTasks.filter { !$0.isCompleted }
+            return tasks.filter { !$0.isCompleted }
         case .completed:
-            return appState.pomodoroTasks.filter { $0.isCompleted }
+            return tasks.filter { $0.isCompleted }
         case .all:
-            return appState.pomodoroTasks
+            return tasks
         }
     }
 
@@ -729,6 +730,20 @@ public struct TodayAgendaTimelineView: View {
                         .padding(.vertical, 1)
                         .background(Color(hex: task.priority.colorHex).opacity(0.12))
                         .clipShape(Capsule())
+
+                    if let d = task.dueDate, !d.isEmpty {
+                        HStack(spacing: 3) {
+                            Image(systemName: "calendar.badge.clock")
+                                .font(.system(size: 8.5))
+                            Text(d)
+                                .font(.system(size: 8.5, design: .monospaced))
+                        }
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(Color.primary.opacity(0.05))
+                        .clipShape(Capsule())
+                    }
                 }
 
                 if let n = task.notes, !n.isEmpty {

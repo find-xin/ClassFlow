@@ -16,4 +16,9 @@ class ClassFlowApplication : Application() {
             "classflow_database"
         ).fallbackToDestructiveMigration().build()
     }
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        org.classflow.data.local.WidgetDataManager.triggerWidgetUpdate(this)
+    }
 }

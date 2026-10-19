@@ -40,25 +40,35 @@ import org.classflow.ui.components.parseHexColor
 import org.classflow.ui.components.showTimePicker
 import java.util.UUID
 
-data class ScheduleDraft(
+class ScheduleDraft(
     val id: String = UUID.randomUUID().toString(),
-    var dayOfWeek: Int = 1,
-    var timeMode: String = "bySection", // "bySection" or "byCustomTime"
-    var startSection: Int = 1,
-    var endSection: Int = 2,
-    var customStartTime: String = "08:00",
-    var customEndTime: String = "09:35",
-    var classroom: String = "",
-    var teacher: String = "",
-    var customWeeks: Set<Int> = (1..16).toSet()
-)
+    dayOfWeek: Int = 1,
+    timeMode: String = "bySection", // "bySection" or "byCustomTime"
+    startSection: Int = 1,
+    endSection: Int = 2,
+    customStartTime: String = "08:00",
+    customEndTime: String = "09:35",
+    classroom: String = "",
+    teacher: String = "",
+    customWeeks: Set<Int> = (1..20).toSet()
+) {
+    var dayOfWeek by mutableIntStateOf(dayOfWeek)
+    var timeMode by mutableStateOf(timeMode)
+    var startSection by mutableIntStateOf(startSection)
+    var endSection by mutableIntStateOf(endSection)
+    var customStartTime by mutableStateOf(customStartTime)
+    var customEndTime by mutableStateOf(customEndTime)
+    var classroom by mutableStateOf(classroom)
+    var teacher by mutableStateOf(teacher)
+    var customWeeks by mutableStateOf(customWeeks)
+}
 
 /**
  * Unified Course Creation Dialog with macOS-grade modal aesthetics:
  * - Surface(RoundedCornerShape(20.dp), heightIn(max = 680.dp))
  * - Inset rounded cards (RoundedCornerShape(12.dp), surfaceVariant)
  * - BasicTextField without thick box outlines
- * - Multi-slot arrangements with interactive time pickers & WeekMatrixPicker (1..25)
+ * - Multi-slot arrangements with interactive time pickers & WeekMatrixPicker (1..totalWeeks)
  */
 @Composable
 fun CourseAddDialog(
@@ -66,6 +76,7 @@ fun CourseAddDialog(
     initialDayOfWeek: Int = 1,
     initialStartSection: Int = 1,
     initialEndSection: Int = 2,
+    totalWeeks: Int = 20,
     availableSections: List<SectionTime> = emptyList(),
     existingCourseNames: List<String> = emptyList(),
     existingTeachers: List<String> = emptyList(),
@@ -86,7 +97,8 @@ fun CourseAddDialog(
             ScheduleDraft(
                 dayOfWeek = initialDayOfWeek,
                 startSection = initialStartSection,
-                endSection = maxOf(initialStartSection, initialEndSection)
+                endSection = maxOf(initialStartSection, initialEndSection),
+                customWeeks = (1..maxOf(1, totalWeeks)).toSet()
             )
         )
     }
@@ -348,7 +360,7 @@ fun CourseAddDialog(
                                         endSection = last?.endSection ?: 2,
                                         classroom = last?.classroom ?: "",
                                         teacher = last?.teacher ?: defaultTeacher,
-                                        customWeeks = last?.customWeeks ?: (1..16).toSet()
+                                        customWeeks = last?.customWeeks ?: (1..maxOf(1, totalWeeks)).toSet()
                                     )
                                 )
                             },
@@ -698,16 +710,27 @@ fun CourseAddDialog(
                                         .padding(14.dp),
                                     verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    Text(
-                                        text = "学期生效周次",
-                                        fontSize = 12.5.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "学期生效周次",
+                                            fontSize = 12.5.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Text(
+                                            text = "已选 ${draft.customWeeks.size} 周",
+                                            fontSize = 11.5.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                                        )
+                                    }
                                     WeekMatrixPicker(
                                         selectedWeeks = draft.customWeeks,
                                         onWeeksChange = { draft.customWeeks = it },
-                                        maxWeeks = 25,
+                                        maxWeeks = totalWeeks,
                                         accentColor = parseHexColor(colorHex),
                                         isDark = isDark
                                     )

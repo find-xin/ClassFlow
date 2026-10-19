@@ -82,13 +82,14 @@ public struct StudyFocusView: View {
     }
 
     private var filteredTasks: [PomodoroTask] {
+        let tasks = appState.currentSemesterPomodoroTasks
         switch taskFilter {
         case .inProgress:
-            return appState.pomodoroTasks.filter { !$0.isCompleted }
+            return tasks.filter { !$0.isCompleted }
         case .completed:
-            return appState.pomodoroTasks.filter { $0.isCompleted }
+            return tasks.filter { $0.isCompleted }
         case .all:
-            return appState.pomodoroTasks
+            return tasks
         }
     }
 
@@ -237,7 +238,7 @@ public struct StudyFocusView: View {
                     appState.activePomodoroTaskId = nil
                 }
                 Divider()
-                ForEach(appState.pomodoroTasks.filter { !$0.isCompleted }) { task in
+                ForEach(appState.currentSemesterPomodoroTasks.filter { !$0.isCompleted }) { task in
                     Button(task.title) {
                         appState.activePomodoroTaskId = task.id
                     }
@@ -560,6 +561,39 @@ public struct StudyFocusView: View {
                         .padding(.vertical, 1)
                         .background(Color(hex: task.priority.colorHex).opacity(0.12))
                         .clipShape(Capsule())
+
+                    if let d = task.dueDate, !d.isEmpty {
+                        HStack(spacing: 3) {
+                            Image(systemName: "calendar.badge.clock")
+                                .font(.system(size: 9))
+                            Text(d)
+                                .font(.system(size: 9, design: .monospaced))
+                        }
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .background(Color.primary.opacity(0.05))
+                        .clipShape(Capsule())
+                    }
+
+                    if let f = task.frequency, f != "none" {
+                        let label: String = {
+                            switch f {
+                            case "daily": return "每天"
+                            case "workdays": return "工作日"
+                            case "weekly": return "每周"
+                            case "monthly": return "每月"
+                            default: return f
+                            }
+                        }()
+                        Text(label)
+                            .font(.system(size: 9))
+                            .foregroundColor(.secondary)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(Color.primary.opacity(0.05))
+                            .clipShape(Capsule())
+                    }
                 }
 
                 if let n = task.notes, !n.isEmpty {
@@ -632,7 +666,7 @@ public struct StudyFocusView: View {
 
     private var recentRecordsCard: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack {
+            HStack(spacing: 8) {
                 Text("最近专注记录")
                     .font(.system(size: 15, weight: .bold))
                     .foregroundColor(.primary)
@@ -640,6 +674,17 @@ public struct StudyFocusView: View {
                 Text("共记录 \(appState.pomodoroRecords.count) 次专注")
                     .font(.system(size: 11))
                     .foregroundColor(.secondary)
+
+                if !appState.pomodoroRecords.isEmpty {
+                    Button(role: .destructive) {
+                        appState.clearPomodoroRecords()
+                    } label: {
+                        Text("清空历史")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.red.opacity(0.85))
+                    }
+                    .buttonStyle(.plain)
+                }
             }
 
             VStack(spacing: 8) {

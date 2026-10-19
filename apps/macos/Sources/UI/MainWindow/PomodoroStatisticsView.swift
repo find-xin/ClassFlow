@@ -106,7 +106,7 @@ public struct PomodoroStatisticsView: View {
 
     private func computeAnalytics() -> AnalyticsSnapshot {
         let records = appState.pomodoroRecords
-        let tasks = appState.pomodoroTasks
+        let tasks = appState.currentSemesterPomodoroTasks
         let df = DateFormatters.yyyyMMdd
         let now = Date()
         let todayKey = df.string(from: now)
@@ -320,6 +320,17 @@ public struct PomodoroStatisticsView: View {
                 subjectDonutChartCard
                     .frame(maxWidth: .infinity)
             }
+        }
+        .onAppear {
+            if cachedAnalytics == nil {
+                cachedAnalytics = computeAnalytics()
+            }
+        }
+        .onChange(of: appState.pomodoroRecords) { _, _ in
+            cachedAnalytics = computeAnalytics()
+        }
+        .onChange(of: appState.pomodoroTasks) { _, _ in
+            cachedAnalytics = computeAnalytics()
         }
     }
 

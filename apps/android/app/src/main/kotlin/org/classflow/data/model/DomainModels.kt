@@ -37,7 +37,9 @@ data class CourseSchedule(
     val weekPattern: WeekPatternType = WeekPatternType.ALL,
     val customWeeks: List<Int> = emptyList(),
     val customStartTime: String? = null,
-    val customEndTime: String? = null
+    val customEndTime: String? = null,
+    val startWeek: Int = 1,
+    val endWeek: Int = 30
 )
 
 data class Course(
@@ -98,7 +100,8 @@ data class TimelineItem(
     val hasConflict: Boolean = false,
     val isAllDay: Boolean = false,
     val isTask: Boolean = false,
-    val isCompleted: Boolean = false
+    val isCompleted: Boolean = false,
+    val isRecurring: Boolean = false
 )
 
 enum class EditingScope {
@@ -122,6 +125,8 @@ data class CalendarMapping(
 
 data class CalendarEvent(
     val id: String = UUID.randomUUID().toString(),
+    val calendarId: String = UUID.randomUUID().toString(),
+    val semesterId: String? = null,
     val title: String,
     val startTime: String = "08:00",
     val endTime: String = "09:00",
@@ -152,11 +157,22 @@ data class CalendarEvent(
 
 data class StudyTask(
     val id: String = UUID.randomUUID().toString(),
+    val semesterId: String? = null,
     val title: String,
     val courseName: String? = null,
     val targetMinutes: Int = 45,
     val completedMinutes: Int = 0,
-    val isCompleted: Boolean = false
+    val isCompleted: Boolean = false,
+    val startDate: String? = null,
+    val dueDate: String? = null,
+    val frequency: String = "none",
+    val customDaysOfWeek: List<Int> = emptyList(),
+    val customWeeks: List<Int> = emptyList(),
+    val endRepeatType: String = "never",
+    val endRepeatUntil: String? = null,
+    val endRepeatCount: Int? = null,
+    val priority: String = "medium",
+    val notes: String? = null
 )
 
 data class FocusRecord(
@@ -165,6 +181,12 @@ data class FocusRecord(
     val courseName: String? = null,
     val durationMinutes: Int,
     val completedAt: String
+)
+
+data class SyncTombstone(
+    val entityId: String,
+    val entityType: String,
+    val deletedAt: Long = System.currentTimeMillis()
 )
 
 data class AppSettings(
@@ -197,8 +219,9 @@ data class AppSettings(
     val cardUseDottedBorder: Boolean = false,
     val cardBorderUseCardColor: Boolean = true,
     val cardTextBlendCardColor: Boolean = false,
-    val syncInterval: String = "manual", // "manual", "on_launch", "15m", "30m", "1h", "6h", "daily"
+    val syncInterval: String = "manual", // "manual", "15m", "30m", "1h", "2h", "6h"
     val autoSyncEnabled: Boolean = false,
+    val syncOnStartup: Boolean = false,
     val lastSyncedTime: String? = null,
     val calendarName: String = "ClassFlow",
     val calendarReminderMinutes: Int? = 15,

@@ -29,11 +29,23 @@ public struct WeekPattern: Codable, Sendable, Equatable, Hashable {
     }
 
     public init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.type = try container.decode(PatternType.self, forKey: .type)
-        self.startWeek = try container.decodeIfPresent(Int.self, forKey: .startWeek) ?? 1
-        self.endWeek = try container.decodeIfPresent(Int.self, forKey: .endWeek) ?? 30
-        self.customWeeks = try container.decodeIfPresent([Int].self, forKey: .customWeeks)
+        if let container = try? decoder.container(keyedBy: CodingKeys.self) {
+            self.type = (try? container.decode(PatternType.self, forKey: .type)) ?? .all
+            self.startWeek = (try? container.decodeIfPresent(Int.self, forKey: .startWeek)) ?? 1
+            self.endWeek = (try? container.decodeIfPresent(Int.self, forKey: .endWeek)) ?? 30
+            self.customWeeks = try? container.decodeIfPresent([Int].self, forKey: .customWeeks)
+        } else if let single = try? decoder.singleValueContainer(), let str = try? single.decode(String.self) {
+            let lower = str.lowercased()
+            self.type = PatternType(rawValue: lower) ?? .all
+            self.startWeek = 1
+            self.endWeek = 30
+            self.customWeeks = nil
+        } else {
+            self.type = .all
+            self.startWeek = 1
+            self.endWeek = 30
+            self.customWeeks = nil
+        }
     }
 
     public static var all: WeekPattern {

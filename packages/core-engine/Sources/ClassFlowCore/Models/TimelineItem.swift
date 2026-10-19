@@ -57,6 +57,8 @@ public struct TimelineItem: Codable, Sendable, Identifiable, Equatable, Hashable
     public var hasConflict: Bool
     /// IDs of overlapping items for conflict inspection
     public var conflictingItemIds: [String]
+    /// Whether this occurrence belongs to a repeating course or event
+    public var isRecurring: Bool
 
     public init(
         id: String,
@@ -80,7 +82,8 @@ public struct TimelineItem: Codable, Sendable, Identifiable, Equatable, Hashable
         notes: String? = nil,
         isAllDay: Bool = false,
         hasConflict: Bool = false,
-        conflictingItemIds: [String] = []
+        conflictingItemIds: [String] = [],
+        isRecurring: Bool = false
     ) {
         self.id = id
         self.sourceType = sourceType
@@ -104,6 +107,7 @@ public struct TimelineItem: Codable, Sendable, Identifiable, Equatable, Hashable
         self.isAllDay = isAllDay
         self.hasConflict = hasConflict
         self.conflictingItemIds = conflictingItemIds
+        self.isRecurring = isRecurring
     }
 
     /// Number of periods spanned by this occurrence.

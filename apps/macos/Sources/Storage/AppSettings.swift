@@ -53,6 +53,10 @@ public struct AppSettings: Codable, Sendable, Equatable {
     public var dailyBriefingHour: Int
     public var dailyBriefingMinute: Int
 
+    // Cloud Sync Settings (Remote Save Two-Step Control)
+    public var syncOnStartup: Bool
+    public var autoSyncInterval: String // "off", "15m", "30m", "1h", "2h", "6h"
+
     public init(
         showWeekends: Bool = true,
         showNonCurrentWeekCourses: Bool = true,
@@ -95,7 +99,9 @@ public struct AppSettings: Codable, Sendable, Equatable {
         classAlertMinutes: Int = 15,
         enableDailyBriefing: Bool = true,
         dailyBriefingHour: Int = 7,
-        dailyBriefingMinute: Int = 30
+        dailyBriefingMinute: Int = 30,
+        syncOnStartup: Bool = false,
+        autoSyncInterval: String = "off"
     ) {
         self.showWeekends = showWeekends
         self.showNonCurrentWeekCourses = showNonCurrentWeekCourses
@@ -139,6 +145,8 @@ public struct AppSettings: Codable, Sendable, Equatable {
         self.enableDailyBriefing = enableDailyBriefing
         self.dailyBriefingHour = dailyBriefingHour
         self.dailyBriefingMinute = dailyBriefingMinute
+        self.syncOnStartup = syncOnStartup
+        self.autoSyncInterval = autoSyncInterval
     }
 
     public init(from decoder: Decoder) throws {
@@ -189,5 +197,7 @@ public struct AppSettings: Codable, Sendable, Equatable {
         self.enableDailyBriefing = try container.decodeIfPresent(Bool.self, forKey: .enableDailyBriefing) ?? true
         self.dailyBriefingHour = try container.decodeIfPresent(Int.self, forKey: .dailyBriefingHour) ?? 7
         self.dailyBriefingMinute = try container.decodeIfPresent(Int.self, forKey: .dailyBriefingMinute) ?? 30
+        self.syncOnStartup = try container.decodeIfPresent(Bool.self, forKey: .syncOnStartup) ?? false
+        self.autoSyncInterval = try container.decodeIfPresent(String.self, forKey: .autoSyncInterval) ?? "off"
     }
 }
