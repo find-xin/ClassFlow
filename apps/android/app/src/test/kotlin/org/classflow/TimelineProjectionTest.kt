@@ -502,5 +502,62 @@ class TimelineProjectionTest {
         val totalFallback = maxOf(1, maxOf(maxConfigEmpty, maxCourse0))
         assertEquals(12, totalFallback)
     }
+
+    @Test
+    fun testTruncatedCourseViaCustomWeeksDisappearsFromFutureWeeks() {
+        val course = Course(
+            id = "c_math",
+            semesterId = "sem_1",
+            name = "高等数学",
+            color = "#5B7FB5",
+            schedules = listOf(
+                CourseSchedule(
+                    id = "s_math",
+                    courseId = "c_math",
+                    dayOfWeek = 1,
+                    startSection = 1,
+                    endSection = 2,
+                    weekPattern = WeekPatternType.CUSTOM,
+                    customWeeks = listOf(1, 2, 3),
+                    startWeek = 1,
+                    endWeek = 3
+                )
+            )
+        )
+
+        // In week 3: active
+        val week3Occs = TimelineProjection.projectOccurrences(
+            courses = listOf(course),
+            schedules = emptyList(),
+            selectedWeek = 3,
+            currentWeek = 3,
+            sectionTimes = emptyList(),
+            showNonCurrentWeekCourses = true
+        )
+        assertEquals(1, week3Occs.size)
+        assertTrue(week3Occs.first().isCurrentWeek)
+
+        // In week 4 and week 5 (past custom weeks max): completely gone, not even ghost card
+        val week4Occs = TimelineProjection.projectOccurrences(
+            courses = listOf(course),
+            schedules = emptyList(),
+            selectedWeek = 4,
+            currentWeek = 3,
+            sectionTimes = emptyList(),
+            showNonCurrentWeekCourses = true
+        )
+        assertTrue(week4Occs.isEmpty())
+
+        val week5Occs = TimelineProjection.projectOccurrences(
+            courses = listOf(course),
+            schedules = emptyList(),
+            selectedWeek = 5,
+            currentWeek = 3,
+            sectionTimes = emptyList(),
+            showNonCurrentWeekCourses = true
+        )
+        assertTrue(week5Occs.isEmpty())
+    }
 }
+
 

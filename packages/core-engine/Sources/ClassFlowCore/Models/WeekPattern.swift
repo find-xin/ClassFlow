@@ -88,4 +88,36 @@ public struct WeekPattern: Codable, Sendable, Equatable, Hashable {
             return true
         }
     }
+
+    /// User-friendly summary representation of the week schedule (e.g., "1-16周", "1-4周", "1-16周 (单周)")
+    public var summary: String {
+        switch type {
+        case .all:
+            return "\(startWeek)-\(endWeek)周"
+        case .odd:
+            return "\(startWeek)-\(endWeek)周 (单周)"
+        case .even:
+            return "\(startWeek)-\(endWeek)周 (双周)"
+        case .custom:
+            if let customWeeks, !customWeeks.isEmpty {
+                let sorted = Array(Set(customWeeks)).sorted()
+                var ranges: [String] = []
+                var start = sorted[0]
+                var prev = sorted[0]
+                for i in 1..<sorted.count {
+                    let curr = sorted[i]
+                    if curr == prev + 1 {
+                        prev = curr
+                    } else {
+                        ranges.append(start == prev ? "\(start)周" : "\(start)-\(prev)周")
+                        start = curr
+                        prev = curr
+                    }
+                }
+                ranges.append(start == prev ? "\(start)周" : "\(start)-\(prev)周")
+                return ranges.joined(separator: ", ")
+            }
+            return "\(startWeek)-\(endWeek)周"
+        }
+    }
 }

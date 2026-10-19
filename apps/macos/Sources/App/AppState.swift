@@ -664,6 +664,9 @@ public final class AppState {
                 if event.endRepeatType == "untilDate", let until = event.endRepeatUntil, !until.isEmpty, dateStr > String(until.prefix(10)) {
                     continue
                 }
+                if let eDate = event.endDate, !eDate.isEmpty, dateStr > String(eDate.prefix(10)) {
+                    continue
+                }
             }
 
             var shouldInclude = false
@@ -867,8 +870,19 @@ public final class AppState {
                     return
                 }
                 var updated = event
+                let prevDateStr = df.string(from: prevDate)
                 updated.endRepeatType = "untilDate"
-                updated.endRepeatUntil = df.string(from: prevDate)
+                updated.endRepeatUntil = prevDateStr
+                updated.endDate = prevDateStr
+                if let weeks = updated.customWeeks {
+                    let curWeek = selectedWeek
+                    let filtered = weeks.filter { $0 < curWeek }
+                    if filtered.isEmpty {
+                        deleteCalendarEvent(id: id)
+                        return
+                    }
+                    updated.customWeeks = filtered
+                }
                 updateCalendarEvent(updated)
             }
         case .all:
@@ -1174,7 +1188,11 @@ public final class AppState {
             occurrenceDate: occurrenceDate
         )
 
-        updateCourse(result.updatedCourse)
+        if result.updatedCourse.schedules.isEmpty {
+            deleteCourse(id: courseId)
+        } else {
+            updateCourse(result.updatedCourse)
+        }
         exceptions.append(contentsOf: result.newExceptions)
         save()
     }

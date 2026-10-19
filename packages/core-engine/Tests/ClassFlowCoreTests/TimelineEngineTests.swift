@@ -279,4 +279,67 @@ struct TimelineEngineTests {
         #expect(itemA10.isCurrentWeek == false)
         #expect(itemB10.isCurrentWeek == true)
     }
+
+    @Test("Course truncated with thisAndFuture (custom weeks) completely disappears from subsequent weeks rather than lingering as dimmed ghost card")
+    func testTruncatedCourseDisappearsFromFutureWeeks() {
+        let semester = makeTestSemester()
+        let coordinator = ScheduleMutationCoordinator()
+        let course = Course(
+            id: UUID(),
+            semesterId: semester.id,
+            name: "高等数学",
+            schedules: [
+                CourseSchedule(
+                    dayOfWeek: 1,
+                    startSection: 1,
+                    endSection: 2,
+                    classroom: "A101",
+                    weekPattern: WeekPattern.all
+                )
+            ]
+        )
+
+        // Cancel schedule at Week 4 using thisAndFuture scope
+        let schedId = course.schedules[0].id
+        let mutation = coordinator.cancelSchedule(
+            course: course,
+            scheduleId: schedId,
+            scope: .thisAndFuture,
+            currentWeek: 4,
+            totalWeeks: semester.totalWeeks,
+            occurrenceDate: "2026-09-21"
+        )
+
+        // In Week 3 (prior to truncation), the course should still run normally
+        let week3Items = engine.generateOccurrences(
+            semester: semester,
+            courses: [mutation.updatedCourse],
+            exceptions: mutation.newExceptions,
+            forWeek: 3,
+            showNonCurrentWeekCourses: true
+        )
+        #expect(week3Items.count == 1)
+        #expect(week3Items[0].isCurrentWeek == true)
+
+        // In Week 4 and Week 5 (after truncation), the course must be completely gone (count == 0),
+        // and must NOT linger as a dimmed ghost card even if showNonCurrentWeekCourses is true!
+        let week4Items = engine.generateOccurrences(
+            semester: semester,
+            courses: [mutation.updatedCourse],
+            exceptions: mutation.newExceptions,
+            forWeek: 4,
+            showNonCurrentWeekCourses: true
+        )
+        #expect(week4Items.isEmpty)
+
+        let week5Items = engine.generateOccurrences(
+            semester: semester,
+            courses: [mutation.updatedCourse],
+            exceptions: mutation.newExceptions,
+            forWeek: 5,
+            showNonCurrentWeekCourses: true
+        )
+        #expect(week5Items.isEmpty)
+    }
 }
+

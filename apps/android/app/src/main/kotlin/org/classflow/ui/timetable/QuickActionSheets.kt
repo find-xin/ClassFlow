@@ -968,6 +968,26 @@ fun S3SettingsDialog(onDismiss: () -> Unit) {
     )
 }
 
+fun formatWeeksSummary(weeks: List<Int>): String {
+    if (weeks.isEmpty()) return ""
+    val sorted = weeks.distinct().sorted()
+    val ranges = mutableListOf<String>()
+    var start = sorted[0]
+    var prev = sorted[0]
+    for (i in 1 until sorted.size) {
+        val curr = sorted[i]
+        if (curr == prev + 1) {
+            prev = curr
+        } else {
+            ranges.add(if (start == prev) "${start}周" else "$start-${prev}周")
+            start = curr
+            prev = curr
+        }
+    }
+    ranges.add(if (start == prev) "${start}周" else "$start-${prev}周")
+    return ranges.joinToString(", ")
+}
+
 /**
  * Course List Dialog allowing course deletion, inspection and editing.
  */
@@ -1122,6 +1142,26 @@ fun UnifiedItemManagerDialog(
                                                     val teacherText = course.teacher ?: "暂无任课教师"
                                                     val schedCount = "${course.schedules.size} 个上课时段"
                                                     Text("$teacherText · $schedCount", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                    if (course.schedules.isNotEmpty()) {
+                                                        Spacer(modifier = Modifier.height(4.dp))
+                                                        course.schedules.forEach { s ->
+                                                            val dayName = when (s.dayOfWeek) {
+                                                                1 -> "周一"; 2 -> "周二"; 3 -> "周三"; 4 -> "周四"; 5 -> "周五"; 6 -> "周六"; 7 -> "周日"
+                                                                else -> "周${s.dayOfWeek}"
+                                                            }
+                                                            val weekText = if (s.customWeeks.isNotEmpty()) {
+                                                                formatWeeksSummary(s.customWeeks)
+                                                            } else {
+                                                                "${s.startWeek}-${s.endWeek}周"
+                                                            }
+                                                            val room = if (!s.classroom.isNullOrBlank()) " · @${s.classroom}" else ""
+                                                            Text(
+                                                                text = "$dayName 第${s.startSection}-${s.endSection}节 ($weekText)$room",
+                                                                fontSize = 11.5.sp,
+                                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                                                            )
+                                                        }
+                                                    }
                                                 }
                                                 IconButton(
                                                     onClick = { onEditCourse(course) },
@@ -1171,7 +1211,11 @@ fun UnifiedItemManagerDialog(
                                                     Text(event.title, fontWeight = FontWeight.Bold, fontSize = 14.5.sp)
                                                     val timeInfo = "${event.startTime} · ${event.frequency ?: "不重复"}"
                                                     val loc = if (!event.location.isNullOrBlank()) " · ${event.location}" else ""
-                                                    Text("$timeInfo$loc", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                    val repeatEnd = if (!event.endRepeatUntil.isNullOrBlank()) " (至 ${event.endRepeatUntil} 截止)"
+                                                                    else if (!event.endDate.isNullOrBlank() && event.frequency != "none" && event.frequency != "不重复") " (至 ${event.endDate} 截止)"
+                                                                    else ""
+                                                    val weeksInfo = if (event.customWeeks.isNotEmpty()) " · ${formatWeeksSummary(event.customWeeks)}" else ""
+                                                    Text("$timeInfo$repeatEnd$weeksInfo$loc", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                                 }
                                                 IconButton(
                                                     onClick = { onEditSchedule(event) },

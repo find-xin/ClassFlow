@@ -1305,19 +1305,41 @@ fun MainScreenHost(
                                         if (targetEventId != null) {
                                             org.classflow.data.local.CourseDataManager.addTombstone(context, targetEventId, "calendarEvent")
                                         }
-                                    } else {
                                         val curDate = try { java.time.LocalDate.parse(occurrence.date) } catch (e: Exception) { null }
                                         if (curDate != null) {
                                             val prevDateStr = curDate.minusDays(1).toString()
-                                            val updatedEvent = event.copy(endRepeatType = "untilDate", endRepeatUntil = prevDateStr)
-                                            val idx = sampleSchedules.indexOfFirst { it.id == targetEventId }
-                                            if (idx >= 0) {
-                                                sampleSchedules[idx] = updatedEvent
+                                            val updatedWeeks = if (event.customWeeks.isNotEmpty()) {
+                                                val curWeek = occurrence.weekNumber
+                                                event.customWeeks.filter { it < curWeek }
+                                            } else {
+                                                event.customWeeks
+                                            }
+                                            if (event.customWeeks.isNotEmpty() && updatedWeeks.isEmpty()) {
+                                                sampleSchedules.removeAll { it.id == targetEventId }
+                                                sampleExceptions.removeAll { it.scheduleId == targetEventId }
                                                 org.classflow.data.local.CourseDataManager.saveSchedules(context, sampleSchedules)
+                                                org.classflow.data.local.CourseDataManager.saveExceptions(context, sampleExceptions.toList())
+                                                if (targetEventId != null) {
+                                                    org.classflow.data.local.CourseDataManager.addTombstone(context, targetEventId, "calendarEvent")
+                                                }
+                                            } else {
+                                                val updatedEvent = event.copy(
+                                                    endDate = prevDateStr,
+                                                    endRepeatType = "untilDate",
+                                                    endRepeatUntil = prevDateStr,
+                                                    customWeeks = updatedWeeks
+                                                )
+                                                val idx = sampleSchedules.indexOfFirst { it.id == targetEventId }
+                                                if (idx >= 0) {
+                                                    sampleSchedules[idx] = updatedEvent
+                                                    org.classflow.data.local.CourseDataManager.saveSchedules(context, sampleSchedules)
+                                                }
                                             }
                                         } else {
                                             sampleSchedules.removeAll { it.id == targetEventId }
+                                            sampleExceptions.removeAll { it.scheduleId == targetEventId }
                                             org.classflow.data.local.CourseDataManager.saveSchedules(context, sampleSchedules)
+                                            org.classflow.data.local.CourseDataManager.saveExceptions(context, sampleExceptions.toList())
                                             if (targetEventId != null) {
                                                 org.classflow.data.local.CourseDataManager.addTombstone(context, targetEventId, "calendarEvent")
                                             }

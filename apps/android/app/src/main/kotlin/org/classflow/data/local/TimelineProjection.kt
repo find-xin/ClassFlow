@@ -110,8 +110,18 @@ object TimelineProjection {
                 }
 
                 // If non-current week courses are disabled and this course is inactive this week, skip
-                if (!isWeekActive && !showNonCurrentWeekCourses) {
-                    continue
+                if (!isWeekActive) {
+                    if (!showNonCurrentWeekCourses) {
+                        continue
+                    }
+                    // A course schedule that has custom weeks (e.g. truncated via thisAndFuture deletion)
+                    // must not linger as a ghost card in weeks past its last active custom week.
+                    if (sched.customWeeks.isNotEmpty()) {
+                        val maxCustom = sched.customWeeks.maxOrNull() ?: sched.endWeek
+                        if (selectedWeek > maxCustom) {
+                            continue
+                        }
+                    }
                 }
 
                 val secStart = sched.startSection
@@ -212,6 +222,10 @@ object TimelineProjection {
                         if (dateStr > uDate) {
                             continue
                         }
+                    }
+                    val eDate = event.endDate?.take(10)
+                    if (!eDate.isNullOrBlank() && dateStr > eDate) {
+                        continue
                     }
                 }
 

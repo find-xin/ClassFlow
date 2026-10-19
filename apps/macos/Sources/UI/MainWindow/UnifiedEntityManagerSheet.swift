@@ -333,7 +333,7 @@ public struct UnifiedEntityManagerSheet: View {
                         let dayName = (s.dayOfWeek >= 1 && s.dayOfWeek <= 7) ? dayNames[s.dayOfWeek - 1] : "周\(s.dayOfWeek)"
                         let room = (s.classroom?.isEmpty ?? true) ? "未指定教室" : "@\(s.classroom ?? "")"
                         HStack(spacing: 6) {
-                            Text("\(dayName) 第\(s.startSection)-\(s.endSection)节")
+                            Text("\(dayName) 第\(s.startSection)-\(s.endSection)节 (\(s.weekPattern.summary))")
                                 .font(.system(size: 11, weight: .medium, design: .monospaced))
                                 .foregroundColor(.primary.opacity(0.8))
                             Text("•").font(.system(size: 10)).foregroundColor(.secondary)
@@ -464,10 +464,29 @@ public struct UnifiedEntityManagerSheet: View {
                     }
                 }
 
-                if let sDate = ev.startDate {
-                    Text("起始日期：\(sDate)")
-                        .font(.system(size: 10.5))
-                        .foregroundColor(.secondary.opacity(0.75))
+                HStack(spacing: 8) {
+                    if let sDate = ev.startDate {
+                        if let uDate = ev.endRepeatUntil ?? ev.endDate, !uDate.isEmpty, uDate != sDate {
+                            Text("日期范围：\(sDate) ~ \(uDate) (已截止)")
+                                .font(.system(size: 10.5))
+                                .foregroundColor(.secondary.opacity(0.85))
+                        } else {
+                            Text("起始日期：\(sDate)")
+                                .font(.system(size: 10.5))
+                                .foregroundColor(.secondary.opacity(0.75))
+                        }
+                    } else if let uDate = ev.endRepeatUntil ?? ev.endDate, !uDate.isEmpty {
+                        Text("截止日期：\(uDate)")
+                            .font(.system(size: 10.5))
+                            .foregroundColor(.secondary.opacity(0.85))
+                    }
+
+                    if let weeks = ev.customWeeks, !weeks.isEmpty {
+                        Text("•").font(.system(size: 10)).foregroundColor(.secondary)
+                        Text("指定周次：\(WeekPattern.custom(Array(weeks)).summary)")
+                            .font(.system(size: 10.5))
+                            .foregroundColor(.secondary.opacity(0.85))
+                    }
                 }
             }
 

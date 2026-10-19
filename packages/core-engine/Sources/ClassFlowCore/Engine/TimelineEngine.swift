@@ -46,9 +46,19 @@ public struct TimelineEngine: Sendable {
                     totalWeeks: semester.totalWeeks
                 )
 
-                // If not active this week and user chose to hide non-current week courses, skip
-                if !isActiveInWeek && !showNonCurrentWeekCourses {
-                    continue
+                // If not active this week:
+                if !isActiveInWeek {
+                    if !showNonCurrentWeekCourses {
+                        continue
+                    }
+                    // A course schedule that has been truncated or configured with custom weeks
+                    // (e.g. truncated via thisAndFuture deletion) must not linger as a ghost card
+                    // in weeks past its last active custom week.
+                    if schedule.weekPattern.type == .custom,
+                       let maxWeek = schedule.weekPattern.customWeeks?.max(),
+                       weekNumber > maxWeek {
+                        continue
+                    }
                 }
 
                 let dayIdx = schedule.dayOfWeek - 1
