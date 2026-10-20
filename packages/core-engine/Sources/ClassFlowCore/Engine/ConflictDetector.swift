@@ -7,7 +7,7 @@ public struct ConflictDetector: Sendable {
     /// Detects all pairwise time/section conflicts across a collection of occurrences.
     public func detectConflicts(in items: [TimelineItem]) -> [ConflictWarning] {
         var warnings: [ConflictWarning] = []
-        let activeItems = items.filter { $0.status != .cancelled }
+        let activeItems = items.filter { $0.status != .cancelled && $0.isCurrentWeek }
 
         guard activeItems.count >= 2 else { return [] }
 

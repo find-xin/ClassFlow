@@ -605,8 +605,32 @@ public struct TimetableGridView: View {
     private func computeDayLayout(items: [TimelineItem], columnWidth: CGFloat, periodHeight: CGFloat) -> [CardLayoutInfo] {
         guard !items.isEmpty else { return [] }
 
+        // Filter items: Active courses for the current week always take absolute precedence.
+        // A non-current week course should only appear in an empty time slot where no active current-week course runs.
+        let activeItems = items.filter { $0.isCurrentWeek }
+        let nonCurrentItems = items.filter { !$0.isCurrentWeek }
+
+        var displayItems = activeItems
+        for nonCurr in nonCurrentItems {
+            let nonCurrRange = nonCurr.startSection...max(nonCurr.startSection, nonCurr.endSection)
+            let overlapsActive = activeItems.contains { act in
+                let actRange = act.startSection...max(act.startSection, act.endSection)
+                return nonCurrRange.overlaps(actRange)
+            }
+            if !overlapsActive {
+                // If multiple non-current week courses overlap in the same empty slot,
+                // keep the first one so they don't split the column unnecessarily.
+                let overlapsExistingNonCurr = displayItems.contains { disp in
+                    !disp.isCurrentWeek && (disp.startSection...max(disp.startSection, disp.endSection)).overlaps(nonCurrRange)
+                }
+                if !overlapsExistingNonCurr {
+                    displayItems.append(nonCurr)
+                }
+            }
+        }
+
         var metrics: [ItemMetric] = []
-        for item in items {
+        for item in displayItems {
             var yTop: CGFloat = 0
             var yBottom: CGFloat = 0
 

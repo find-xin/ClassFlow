@@ -112,6 +112,35 @@ struct ConflictDetectorTests {
         #expect(warnings.isEmpty)
     }
 
+    @Test("Non-current week occurrences are excluded from conflict warnings")
+    func testNonCurrentWeekItemsIgnored() {
+        let item1 = TimelineItem(
+            id: "item1",
+            title: "人工智能安全 (1-6周)",
+            date: "2026-10-20",
+            dayOfWeek: 2,
+            startSection: 5,
+            endSection: 8,
+            weekNumber: 1,
+            isCurrentWeek: true,
+            status: .normal
+        )
+        let item2 = TimelineItem(
+            id: "item2",
+            title: "认证与访问控制 (11-16周)",
+            date: "2026-10-20",
+            dayOfWeek: 2,
+            startSection: 7,
+            endSection: 8,
+            weekNumber: 1,
+            isCurrentWeek: false,
+            status: .normal
+        )
+
+        let warnings = detector.detectConflicts(in: [item1, item2])
+        #expect(warnings.isEmpty)
+    }
+
     @Test("Annotate items in-place with conflict flags")
     func testAnnotateConflictsInPlace() {
         var items = [
