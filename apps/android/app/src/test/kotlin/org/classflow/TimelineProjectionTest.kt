@@ -558,6 +558,108 @@ class TimelineProjectionTest {
         )
         assertTrue(week5Occs.isEmpty())
     }
+
+    @Test
+    fun testClusterDayCoursesPrioritizesCurrentWeekAndSuppressesOverlappingNonCurrentWeek() {
+        // Course A: active in week 1, sections 5..8
+        val itemA = TimelineItem(
+            id = "occ_a",
+            courseId = "c_a",
+            title = "人工智能安全",
+            date = "2026-10-20",
+            dayOfWeek = 2,
+            startSection = 5,
+            endSection = 8,
+            startTime = "14:00",
+            endTime = "17:00",
+            location = "理学楼 101",
+            isCurrentWeek = true
+        )
+
+        // Course B: inactive in week 1 (runs week 11-16), sections 7..8
+        val itemB = TimelineItem(
+            id = "occ_b",
+            courseId = "c_b",
+            title = "认证与访问控制",
+            date = "2026-10-20",
+            dayOfWeek = 2,
+            startSection = 7,
+            endSection = 8,
+            startTime = "15:30",
+            endTime = "17:00",
+            location = "实验楼 202",
+            isCurrentWeek = false
+        )
+
+        // Course C: inactive in week 1, sections 1..2 (unoccupied slot)
+        val itemC = TimelineItem(
+            id = "occ_c",
+            courseId = "c_c",
+            title = "高等工程数学",
+            date = "2026-10-20",
+            dayOfWeek = 2,
+            startSection = 1,
+            endSection = 2,
+            startTime = "08:00",
+            endTime = "09:35",
+            location = "一教 101",
+            isCurrentWeek = false
+        )
+
+        val clusters = org.classflow.ui.timetable.clusterDayCourses(listOf(itemA, itemB, itemC), dayOfWeek = 2)
+
+        // itemB overlaps with active itemA, so itemB must NOT be clustered into itemA (no fake 2重叠 badge)
+        // itemA must be in its own 1-item cluster
+        val clusterA = clusters.find { c -> c.items.any { it.id == "occ_a" } }
+        assertNotNull("Cluster for active Course A should exist", clusterA)
+        assertEquals("Cluster A should only contain Course A (no overlap with inactive Course B)", 1, clusterA!!.items.size)
+        assertEquals("occ_a", clusterA.items.first().id)
+
+        // itemB should be suppressed from the week 1 view because sections 7..8 are occupied by active Course A
+        val clusterB = clusters.find { c -> c.items.any { it.id == "occ_b" } }
+        assertNull("Inactive Course B should not be displayed when overlapping with active Course A", clusterB)
+
+        // itemC is non-current week but in an unoccupied slot (sections 1..2), so it is displayed as a reference ghost card
+        val clusterC = clusters.find { c -> c.items.any { it.id == "occ_c" } }
+        assertNotNull("Inactive Course C in empty slot should be displayed", clusterC)
+        assertEquals(1, clusterC!!.items.size)
+        assertEquals("occ_c", clusterC.items.first().id)
+    }
+
+    @Test
+    fun testClusterDayCoursesTrulyConflictingActiveCoursesFormMultiItemCluster() {
+        // Two courses BOTH active in the current week at the same time
+        val item1 = TimelineItem(
+            id = "occ_1",
+            courseId = "c_1",
+            title = "算法设计与分析",
+            date = "2026-10-21",
+            dayOfWeek = 3,
+            startSection = 1,
+            endSection = 2,
+            startTime = "08:00",
+            endTime = "09:35",
+            location = "一教 201",
+            isCurrentWeek = true
+        )
+        val item2 = TimelineItem(
+            id = "occ_2",
+            courseId = "c_2",
+            title = "编译原理",
+            date = "2026-10-21",
+            dayOfWeek = 3,
+            startSection = 2,
+            endSection = 3,
+            startTime = "08:50",
+            endTime = "10:45",
+            location = "一教 202",
+            isCurrentWeek = true
+        )
+
+        val clusters = org.classflow.ui.timetable.clusterDayCourses(listOf(item1, item2), dayOfWeek = 3)
+        assertEquals(1, clusters.size)
+        assertEquals("Two truly conflicting active courses should form a 2-item cluster", 2, clusters.first().items.size)
+    }
 }
 
 

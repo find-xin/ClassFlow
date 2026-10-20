@@ -345,13 +345,28 @@ data class OverlapCluster(
 /**
  * Clusters courses of a day into groups of mutually overlapping courses.
  * Non-overlapping courses form 1-item clusters; overlapping courses form multi-item clusters.
+ * Active current-week courses always take precedence. Non-current week courses are only
+ * displayed if they do not overlap with any active course for the current week.
  */
 fun clusterDayCourses(courses: List<TimelineItem>, dayOfWeek: Int): List<OverlapCluster> {
     if (courses.isEmpty()) return emptyList()
-    val sorted = courses.sortedWith(compareBy({ it.startSection }, { it.endSection }))
+
+    // 1. Separate current-week active items from non-current-week items
+    val activeItems = courses.filter { it.isCurrentWeek }
+    val nonCurrentItems = courses.filter { !it.isCurrentWeek }
+
+    // 2. Active items take absolute precedence for the current week view.
+    // A non-current-week item is only displayed if it does NOT overlap with any active item this week.
+    val displayableNonCurrent = nonCurrentItems.filter { nonItem ->
+        activeItems.none { active ->
+            maxOf(nonItem.startSection, active.startSection) <= minOf(nonItem.endSection, active.endSection)
+        }
+    }
+
+    val displayCourses = (activeItems + displayableNonCurrent).sortedWith(compareBy({ it.startSection }, { it.endSection }))
     val clusters = mutableListOf<MutableList<TimelineItem>>()
 
-    for (item in sorted) {
+    for (item in displayCourses) {
         var placed = false
         for (cluster in clusters) {
             val overlaps = cluster.any { other ->

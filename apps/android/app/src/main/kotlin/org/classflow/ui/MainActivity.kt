@@ -1311,6 +1311,7 @@ fun MainScreenHost(
                                         if (targetEventId != null) {
                                             org.classflow.data.local.CourseDataManager.addTombstone(context, targetEventId, "calendarEvent")
                                         }
+                                    } else {
                                         val curDate = try { java.time.LocalDate.parse(occurrence.date) } catch (e: Exception) { null }
                                         if (curDate != null) {
                                             val prevDateStr = curDate.minusDays(1).toString()
