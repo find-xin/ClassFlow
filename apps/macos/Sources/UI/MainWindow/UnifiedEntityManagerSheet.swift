@@ -304,6 +304,17 @@ public struct UnifiedEntityManagerSheet: View {
                         .font(.system(size: 15, weight: .bold))
                         .foregroundColor(.primary)
 
+                    if let credit = c.credit, credit > 0 {
+                        let creditText = credit.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int(credit)) 学分" : "\(credit) 学分"
+                        Text(creditText)
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(Color(hex: "#FF5A5F"))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color(hex: "#FF5A5F").opacity(0.12))
+                            .clipShape(Capsule())
+                    }
+
                     if let notes = c.notes, !notes.isEmpty {
                         Text(notes)
                             .font(.system(size: 10))

@@ -97,6 +97,10 @@ object CourseDataManager {
                         semesterId = cObj.optString("semesterId", "sem_1"),
                         name = cObj.optString("name", "未命名课程"),
                         teacher = cObj.optString("teacher").ifEmpty { null },
+                        credit = if (cObj.has("credit") && !cObj.isNull("credit")) {
+                            val num = cObj.optDouble("credit")
+                            if (num.isNaN()) null else num
+                        } else null,
                         color = cObj.optString("color", "#4F46E5"),
                         notes = cObj.optString("notes").ifEmpty { null },
                         schedules = schedList
@@ -126,6 +130,7 @@ object CourseDataManager {
             cObj.put("semesterId", c.semesterId)
             cObj.put("name", c.name)
             cObj.put("teacher", c.teacher ?: "")
+            if (c.credit != null) cObj.put("credit", c.credit)
             cObj.put("color", c.color)
             cObj.put("notes", c.notes ?: "")
 
@@ -219,11 +224,13 @@ object CourseDataManager {
                 val first = group.first()
                 val allSchedules = group.flatMap { it.schedules }
                 val mergedTeacher = group.firstOrNull { !it.teacher.isNullOrBlank() }?.teacher ?: first.teacher
+                val mergedCredit = group.firstOrNull { it.credit != null }?.credit ?: first.credit
                 val mergedNotes = group.mapNotNull { it.notes?.ifBlank { null } }.distinct().joinToString("; ").ifBlank { first.notes }
                 val mergedColor = group.firstOrNull { it.color.isNotBlank() }?.color ?: first.color
                 result.add(
                     first.copy(
                         teacher = mergedTeacher,
+                        credit = mergedCredit,
                         notes = mergedNotes,
                         color = mergedColor,
                         schedules = consolidateSchedules(allSchedules)

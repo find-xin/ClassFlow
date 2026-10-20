@@ -51,7 +51,7 @@ public struct OpenFormatCourseImporter: Sendable {
     // MARK: - AISchedule Parsing
 
     private func parseAIScheduleCourseInfos(_ list: [[String: Any]], semesterId: UUID) -> [Course] {
-        var schedulesByCourseName: [String: [(schedule: CourseSchedule, teacher: String?, color: String?)]] = [:]
+        var schedulesByCourseName: [String: [(schedule: CourseSchedule, teacher: String?, color: String?, credit: Double?)]] = [:]
         let pastelColors = ["#5B7FB5", "#56A3A6", "#E37B75", "#8E7DBE", "#E8A87C", "#7BB38E", "#C38D9E", "#457B9D"]
 
         for (idx, item) in list.enumerated() {
@@ -61,6 +61,7 @@ public struct OpenFormatCourseImporter: Sendable {
             let teacher = (item["teacher"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
             let room = (item["position"] as? String ?? item["room"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
             let day = (item["day"] as? Int) ?? (item["dayOfWeek"] as? Int) ?? 1
+            let credit: Double? = (item["credit"] as? Double) ?? (item["credit"] as? Int).map { Double($0) } ?? (item["credit"] as? String).flatMap { Double($0) }
 
             // Parse sections
             var startSec = 1
@@ -93,7 +94,7 @@ public struct OpenFormatCourseImporter: Sendable {
                 weekPattern: weekPattern
             )
 
-            schedulesByCourseName[trimmedName, default: []].append((schedule, teacher, color))
+            schedulesByCourseName[trimmedName, default: []].append((schedule, teacher, color, credit))
         }
 
         return schedulesByCourseName.map { courseName, items in
@@ -111,6 +112,7 @@ public struct OpenFormatCourseImporter: Sendable {
                 )
             }
             let firstTeacher = items.compactMap { $0.teacher }.first
+            let firstCredit = items.compactMap { $0.credit }.first
             let color = items.compactMap { $0.color }.first ?? "#5B7FB5"
 
             return Course(
@@ -118,6 +120,7 @@ public struct OpenFormatCourseImporter: Sendable {
                 semesterId: semesterId,
                 name: courseName,
                 teacher: firstTeacher,
+                credit: firstCredit,
                 color: color,
                 schedules: schedules
             )
@@ -141,7 +144,7 @@ public struct OpenFormatCourseImporter: Sendable {
     // MARK: - WakeUp Parsing
 
     private func parseWakeUpCourses(_ list: [[String: Any]], semesterId: UUID) -> [Course] {
-        var schedulesByCourseName: [String: [(schedule: CourseSchedule, teacher: String?, color: String?)]] = [:]
+        var schedulesByCourseName: [String: [(schedule: CourseSchedule, teacher: String?, color: String?, credit: Double?)]] = [:]
         let pastelColors = ["#5B7FB5", "#56A3A6", "#E37B75", "#8E7DBE", "#E8A87C", "#7BB38E", "#C38D9E", "#457B9D"]
 
         for (idx, item) in list.enumerated() {
@@ -154,6 +157,7 @@ public struct OpenFormatCourseImporter: Sendable {
             let start = (item["start"] as? Int) ?? 1
             let step = (item["step"] as? Int) ?? 1
             let endSec = start + max(1, step) - 1
+            let credit: Double? = (item["credit"] as? Double) ?? (item["credit"] as? Int).map { Double($0) } ?? (item["credit"] as? String).flatMap { Double($0) }
 
             var weekPattern: WeekPattern = .all
             if let weeks = item["weeks"] as? [Int], !weeks.isEmpty {
@@ -171,7 +175,7 @@ public struct OpenFormatCourseImporter: Sendable {
                 weekPattern: weekPattern
             )
 
-            schedulesByCourseName[trimmedName, default: []].append((schedule, teacher, color))
+            schedulesByCourseName[trimmedName, default: []].append((schedule, teacher, color, credit))
         }
 
         return schedulesByCourseName.map { courseName, items in
@@ -189,6 +193,7 @@ public struct OpenFormatCourseImporter: Sendable {
                 )
             }
             let firstTeacher = items.compactMap { $0.teacher }.first
+            let firstCredit = items.compactMap { $0.credit }.first
             let color = items.compactMap { $0.color }.first ?? "#5B7FB5"
 
             return Course(
@@ -196,6 +201,7 @@ public struct OpenFormatCourseImporter: Sendable {
                 semesterId: semesterId,
                 name: courseName,
                 teacher: firstTeacher,
+                credit: firstCredit,
                 color: color,
                 schedules: schedules
             )

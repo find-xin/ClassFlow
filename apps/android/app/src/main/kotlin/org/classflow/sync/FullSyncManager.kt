@@ -57,6 +57,7 @@ object FullSyncManager {
             cObj.put("semesterId", c.semesterId)
             cObj.put("name", c.name)
             cObj.put("teacher", c.teacher ?: "")
+            if (c.credit != null) cObj.put("credit", c.credit)
             cObj.put("color", c.color)
             cObj.put("notes", c.notes ?: "")
 
@@ -68,6 +69,7 @@ object FullSyncManager {
                 sObj.put("startSection", s.startSection)
                 sObj.put("endSection", s.endSection)
                 sObj.put("classroom", s.classroom ?: "")
+                sObj.put("teacher", s.teacher ?: "")
                 sObj.put("weekPattern", s.weekPattern.name)
                 val weeksArr = JSONArray()
                 s.customWeeks.forEach { weeksArr.put(it) }
@@ -190,6 +192,7 @@ object FullSyncManager {
                                 startSection = sObj.optInt("startSection", 1),
                                 endSection = sObj.optInt("endSection", 2),
                                 classroom = sObj.optString("classroom").ifEmpty { null },
+                                teacher = sObj.optString("teacher").ifEmpty { null },
                                 weekPattern = wp,
                                 customWeeks = customWeeks
                             )
@@ -202,6 +205,10 @@ object FullSyncManager {
                         semesterId = cObj.optString("semesterId", "sem_1"),
                         name = cObj.optString("name", "未命名课程"),
                         teacher = cObj.optString("teacher").ifEmpty { null },
+                        credit = if (cObj.has("credit") && !cObj.isNull("credit")) {
+                            val num = cObj.optDouble("credit")
+                            if (num.isNaN()) null else num
+                        } else null,
                         color = cObj.optString("color", "#4F46E5"),
                         notes = cObj.optString("notes").ifEmpty { null },
                         schedules = schedList
@@ -478,12 +485,17 @@ object FullSyncManager {
             if (existingById >= 0) {
                 val existing = localCourses[existingById]
                 val mergedScheds = mergeCourseSchedules(existing.schedules, pc.schedules, tombstoneIds)
-                localCourses[existingById] = existing.copy(semesterId = targetSemId, schedules = mergedScheds)
+                localCourses[existingById] = existing.copy(
+                    semesterId = targetSemId,
+                    credit = pc.credit ?: existing.credit,
+                    schedules = mergedScheds
+                )
             } else if (existingByName >= 0) {
                 val existing = localCourses[existingByName]
                 val mergedScheds = mergeCourseSchedules(existing.schedules, pc.schedules, tombstoneIds)
                 localCourses[existingByName] = existing.copy(
                     teacher = if (existing.teacher.isNullOrBlank()) pc.teacher else existing.teacher,
+                    credit = if (existing.credit == null || existing.credit <= 0.0) pc.credit else existing.credit,
                     notes = if (existing.notes.isNullOrBlank()) pc.notes else existing.notes,
                     schedules = mergedScheds
                 )

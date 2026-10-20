@@ -102,6 +102,15 @@ public struct CoursePopoverView: View {
                     )
                 }
 
+                if let credit = item.credit, credit > 0 {
+                    let creditText = credit.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int(credit)) 学分" : "\(credit) 学分"
+                    detailRow(
+                        icon: "graduationcap",
+                        title: "学分",
+                        content: creditText
+                    )
+                }
+
                 detailRow(
                     icon: "calendar",
                     title: "日期",

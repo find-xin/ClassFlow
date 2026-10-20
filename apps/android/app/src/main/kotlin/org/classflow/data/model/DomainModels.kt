@@ -47,6 +47,7 @@ data class Course(
     val semesterId: String,
     val name: String,
     val teacher: String? = null,
+    val credit: Double? = null,
     val color: String = "#4F46E5",
     val notes: String? = null,
     val schedules: List<CourseSchedule> = emptyList()
@@ -97,6 +98,7 @@ data class TimelineItem(
     val color: String = "#4F46E5",
     val teacher: String? = null,
     val notes: String? = null,
+    val credit: Double? = null,
     val hasConflict: Boolean = false,
     val isAllDay: Boolean = false,
     val isTask: Boolean = false,

@@ -561,6 +561,7 @@ public final class SyncEngine: @unchecked Sendable {
                 merged.semesterId = resolvedSemId
                 merged.name = pc.name
                 if let pt = pc.teacher { merged.teacher = pt }
+                if let pcr = pc.credit { merged.credit = pcr }
                 merged.color = pc.color
                 if let pn = pc.notes { merged.notes = pn }
                 var scheduleMap: [UUID: CourseSchedule] = [:]
@@ -592,6 +593,7 @@ public final class SyncEngine: @unchecked Sendable {
                 // Same course name in same semester -> merge schedules
                 var merged = courses[idx]
                 if let pt = pc.teacher, (merged.teacher == nil || merged.teacher!.isEmpty) { merged.teacher = pt }
+                if let pcr = pc.credit, merged.credit == nil { merged.credit = pcr }
                 if let pn = pc.notes, (merged.notes == nil || merged.notes!.isEmpty) { merged.notes = pn }
                 var scheduleMap: [UUID: CourseSchedule] = [:]
                 for s in merged.schedules { scheduleMap[s.id] = s }

@@ -1140,8 +1140,9 @@ fun UnifiedItemManagerDialog(
                                                 Column(modifier = Modifier.weight(1f)) {
                                                     Text(course.name, fontWeight = FontWeight.Bold, fontSize = 14.5.sp)
                                                     val teacherText = course.teacher ?: "暂无任课教师"
+                                                    val creditBadge = if (course.credit != null && course.credit > 0) " · ${if (course.credit % 1.0 == 0.0) course.credit.toInt() else course.credit}学分" else ""
                                                     val schedCount = "${course.schedules.size} 个上课时段"
-                                                    Text("$teacherText · $schedCount", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                    Text("$teacherText$creditBadge · $schedCount", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                                     if (course.schedules.isNotEmpty()) {
                                                         Spacer(modifier = Modifier.height(4.dp))
                                                         course.schedules.forEach { s ->

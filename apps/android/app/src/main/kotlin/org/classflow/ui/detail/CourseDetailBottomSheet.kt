@@ -188,6 +188,36 @@ fun CourseDetailBottomSheet(
                     }
                 }
 
+                // Credit
+                if (item.credit != null && item.credit > 0) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.School,
+                            contentDescription = null,
+                            modifier = Modifier.size(19.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = "学分",
+                            fontSize = 14.5.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.width(36.dp)
+                        )
+                        val cr = item.credit
+                        val crStr = if (cr % 1.0 == 0.0) "${cr.toInt()} 学分" else "$cr 学分"
+                        Text(
+                            text = crStr,
+                            fontSize = 14.5.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+
                 // Date & Week
                 Row(
                     modifier = Modifier.fillMaxWidth(),

@@ -51,6 +51,8 @@ public struct TimelineItem: Codable, Sendable, Identifiable, Equatable, Hashable
     public var teacher: String?
     /// Additional remarks
     public var notes: String?
+    /// Course academic credit
+    public var credit: Double?
     /// Whether this occurrence is an all-day event
     public var isAllDay: Bool
     /// Flag indicating overlap with another occurrence
@@ -80,6 +82,7 @@ public struct TimelineItem: Codable, Sendable, Identifiable, Equatable, Hashable
         color: String = "#4F46E5",
         teacher: String? = nil,
         notes: String? = nil,
+        credit: Double? = nil,
         isAllDay: Bool = false,
         hasConflict: Bool = false,
         conflictingItemIds: [String] = [],
@@ -104,6 +107,7 @@ public struct TimelineItem: Codable, Sendable, Identifiable, Equatable, Hashable
         self.color = color
         self.teacher = teacher
         self.notes = notes
+        self.credit = credit
         self.isAllDay = isAllDay
         self.hasConflict = hasConflict
         self.conflictingItemIds = conflictingItemIds

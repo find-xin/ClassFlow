@@ -14,8 +14,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -88,7 +90,7 @@ fun CourseAddDialog(
     val context = LocalContext.current
 
     var courseName by remember { mutableStateOf("") }
-    var defaultTeacher by remember { mutableStateOf("") }
+    var creditString by remember { mutableStateOf("") }
     var notes by remember { mutableStateOf("") }
     var colorHex by remember { mutableStateOf("#5B7FB5") }
 
@@ -168,6 +170,8 @@ fun CourseAddDialog(
                             .clip(RoundedCornerShape(6.dp))
                             .clickable(enabled = canSave) {
                                 val courseId = UUID.randomUUID().toString()
+                                val primaryTeacher = schedules.firstOrNull { it.teacher.isNotBlank() }?.teacher?.trim()?.ifEmpty { null }
+                                val creditVal = creditString.trim().toDoubleOrNull()
                                 val courseSchedules = schedules.map { draft ->
                                     val weeks = draft.customWeeks.sorted()
                                     val pattern = if (weeks.size >= 25) WeekPatternType.ALL else WeekPatternType.CUSTOM
@@ -181,7 +185,7 @@ fun CourseAddDialog(
                                         startSection = draft.startSection,
                                         endSection = maxOf(draft.startSection, draft.endSection),
                                         classroom = draft.classroom.trim().ifEmpty { null },
-                                        teacher = draft.teacher.trim().ifEmpty { defaultTeacher.trim().ifEmpty { null } },
+                                        teacher = draft.teacher.trim().ifEmpty { null },
                                         weekPattern = pattern,
                                         customWeeks = weeks,
                                         customStartTime = customStart,
@@ -193,7 +197,8 @@ fun CourseAddDialog(
                                     id = courseId,
                                     semesterId = semesterId,
                                     name = courseName.trim(),
-                                    teacher = defaultTeacher.trim().ifEmpty { null },
+                                    teacher = primaryTeacher,
+                                    credit = creditVal,
                                     color = colorHex,
                                     notes = notes.trim().ifEmpty { null },
                                     schedules = courseSchedules
@@ -262,7 +267,7 @@ fun CourseAddDialog(
 
                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
 
-                            // Default Teacher
+                            // Course Credit
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -270,15 +275,15 @@ fun CourseAddDialog(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                Icon(Icons.Default.Person, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(17.dp))
+                                Icon(Icons.Default.Star, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(17.dp))
                                 BasicTextField(
-                                    value = defaultTeacher,
-                                    onValueChange = { defaultTeacher = it },
+                                    value = creditString,
+                                    onValueChange = { creditString = it },
                                     singleLine = true,
                                     textStyle = TextStyle(fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface),
                                     decorationBox = { inner ->
-                                        if (defaultTeacher.isEmpty()) {
-                                            Text("任课教师 (选填)", fontSize = 13.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
+                                        if (creditString.isEmpty()) {
+                                            Text("课程学分 (如：3.0，选填)", fontSize = 13.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
                                         }
                                         inner()
                                     },
@@ -296,7 +301,7 @@ fun CourseAddDialog(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                Icon(Icons.Default.LocationOn, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(17.dp))
+                                Icon(Icons.Default.Info, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(17.dp))
                                 BasicTextField(
                                     value = notes,
                                     onValueChange = { notes = it },
@@ -359,7 +364,7 @@ fun CourseAddDialog(
                                         startSection = last?.startSection ?: 1,
                                         endSection = last?.endSection ?: 2,
                                         classroom = last?.classroom ?: "",
-                                        teacher = last?.teacher ?: defaultTeacher,
+                                        teacher = last?.teacher ?: "",
                                         customWeeks = last?.customWeeks ?: (1..maxOf(1, totalWeeks)).toSet()
                                     )
                                 )

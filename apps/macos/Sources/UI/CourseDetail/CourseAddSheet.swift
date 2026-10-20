@@ -15,7 +15,7 @@ public struct CourseAddSheet: View {
     public let classroomSuggestions: [String]
 
     @State private var courseName: String = ""
-    @State private var defaultTeacher: String = ""
+    @State private var creditString: String = ""
     @State private var colorHex: String = "#5B7FB5"
     @State private var notes: String = ""
 
@@ -170,19 +170,14 @@ public struct CourseAddSheet: View {
                         Divider().padding(.leading, 16)
 
                         HStack {
-                            Text("任课教师")
+                            Text("课程学分")
                                 .font(.system(size: 14, weight: .medium))
                                 .frame(width: 72, alignment: .leading)
-                            SearchSuggestionTextField(
-                                placeholder: "例如：张教授 (选填)",
-                                text: $defaultTeacher,
-                                suggestions: teacherSuggestions,
-                                icon: "person"
-                            )
+                            TextField("例如：3.0 (选填)", text: $creditString)
+                                .textFieldStyle(.plain)
                         }
                         .padding(.horizontal, 16)
                         .padding(.vertical, 12)
-                        .zIndex(10)
 
                         Divider().padding(.leading, 16)
 
@@ -455,12 +450,14 @@ public struct CourseAddSheet: View {
             )
         }
 
-        let mainTeacher = defaultTeacher.trimmingCharacters(in: .whitespacesAndNewlines)
+        let firstTeacher = schedules.map { $0.teacher.trimmingCharacters(in: .whitespacesAndNewlines) }.first(where: { !$0.isEmpty })
+        let parsedCredit = Double(creditString.trimmingCharacters(in: .whitespacesAndNewlines))
         let newCourse = Course(
             id: courseId,
             semesterId: semesterId,
             name: courseName.trimmingCharacters(in: .whitespacesAndNewlines),
-            teacher: mainTeacher.isEmpty ? nil : mainTeacher,
+            teacher: firstTeacher,
+            credit: parsedCredit,
             color: colorHex,
             notes: notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : notes,
             schedules: courseSchedules

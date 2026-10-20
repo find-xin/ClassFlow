@@ -71,6 +71,10 @@ public struct ICSExporter: Sendable {
                 if let teacher = occ.teacher, !teacher.isEmpty {
                     descriptionParts.append("教师: \(teacher)")
                 }
+                if let credit = occ.credit, credit > 0 {
+                    let creditText = credit.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int(credit)) 学分" : "\(credit) 学分"
+                    descriptionParts.append("学分: \(creditText)")
+                }
                 descriptionParts.append("周次: 第 \(occ.weekNumber) 周 (第 \(occ.startSection)-\(occ.endSection) 节)")
                 if let notes = occ.notes, !notes.isEmpty {
                     descriptionParts.append("备注: \(notes)")

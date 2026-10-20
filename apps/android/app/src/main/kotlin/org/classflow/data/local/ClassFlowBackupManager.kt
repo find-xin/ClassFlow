@@ -330,7 +330,15 @@ object ClassFlowBackupManager {
             sb.append("DTSTAMP:$dtStamp\r\n")
             sb.append("SUMMARY:${item.title}\r\n")
             item.location?.let { sb.append("LOCATION:$it\r\n") }
-            item.teacher?.let { sb.append("DESCRIPTION:任课教师：$it\r\n") }
+            val descParts = mutableListOf<String>()
+            item.teacher?.let { descParts.add("任课教师：$it") }
+            if (item.credit != null && item.credit > 0) {
+                val cr = if (item.credit % 1.0 == 0.0) "${item.credit.toInt()} 学分" else "${item.credit} 学分"
+                descParts.add("学分：$cr")
+            }
+            if (descParts.isNotEmpty()) {
+                sb.append("DESCRIPTION:${descParts.joinToString("\\n")}\r\n")
+            }
 
             val dateClean = (item.date ?: "2026-10-14").replace("-", "")
             val startClean = (item.startTime ?: "08:00").replace(":", "") + "00"

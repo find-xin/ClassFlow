@@ -191,6 +191,34 @@ class DomainModelTest {
         assertEquals(listOf("e3"), newEvents.map { it.id })
         assertEquals(listOf("t3"), newTasks.map { it.id })
     }
+
+    @Test
+    fun testCourseCreditFieldAndFormatting() {
+        val courseWithCredit = Course(
+            id = "c_credit_1",
+            semesterId = "sem_1",
+            name = "软件架构设计",
+            teacher = "王教授",
+            credit = 3.5,
+            color = "#FF8000"
+        )
+
+        assertEquals(3.5, courseWithCredit.credit ?: 0.0, 0.001)
+
+        val courseIntCredit = Course(
+            id = "c_credit_2",
+            semesterId = "sem_1",
+            name = "大学英语",
+            teacher = "张老师",
+            credit = 2.0,
+            color = "#0080FF"
+        )
+
+        val formatted1 = courseWithCredit.credit?.let { if (it % 1.0 == 0.0) "${it.toInt()} 学分" else "$it 学分" }
+        val formatted2 = courseIntCredit.credit?.let { if (it % 1.0 == 0.0) "${it.toInt()} 学分" else "$it 学分" }
+        assertEquals("3.5 学分", formatted1)
+        assertEquals("2 学分", formatted2)
+    }
 }
 
 

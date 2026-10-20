@@ -184,6 +184,7 @@ object TimelineProjection {
                         color = course.color,
                         teacher = sched.teacher ?: course.teacher,
                         notes = effectiveNotes,
+                        credit = course.credit,
                         isRecurring = true
                     )
                 )

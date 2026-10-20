@@ -95,6 +95,7 @@ public struct TimelineEngine: Sendable {
                     color: course.color,
                     teacher: schedule.teacher ?? course.teacher,
                     notes: course.notes,
+                    credit: course.credit,
                     isRecurring: true
                 )
 
@@ -160,8 +161,9 @@ public struct TimelineEngine: Sendable {
                     isCurrentWeek: true,
                     status: ex.exceptionType == .makeup ? .makeup : .rescheduled,
                     color: course.color,
-                    teacher: course.teacher,
-                    notes: ex.reason ?? course.notes
+                    teacher: schedule.teacher ?? course.teacher,
+                    notes: ex.reason ?? course.notes,
+                    credit: course.credit
                 )
                 items.append(targetItem)
             }
