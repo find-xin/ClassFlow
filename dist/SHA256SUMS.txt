@@ -1,3 +1,3 @@
-f46abc880420822b5b11600d9dbaba4c522fe2627ec81d487540a217ca4444e2  ClassFlow-1.0.0-macOS-arm64.dmg
-643c865932eaf5d30a21deea581af829c5c12e5ac88ea763315af26814776b7b  ClassFlow-1.0.0-macOS-arm64.zip
-9308463b04bd0e7c719ee349eddb0e3fededad8381c78ad74c50ea5964eed362  ClassFlow-1.0.0-android.apk
+e85dd56ec4ad0dce876707a8657e99deeb8e4f2e6bb90a280fae405194e9e446  ClassFlow-1.0.0-macOS-arm64.dmg
+d1f20fd1689892fb8f7646a6d5f92459db26ceed53735ea74e56b99a060f8fc3  ClassFlow-1.0.0-macOS-arm64.zip
+9992f611e8b7949cc9d869ba8a2a9d0bd2cf417d6f9bb304d1c4dd0b576d1762  ClassFlow-1.0.0-android.apk

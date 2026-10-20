@@ -404,22 +404,8 @@ object FullSyncManager {
         val peerSchedulesArr = peerSnapJson.optJSONArray("calendarEvents") ?: peerSnapJson.optJSONArray("schedules")
         val peerScheds = if (peerSchedulesArr != null) org.classflow.data.local.CourseDataManager.deserializeSchedules(peerSchedulesArr.toString()) else emptyList()
 
-        // If local list is empty but remote peer has active entities,
-        // clear conflicting local tombstones so remote data can cleanly populate local.
-        if (localCourses.isEmpty() && peerCourses.isNotEmpty()) {
-            val peerIds = peerCourses.map { it.id }.toSet()
-            localTombstones.removeAll { it.entityId in peerIds }
-        }
-        if (localSchedules.isEmpty() && peerScheds.isNotEmpty()) {
-            val peerIds = peerScheds.map { it.id }.toSet()
-            localTombstones.removeAll { it.entityId in peerIds }
-        }
         val peerTaskArr = peerSnapJson.optJSONArray("pomodoroTasks") ?: peerSnapJson.optJSONArray("studyTasks")
         val peerTasks = if (peerTaskArr != null) org.classflow.data.local.CourseDataManager.deserializeStudyTasks(peerTaskArr.toString()) else emptyList()
-        if (localStudyTasks.isEmpty() && peerTasks.isNotEmpty()) {
-            val peerIds = peerTasks.map { it.id }.toSet()
-            localTombstones.removeAll { it.entityId in peerIds }
-        }
 
         val tombstoneIds = localTombstones.map { it.entityId }.toSet()
 

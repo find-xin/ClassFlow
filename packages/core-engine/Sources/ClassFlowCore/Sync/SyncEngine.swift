@@ -489,19 +489,6 @@ public final class SyncEngine: @unchecked Sendable {
         }
         tombstones = Self.garbageCollectTombstones(tombstones)
 
-        // If local timetable has been cleared but peer has active entities, clear conflicting tombstones
-        if courses.isEmpty && !snapshot.courses.isEmpty {
-            let peerCourseIds = Set(snapshot.courses.map { $0.id.uuidString })
-            tombstones.removeAll(where: { peerCourseIds.contains($0.entityId) })
-        }
-        if calendarEvents.isEmpty && !snapshot.calendarEvents.isEmpty {
-            let peerSchedIds = Set(snapshot.calendarEvents.map { $0.id.uuidString })
-            tombstones.removeAll(where: { peerSchedIds.contains($0.entityId) })
-        }
-        if pomodoroTasks.isEmpty && !snapshot.pomodoroTasks.isEmpty {
-            let peerTaskIds = Set(snapshot.pomodoroTasks.map { $0.id.uuidString })
-            tombstones.removeAll(where: { peerTaskIds.contains($0.entityId) })
-        }
         let tombstoneIds = Set(tombstones.map { $0.entityId })
 
         // 2. Purge local entities marked by tombstones

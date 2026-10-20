@@ -1031,6 +1031,9 @@ fun MainScreenHost(
                         sampleCourses.removeAll { it.id == course.id }
                         org.classflow.data.local.CourseDataManager.saveCourses(context, sampleCourses)
                         org.classflow.data.local.CourseDataManager.addTombstone(context, course.id, "course")
+                        course.schedules.forEach { s ->
+                            org.classflow.data.local.CourseDataManager.addTombstone(context, s.id, "schedule")
+                        }
                         Toast.makeText(context, "已删除课程「${course.name}」", Toast.LENGTH_SHORT).show()
                     },
                     onDeleteSchedule = { schedule ->
@@ -1109,6 +1112,9 @@ fun MainScreenHost(
                     sampleCourses.removeAll { it.id == course.id }
                     org.classflow.data.local.CourseDataManager.saveCourses(context, sampleCourses)
                     org.classflow.data.local.CourseDataManager.addTombstone(context, course.id, "course")
+                    course.schedules.forEach { s ->
+                        org.classflow.data.local.CourseDataManager.addTombstone(context, s.id, "schedule")
+                    }
                 },
                 onImportRequest = { type ->
                     showMacSettingsDialog = false
@@ -1395,6 +1401,9 @@ fun MainScreenHost(
                                     if (updatedSchedules.isEmpty()) {
                                         sampleCourses.removeAll { it.id == course.id }
                                         org.classflow.data.local.CourseDataManager.addTombstone(context, course.id, "course")
+                                        course.schedules.forEach { s ->
+                                            org.classflow.data.local.CourseDataManager.addTombstone(context, s.id, "schedule")
+                                        }
                                     } else {
                                         val updatedCourse = course.copy(schedules = updatedSchedules)
                                         val idx = sampleCourses.indexOfFirst { it.id == course.id }
@@ -1409,8 +1418,12 @@ fun MainScreenHost(
                             }
                             EditingScope.ALL -> {
                                 val cId = occurrence.courseId
+                                val targetCourse = sampleCourses.find { it.id == cId }
                                 sampleCourses.removeAll { it.id == cId }
                                 org.classflow.data.local.CourseDataManager.addTombstone(context, cId, "course")
+                                targetCourse?.schedules?.forEach { s ->
+                                    org.classflow.data.local.CourseDataManager.addTombstone(context, s.id, "schedule")
+                                }
                                 if (schedId != null) {
                                     sampleExceptions.removeAll { it.scheduleId == schedId }
                                     org.classflow.data.local.CourseDataManager.saveExceptions(context, sampleExceptions.toList())

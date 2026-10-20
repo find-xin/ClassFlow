@@ -1127,6 +1127,12 @@ public final class AppState {
     }
 
     public func deleteCourse(id: UUID) {
+        if let course = courses.first(where: { $0.id == id }) {
+            for sched in course.schedules {
+                tombstones.append(SyncTombstone(entityId: sched.id.uuidString, entityType: "schedule"))
+                _ = syncEngine.recordOperation(action: "DELETE", entityType: "schedule", entityId: sched.id)
+            }
+        }
         courses.removeAll(where: { $0.id == id })
         tombstones.append(SyncTombstone(entityId: id.uuidString, entityType: "course"))
         _ = syncEngine.recordOperation(action: "DELETE", entityType: "course", entityId: id)

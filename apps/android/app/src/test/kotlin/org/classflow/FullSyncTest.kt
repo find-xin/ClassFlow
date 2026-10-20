@@ -129,7 +129,7 @@ class FullSyncTest {
     }
 
     @Test
-    fun testPeerMergeCourseUnblockingWhenLocalCoursesEmptyEvenWithSchedules() {
+    fun testPeerMergeCourseBlockedByTombstoneWhenAllCoursesDeleted() {
         // Local state: courses were deleted (empty), but schedule "晨读早自习" remains
         val localCourses = mutableListOf<Course>()
         val localSchedules = mutableListOf(
@@ -140,7 +140,7 @@ class FullSyncTest {
         val localFocusRecords = mutableListOf<FocusRecord>()
         val localStudyTasks = mutableListOf<StudyTask>()
 
-        // Local has a tombstone for peer course c_oop because it was deleted locally earlier
+        // Local has a tombstone for peer course c_oop because it was deleted locally
         val localTombstones = mutableListOf(
             SyncTombstone(entityId = "c_oop", entityType = "course", deletedAt = System.currentTimeMillis() - 1000)
         )
@@ -168,17 +168,56 @@ class FullSyncTest {
         )
 
         // Verifications:
-        // 1. The course c_oop MUST be unblocked and restored, not blocked by the unrelated schedule event
-        assertEquals(1, localCourses.size)
-        assertEquals("c_oop", localCourses[0].id)
-        assertEquals("面向对象程序设计", localCourses[0].name)
-        assertEquals(1, downloaded)
+        // 1. The deleted course c_oop MUST NOT be resurrected!
+        assertTrue(localCourses.isEmpty())
+        assertEquals(0, downloaded)
 
-        // 2. The tombstone for c_oop MUST have been removed from localTombstones
-        assertTrue(localTombstones.none { it.entityId == "c_oop" })
+        // 2. The tombstone for c_oop MUST be preserved to propagate deletion across peers
+        assertTrue(localTombstones.any { it.entityId == "c_oop" })
 
         // 3. The existing schedule "晨读早自习" remains intact
         assertEquals(1, localSchedules.size)
         assertEquals("sched_morning", localSchedules[0].id)
+    }
+
+    @Test
+    fun testFreshDeviceWithNoTombstonesPullsPeerCoursesSuccessfully() {
+        // Fresh install: empty courses and empty tombstones
+        val localCourses = mutableListOf<Course>()
+        val localSchedules = mutableListOf<CalendarEvent>()
+        val localExceptions = mutableListOf<ScheduleException>()
+        val localSemesters = mutableListOf<Semester>()
+        val localFocusRecords = mutableListOf<FocusRecord>()
+        val localStudyTasks = mutableListOf<StudyTask>()
+        val localTombstones = mutableListOf<SyncTombstone>()
+
+        // Peer remote snapshot contains course c_oop
+        val peerCourseJson = JSONObject().apply {
+            put("id", "c_oop")
+            put("semesterId", "sem_1")
+            put("name", "面向对象程序设计")
+            put("schedules", JSONArray())
+        }
+        val peerSnapJson = JSONObject().apply {
+            put("courses", JSONArray().put(peerCourseJson))
+        }
+
+        val downloaded = FullSyncManager.mergePeerSnapshot(
+            peerSnapJson = peerSnapJson,
+            localCourses = localCourses,
+            localSchedules = localSchedules,
+            localExceptions = localExceptions,
+            localSemesters = localSemesters,
+            localFocusRecords = localFocusRecords,
+            localStudyTasks = localStudyTasks,
+            localTombstones = localTombstones
+        )
+
+        // Fresh install cleanly downloads peer courses
+        assertEquals(1, localCourses.size)
+        assertEquals("c_oop", localCourses[0].id)
+        assertEquals("面向对象程序设计", localCourses[0].name)
+        assertEquals(1, downloaded)
+        assertTrue(localTombstones.isEmpty())
     }
 }

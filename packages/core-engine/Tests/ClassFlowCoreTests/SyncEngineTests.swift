@@ -557,5 +557,97 @@ struct SyncEngineTests {
         #expect(courses[0].schedules[0].startSection == 1)
         #expect(courses[0].schedules[0].endSection == 2)
     }
+
+    @Test("Deleting all courses retains tombstones and prevents peer resurrection on sync")
+    func testDeleteAllCoursesRetainsTombstonesAndPreventsResurrectionOnSync() async throws {
+        let storage = MockStorageProvider()
+        let semId = UUID()
+        let c1Id = UUID()
+        let c2Id = UUID()
+
+        let c1 = Course(id: c1Id, semesterId: semId, name: "高等数学", schedules: [])
+        let c2 = Course(id: c2Id, semesterId: semId, name: "大学物理", schedules: [])
+        let sem = Semester(id: semId, name: "秋季学期", startDate: "2026-09-01", endDate: "2027-01-20")
+
+        var coursesA = [c1, c2]
+        var coursesB = [c1, c2]
+        var tombstonesA: [SyncTombstone] = []
+        var tombstonesB: [SyncTombstone] = []
+        var semA = [sem]
+        var semB = [sem]
+        var dummyExA: [ScheduleException] = [], dummyExB: [ScheduleException] = []
+        var dummyEvA: [CalendarEvent] = [], dummyEvB: [CalendarEvent] = []
+        var dummyTaskA: [PomodoroTask] = [], dummyTaskB: [PomodoroTask] = []
+        var dummyRecA: [PomodoroRecord] = [], dummyRecB: [PomodoroRecord] = []
+        var dummyProfA: [TimetableProfile] = [], dummyProfB: [TimetableProfile] = []
+
+        let engineA = SyncEngine(deviceId: "dev_A", deviceName: "Mac")
+        let engineB = SyncEngine(deviceId: "dev_B", deviceName: "Android")
+
+        // 1. Initial sync from both devices
+        _ = try await engineA.executeSync(
+            storage: storage,
+            courses: &coursesA,
+            exceptions: &dummyExA,
+            semesters: &semA,
+            calendarEvents: &dummyEvA,
+            pomodoroTasks: &dummyTaskA,
+            pomodoroRecords: &dummyRecA,
+            timetableProfiles: &dummyProfA,
+            tombstones: &tombstonesA
+        )
+        _ = try await engineB.executeSync(
+            storage: storage,
+            courses: &coursesB,
+            exceptions: &dummyExB,
+            semesters: &semB,
+            calendarEvents: &dummyEvB,
+            pomodoroTasks: &dummyTaskB,
+            pomodoroRecords: &dummyRecB,
+            timetableProfiles: &dummyProfB,
+            tombstones: &tombstonesB
+        )
+
+        // 2. User on Device A deletes ALL courses
+        coursesA.removeAll()
+        tombstonesA.append(SyncTombstone(entityId: c1Id.uuidString, entityType: "course"))
+        tombstonesA.append(SyncTombstone(entityId: c2Id.uuidString, entityType: "course"))
+        #expect(coursesA.isEmpty)
+        #expect(tombstonesA.count == 2)
+
+        // 3. Device A syncs with cloud: peer snapshot has c1 and c2.
+        // Device A MUST NOT resurrect c1 and c2 just because coursesA is empty!
+        _ = try await engineA.executeSync(
+            storage: storage,
+            courses: &coursesA,
+            exceptions: &dummyExA,
+            semesters: &semA,
+            calendarEvents: &dummyEvA,
+            pomodoroTasks: &dummyTaskA,
+            pomodoroRecords: &dummyRecA,
+            timetableProfiles: &dummyProfA,
+            tombstones: &tombstonesA
+        )
+
+        #expect(coursesA.isEmpty)
+        #expect(tombstonesA.count == 2)
+
+        // 4. Device B syncs: should ingest tombstones and delete c1 and c2 from Device B as well
+        _ = try await engineB.executeSync(
+            storage: storage,
+            courses: &coursesB,
+            exceptions: &dummyExB,
+            semesters: &semB,
+            calendarEvents: &dummyEvB,
+            pomodoroTasks: &dummyTaskB,
+            pomodoroRecords: &dummyRecB,
+            timetableProfiles: &dummyProfB,
+            tombstones: &tombstonesB
+        )
+
+        #expect(coursesB.isEmpty)
+        #expect(tombstonesB.contains(where: { $0.entityId == c1Id.uuidString }))
+        #expect(tombstonesB.contains(where: { $0.entityId == c2Id.uuidString }))
+    }
 }
 
