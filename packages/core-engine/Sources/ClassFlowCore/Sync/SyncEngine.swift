@@ -526,6 +526,9 @@ public final class SyncEngine: @unchecked Sendable {
                 if !ps.sections.isEmpty && (isCurDefault || ps.sections != merged.sections) {
                     merged.sections = ps.sections
                 }
+                if merged.sections.isEmpty {
+                    merged.sections = ps.sections.isEmpty ? standardSections : ps.sections
+                }
                 semesters[idx] = merged
             } else if let idx = semesters.firstIndex(where: { $0.name.trimmingCharacters(in: .whitespacesAndNewlines) == psName }) {
                 // Same semester name on peer device -> merge into existing local semester
@@ -537,10 +540,17 @@ public final class SyncEngine: @unchecked Sendable {
                 if !ps.sections.isEmpty && (isCurDefault || ps.sections != merged.sections) {
                     merged.sections = ps.sections
                 }
+                if merged.sections.isEmpty {
+                    merged.sections = ps.sections.isEmpty ? standardSections : ps.sections
+                }
                 semesters[idx] = merged
             } else {
                 // New distinct course table
-                semesters.append(ps)
+                var newSem = ps
+                if newSem.sections.isEmpty {
+                    newSem.sections = standardSections
+                }
+                semesters.append(newSem)
                 semesterIdMap[ps.id] = ps.id
             }
         }

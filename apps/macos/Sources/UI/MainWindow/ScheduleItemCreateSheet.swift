@@ -139,7 +139,8 @@ public struct ScheduleItemCreateSheet: View {
     ]
 
     private var availableSections: [SectionTime] {
-        appState.currentSemester?.sections ?? []
+        let secs = appState.currentSemester?.sections ?? []
+        return secs.isEmpty ? Semester.standardDefaultSections : secs
     }
 
     private var maxSemesterWeeks: Int {

@@ -462,7 +462,8 @@ object FullSyncManager {
                         sections = resolvedSections
                     )
                 } else {
-                    localSemesters.add(pSem)
+                    val finalSections = if (pSem.sections.isNotEmpty()) pSem.sections else defaultTimes
+                    localSemesters.add(pSem.copy(sections = finalSections))
                     semesterIdMapping[pSem.id] = pSem.id
                 }
             }

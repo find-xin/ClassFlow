@@ -17,6 +17,21 @@ public struct Semester: Codable, Sendable, Identifiable, Equatable, Hashable {
     /// Daily section time definitions.
     public var sections: [SectionTime]
 
+    public static let standardDefaultSections: [SectionTime] = [
+        SectionTime(section: 1, startTime: "08:00", endTime: "08:45"),
+        SectionTime(section: 2, startTime: "08:50", endTime: "09:35"),
+        SectionTime(section: 3, startTime: "10:05", endTime: "10:50"),
+        SectionTime(section: 4, startTime: "10:55", endTime: "11:40"),
+        SectionTime(section: 5, startTime: "14:00", endTime: "14:45"),
+        SectionTime(section: 6, startTime: "14:50", endTime: "15:35"),
+        SectionTime(section: 7, startTime: "15:55", endTime: "16:40"),
+        SectionTime(section: 8, startTime: "16:45", endTime: "17:30"),
+        SectionTime(section: 9, startTime: "18:30", endTime: "19:15"),
+        SectionTime(section: 10, startTime: "19:20", endTime: "20:05"),
+        SectionTime(section: 11, startTime: "20:10", endTime: "20:55"),
+        SectionTime(section: 12, startTime: "21:00", endTime: "21:45")
+    ]
+
     public init(
         id: UUID = UUID(),
         name: String,
@@ -34,7 +49,7 @@ public struct Semester: Codable, Sendable, Identifiable, Equatable, Hashable {
         self.totalWeeks = totalWeeks
         self.isCurrent = isCurrent
         self.timeZone = timeZone
-        self.sections = sections
+        self.sections = sections.isEmpty ? Self.standardDefaultSections : sections
     }
 
     /// Helper to lookup start and end times for a specific period number.
@@ -83,7 +98,8 @@ public struct Semester: Codable, Sendable, Identifiable, Equatable, Hashable {
         self.totalWeeks = (try? container.decodeIfPresent(Int.self, forKey: .totalWeeks)) ?? 20
         self.isCurrent = (try? container.decodeIfPresent(Bool.self, forKey: .isCurrent)) ?? false
         self.timeZone = (try? container.decodeIfPresent(String.self, forKey: .timeZone)) ?? "Asia/Shanghai"
-        self.sections = (try? container.decodeIfPresent([SectionTime].self, forKey: .sections)) ?? []
+        let decodedSections = (try? container.decodeIfPresent([SectionTime].self, forKey: .sections)) ?? []
+        self.sections = decodedSections.isEmpty ? Self.standardDefaultSections : decodedSections
     }
 
     public func encode(to encoder: Encoder) throws {

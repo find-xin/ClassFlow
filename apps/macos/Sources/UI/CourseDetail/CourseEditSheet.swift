@@ -133,6 +133,13 @@ public struct CourseEditSheet: View {
         _schedules = State(initialValue: drafts)
     }
 
+    private var effectiveSections: [SectionTime] {
+        if !availableSections.isEmpty {
+            return availableSections
+        }
+        return Semester.standardDefaultSections
+    }
+
     public var body: some View {
         VStack(spacing: 0) {
             // Header
@@ -214,20 +221,25 @@ public struct CourseEditSheet: View {
 
                                 HStack(spacing: 4) {
                                     Picker("", selection: $mutationStartSection) {
-                                        ForEach(availableSections) { s in
+                                        ForEach(effectiveSections) { s in
                                             Text("第 \(s.section) 节").tag(s.section)
                                         }
                                     }
                                     .labelsHidden()
                                     .pickerStyle(.menu)
                                     .frame(width: 85)
+                                    .onChange(of: mutationStartSection) { newStart in
+                                        if mutationEndSection < newStart {
+                                            mutationEndSection = newStart
+                                        }
+                                    }
 
                                     Text("至")
                                         .font(.caption)
                                         .foregroundColor(.secondary)
 
                                     Picker("", selection: $mutationEndSection) {
-                                        ForEach(availableSections.filter { $0.section >= mutationStartSection }) { s in
+                                        ForEach(effectiveSections.filter { $0.section >= mutationStartSection }) { s in
                                             Text("第 \(s.section) 节").tag(s.section)
                                         }
                                     }
@@ -401,19 +413,24 @@ public struct CourseEditSheet: View {
                                             .foregroundColor(.secondary)
 
                                         Picker("", selection: $draft.startSection) {
-                                            ForEach(availableSections) { s in
+                                            ForEach(effectiveSections) { s in
                                                 Text("第 \(s.section) 节 (\(s.startTime))").tag(s.section)
                                             }
                                         }
                                         .labelsHidden()
                                         .pickerStyle(.menu)
+                                        .onChange(of: draft.startSection) { newStart in
+                                            if draft.endSection < newStart {
+                                                draft.endSection = newStart
+                                            }
+                                        }
 
                                         Text("至")
                                             .font(.caption)
                                             .foregroundColor(.secondary)
 
                                         Picker("", selection: $draft.endSection) {
-                                            ForEach(availableSections.filter { $0.section >= draft.startSection }) { s in
+                                            ForEach(effectiveSections.filter { $0.section >= draft.startSection }) { s in
                                                 Text("第 \(s.section) 节 (\(s.endTime))").tag(s.section)
                                             }
                                         }

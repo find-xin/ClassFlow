@@ -149,6 +149,12 @@ public final class AppState {
         self.pomodoroRecords = payload.pomodoroRecords
         self.calendarEvents = payload.calendarEvents
         self.tombstones = SyncEngine.garbageCollectTombstones(payload.tombstones)
+
+        for idx in self.semesters.indices {
+            if self.semesters[idx].sections.isEmpty {
+                self.semesters[idx].sections = timetableProfiles.first?.sections ?? Semester.standardDefaultSections
+            }
+        }
         if activePomodoroTaskId == nil {
             activePomodoroTaskId = pomodoroTasks.first(where: { !$0.isCompleted })?.id
         }
@@ -171,6 +177,11 @@ public final class AppState {
     }
 
     public func save() {
+        for idx in self.semesters.indices {
+            if self.semesters[idx].sections.isEmpty {
+                self.semesters[idx].sections = timetableProfiles.first?.sections ?? Semester.standardDefaultSections
+            }
+        }
         self.courses = SyncEngine.consolidateCourses(courses)
         invalidateOccurrencesCache()
         self.tombstones = SyncEngine.garbageCollectTombstones(tombstones)
@@ -502,8 +513,22 @@ public final class AppState {
     // MARK: - Computed Properties
 
     public var currentSemester: Semester? {
-        guard let id = currentSemesterId else { return semesters.first }
-        return semesters.first(where: { $0.id == id })
+        guard let id = currentSemesterId else {
+            if var first = semesters.first {
+                if first.sections.isEmpty {
+                    first.sections = timetableProfiles.first?.sections ?? Semester.standardDefaultSections
+                }
+                return first
+            }
+            return nil
+        }
+        if var sem = semesters.first(where: { $0.id == id }) ?? semesters.first {
+            if sem.sections.isEmpty {
+                sem.sections = timetableProfiles.first?.sections ?? Semester.standardDefaultSections
+            }
+            return sem
+        }
+        return nil
     }
 
     public var calculatedCurrentWeek: Int {

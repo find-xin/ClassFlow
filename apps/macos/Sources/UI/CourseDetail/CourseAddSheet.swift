@@ -68,6 +68,13 @@ public struct CourseAddSheet: View {
 
     @State private var schedules: [ScheduleDraft]
 
+    private var effectiveSections: [SectionTime] {
+        if !availableSections.isEmpty {
+            return availableSections
+        }
+        return Semester.standardDefaultSections
+    }
+
     private let colors = [
         "#5B7FB5", "#56A3A6", "#E37B75", "#8E7DBE",
         "#E8A87C", "#7BB38E", "#C38D9E", "#457B9D"
@@ -287,19 +294,24 @@ public struct CourseAddSheet: View {
                                         .foregroundColor(.secondary)
 
                                     Picker("", selection: $draft.startSection) {
-                                        ForEach(availableSections) { s in
+                                        ForEach(effectiveSections) { s in
                                             Text("第 \(s.section) 节 (\(s.startTime))").tag(s.section)
                                         }
                                     }
                                     .labelsHidden()
                                     .pickerStyle(.menu)
+                                    .onChange(of: draft.startSection) { newStart in
+                                        if draft.endSection < newStart {
+                                            draft.endSection = newStart
+                                        }
+                                    }
 
                                     Text("至")
                                         .font(.caption)
                                         .foregroundColor(.secondary)
 
                                     Picker("", selection: $draft.endSection) {
-                                        ForEach(availableSections.filter { $0.section >= draft.startSection }) { s in
+                                        ForEach(effectiveSections.filter { $0.section >= draft.startSection }) { s in
                                             Text("第 \(s.section) 节 (\(s.endTime))").tag(s.section)
                                         }
                                     }

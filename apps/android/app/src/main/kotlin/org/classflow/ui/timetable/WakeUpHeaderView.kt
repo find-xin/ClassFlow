@@ -707,7 +707,15 @@ fun WakeUpHeaderView(
                     onClick = {
                         val name = semNameInput.trim().ifEmpty { "新课表" }
                         val weeks = semWeeksInput.toIntOrNull()?.coerceIn(1, 35) ?: 20
-                        val newSem = Semester(id = UUID.randomUUID().toString(), name = name, startDate = "2026-09-01", endDate = "2027-01-20", totalWeeks = weeks, isCurrent = true)
+                        val newSem = Semester(
+                            id = UUID.randomUUID().toString(),
+                            name = name,
+                            startDate = "2026-09-01",
+                            endDate = "2027-01-20",
+                            totalWeeks = weeks,
+                            isCurrent = true,
+                            sections = org.classflow.data.local.CourseDataManager.defaultSectionTimes()
+                        )
                         onCreateSemester(newSem)
                         onSelectSemester(newSem)
                         onSemesterChange(newSem.name)
