@@ -1,13 +1,13 @@
 # ClassFlow
 
 > **Native First, Local First, Bring Your Own Cloud.**  
-> 一款专为 macOS 与 Android 打造的高颜值、本地离线优先、原生跨平台课程表与时间规划应用，内置 **ChatGPT 全功能接管套件（23 个 MCP 工具 + 安全云端隧道）** 与小米手环腕上快应用。
+> 一款专为 macOS 与 Android 打造的高颜值、本地离线优先、原生跨平台课程表与时间规划应用，内置 **ChatGPT 全功能接管套件（28 个 MCP 工具 + 安全云端隧道）** 与小米手环腕上快应用。
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
 [![macOS 15.8+](https://img.shields.io/badge/macOS-15.8%2B%20%28Apple%20Silicon%29-black?logo=apple)](#target-platforms)
 [![Android API 26+](https://img.shields.io/badge/Android-API%2026%2B%20%2F%20HyperOS-green?logo=android)](#target-platforms)
-[![MCP Server: 23 Tools](https://img.shields.io/badge/MCP%20Server-23%20Tools%20Ready-purple?logo=openai)](#chatgpt--ai-全功能接管套件)
-[![Release: v1.0.0](https://img.shields.io/badge/Release-v1.0.0-orange)](https://github.com/find-xin/ClassFlow/releases/tag/v1.0.0)
+[![MCP Server: 28 Tools](https://img.shields.io/badge/MCP%20Server-28%20Tools%20Ready-purple?logo=openai)](#chatgpt--ai-全功能接管套件)
+[![Release: v1.2.0](https://img.shields.io/badge/Release-v1.2.0-orange)](https://github.com/find-xin/ClassFlow/releases/tag/v1.2.0)
 
 ---
 
@@ -57,12 +57,12 @@
 
 | 模块 / 特性 | 实现栈 | 测试覆盖 | 验证状态 | 说明 |
 | :--- | :--- | :--- | :--- | :--- |
-| **Core Engine** | Swift 6 Package | 57 单元测试通过 | `[VERIFIED]` | 覆盖冲突检测、周次计算、ICS 编解码、ZIP 备份包、S3/WebDAV 协议与 3-way 合并 |
-| **macOS Client** | SwiftUI + AppKit | 56 单元测试通过 | `[VERIFIED]` | macOS 15.8 Sequoia 原生运行，支持深色模式、键盘导航、联想输入与多学期管理 |
+| **Core Engine** | Swift 6 Package | 62 单元测试通过 | `[VERIFIED]` | 覆盖冲突检测、周次计算、ICS 编解码、ZIP 备份包、S3/WebDAV 协议与 3-way 合并 |
+| **macOS Client** | SwiftUI + AppKit | 75 单元测试通过 | `[VERIFIED]` | macOS 15.8 Sequoia 原生运行，支持深色模式、键盘导航、联想输入与多学期管理 |
 | **macOS Widget** | WidgetKit Extension | 已嵌入并本地签名 | `[VERIFIED]` | 独立 `.appex` 扩展，支持系统桌面与通知中心课表微件 |
-| **MCP AI Server** | Model Context Protocol | 自动化测试通过 | `[VERIFIED]` | 23 个标准工具覆盖课程、日程、待办、番茄专注、云同步与学期切换 |
+| **MCP AI Server** | Model Context Protocol | 自动化测试通过 | `[VERIFIED]` | 28 个标准工具覆盖课程、日程、待办、番茄专注、云同步与学期切换 |
 | **ChatGPT 安全隧道** | Swift Native Subprocess | 进程与钥匙串测试通过 | `[VERIFIED]` | 安全管理 `tunnel-client` 守护进程，本地健康探针，Token 存入 Keychain |
-| **Android Client** | Jetpack Compose + Room | 构建产物生成 | `[VERIFIED]` | 支持 Material 3/WakeUp 风格网格、周次悬浮抽屉、跨模块同步与多尺寸小组件 |
+| **Android Client** | Jetpack Compose + Room | 46 项单元测试及 APK 构建 | `[VERIFIED]`（真机同步待验收） | 支持 Material 3/WakeUp 风格网格、周次悬浮抽屉、跨模块同步与多尺寸小组件 |
 | **Xiaomi Band 快应用** | Vela QuickApp (`.rpk`) | 规范校验通过 | `[VERIFIED]` | 适配小米手环 9/10，独立离线查看与课程时间震动提醒 |
 | **Xiaomi Super Island** | HyperOS Adaptation | 架构设计完成 | `[BLOCKED]` | 需小米开放平台官方 App ID 审批与白名单资质，已优雅降级为常驻通知卡片 |
 
@@ -104,15 +104,17 @@ ClassFlow Repository
 - **系统通知与课前提醒**：支持提前 10/15/30 分钟自定义通知，课间自动切换下一节状态。
 
 ### 🧠 ChatGPT / AI 全功能接管套件
-ClassFlow 提供业界最完整的 **AI 本地与云端接管体系**，无论是本地 Claude Desktop / Codex，还是云端 ChatGPT 聊天界面，均可通过自然语言操控整套应用：
+ClassFlow 提供本地 stdio MCP 与云端 Secure MCP Tunnel 两种连接方式，可通过自然语言管理课程、日程、待办和专注。系统授权、钥匙串及所有设置页面不属于业务编辑接口。
 
-#### 23 个标准 MCP 工具支持
-1. **系统状态与课表查询**：`get_status`（当前学期/周次）、`query_timetable`（查询任意日期/周次课表）、`list_courses`（列出所有课程）；
-2. **课程全生命周期管理**：`add_course`（添加课程/时段/学分/教室）、`update_course`（修改属性）、`delete_course`（删除课程并留存墓碑）；
-3. **通用日程管理**：`list_calendar_events`（列出日程）、`add_calendar_event`（添加组会/考试）、`update_calendar_event`、`delete_calendar_event`；
-4. **待办任务清单**：`list_tasks`（列出待办）、`add_task`（添加任务/截止期/标签）、`update_task`、`complete_task`（标记完成）、`delete_task`；
-5. **番茄钟与专注统计**：`start_focus_timer`（启动专注倒计时）、`pause_focus_timer`、`resume_focus_timer`、`stop_focus_timer`、`get_focus_statistics`（查询今日/历史专注总时长与番茄数）；
-6. **全局调度与云同步**：`open_app`（唤醒并置顶应用）、`switch_semester_or_week`（跳转指定学期或周次）、`trigger_cloud_sync`（触发立即云同步）。
+#### 28 个标准 MCP 工具支持
+1. **完整读取**：状态、课表与列表查询，以及 `get_editing_context` 分页读取完整字段和独立时段 UUID。
+2. **课程与时段**：课程元数据、多时段、独立教师/教室、节次/具体时间和任意周次；`manage_course_schedule` 提供三级范围调课/停课和单次恢复。
+3. **日程**：完整编辑标题、时间模式、跨天/全天、重复规则与结束日期/次数、提醒、颜色与备注；支持三级范围修改和删除。
+4. **待办**：课程关联、三级优先级、起止日期、精确分钟数、备注与重复规则；支持完成、恢复及周期任务后续生成。
+5. **专注**：番茄钟、正向计时、目标倒计时，暂停、继续、结束、`reset_focus_timer` 重置和真实统计。
+6. **批量与同步**：`batch_edit_items` 每批 1–100 项原子编辑与预检；`import_calendar_events` 每批最多 500 条展开实例迁移；保留 App 导航、学期切换与已配置 BYOC 同步。
+
+更新 App 后，请在 ChatGPT 原 Classflow 连接点击“刷新工具”，再新建聊天；出现 28 项工具后使用新版参数。本地客户端重连 MCP。详见 [完整接口及限制](docs/CHATGPT_INTEGRATION.md)。
 
 #### 架构与安全特性
 - **本地 IPC 桌面邮箱**：位于 `~/Library/Application Support/ClassFlow/automation`（0700 权限），毫秒级通知主线程 AppState，AI 改动在界面实时呈现；
@@ -132,16 +134,16 @@ ClassFlow 提供业界最完整的 **AI 本地与云端接管体系**，无论�
 
 ## 5. 下载与安装
 
-### 正式发布文件 (Release v1.0.0)
+### 正式发布文件 (Release v1.2.0)
 
 | 平台 | 安装包名称 | 文件大小 | SHA-256 校验和 |
 | :--- | :--- | :--- | :--- |
-| **macOS (Apple Silicon)** | `ClassFlow-1.0.0-macOS-arm64.dmg` | 4.4 MB | `5840cbfde696cb37f3c72b74a07d7e309703fd99d3ca00d65e7a3f59c6034f83` |
-| **macOS 绿色免安装** | `ClassFlow-1.0.0-macOS-arm64.zip` | 6.8 MB | `4fabfa03448f8821a6d6f4c28aaa77517b77cdbc229858ea936cd0e69dc596c0` |
-| **Android 客户端** | `ClassFlow-1.0.0-android.apk` | 13.4 MB | `a07137a280094137b487640c04bf3dccf0702f6107decc7c3ab7261b27912b8a` |
-| **小米手环快应用** | `ClassFlow-1.0.0-xiaomi-band.rpk` | 5.0 KB | `8a3b4c6cbcfd3d6ec4e4a7580b13ea6dc98c6b543bca3735de98aae926938602` |
-| **小米手环源码包** | `ClassFlow-1.0.0-xiaomi-band.zip` | 5.0 KB | `8a3b4c6cbcfd3d6ec4e4a7580b13ea6dc98c6b543bca3735de98aae926938602` |
-| **本地 Work / Codex 插件** | `ClassFlow-Local-Plugin-1.1.0.zip` | 14.9 KB | `ee82f0eacc4cb8fccfa701ff6fdf5f03e29e8a067cd7f66b9cf018824508c689` |
+| **macOS (Apple Silicon)** | `ClassFlow-1.2.0-macOS-arm64.dmg` | 4.5 MB | `38f3dc5c0913953850013eea940b25b8b9acebaa8a66f25e0cf14f178ff6c849` |
+| **macOS ZIP** | `ClassFlow-1.2.0-macOS-arm64.zip` | 3.9 MB | `b425800f5b8598334961d6693c0f1c100d7122075d981bf113eb1d02495fc685` |
+| **Android 客户端** | `ClassFlow-1.2.0-android.apk` | 13.4 MB | `3837bcd7ce6c0ea3bdf4d6e023fd51defeef587e6ffe7e7bc953f6362b2adf3a` |
+| **小米手环（未变更）** | `ClassFlow-1.0.0-xiaomi-band.rpk` | 4.7 KB | `8a3b4c6cbcfd3d6ec4e4a7580b13ea6dc98c6b543bca3735de98aae926938602` |
+| **小米手环源码包（未变更）** | `ClassFlow-1.0.0-xiaomi-band.zip` | 4.7 KB | `8a3b4c6cbcfd3d6ec4e4a7580b13ea6dc98c6b543bca3735de98aae926938602` |
+| **本地 Work / Codex 插件** | `ClassFlow-Local-Plugin-1.2.0.zip` | 18.0 KB | `a4cba369c23afe0fdff13138a5e5b04b535327ac05e5e7681555af61b5f0b2f3` |
 
 > 校验命令：`cd dist && shasum -a 256 -c SHA256SUMS.txt`
 
@@ -163,8 +165,8 @@ swift test --package-path apps/macos
 
 | 入口 | Release 下载 | 安装方式 |
 | --- | --- | --- |
-| 普通 ChatGPT 聊天 | macOS App + [接入说明](https://github.com/find-xin/ClassFlow/releases/download/v1.0.0/ClassFlow-ChatGPT-Setup.md) | 安装官方 tunnel-client，在 App 的 AI / ChatGPT 设置填写 Tunnel ID 和专用运行密钥，再在 ChatGPT 添加同一 Tunnel 连接 |
-| 本地 Work / Codex | macOS App + [本地插件包 1.1.0](https://github.com/find-xin/ClassFlow/releases/download/v1.0.0/ClassFlow-Local-Plugin-1.1.0.zip) | 解压插件包，在其目录运行 `bash scripts/install_mcp.sh`，新建本地会话选用插件 |
+| 普通 ChatGPT 聊天 | macOS App + [接入说明](https://github.com/find-xin/ClassFlow/releases/download/v1.2.0/ClassFlow-ChatGPT-Setup.md) | 安装官方 tunnel-client，在 App 的 AI / ChatGPT 设置填写 Tunnel ID 和专用运行密钥，再在 ChatGPT 添加同一 Tunnel 连接 |
+| 本地 Work / Codex | macOS App + [本地插件包 1.2.0](https://github.com/find-xin/ClassFlow/releases/download/v1.2.0/ClassFlow-Local-Plugin-1.2.0.zip) | 解压插件包，在其目录运行 `bash scripts/install_mcp.sh`，新建本地会话选用插件 |
 
 本地插件包不等于普通云端聊天的连接方式，也不代表已上架 ChatGPT 官方公共目录。插件版本与 App 版本分别编号。详见 [简明接入说明](docs/CHATGPT_RELEASE_SETUP.md)。
 
@@ -175,7 +177,7 @@ swift test --package-path apps/macos
 - 📘 [系统架构设计 (ARCHITECTURE.md)](docs/ARCHITECTURE.md)
 - 🧠 [ChatGPT 与 AI 接管集成指南 (CHATGPT_INTEGRATION.md)](docs/CHATGPT_INTEGRATION.md)
 - 📋 [跨平台测试计划与验收报告 (TEST_PLAN.md)](docs/TEST_PLAN.md)
-- 📦 [版本发布记录 (RELEASE_NOTES_v1.0.0.md)](RELEASE_NOTES_v1.0.0.md)
+- 📦 [版本发布记录 (RELEASE_NOTES_v1.2.0.md)](RELEASE_NOTES_v1.2.0.md)
 - 🤝 [贡献者与开发规范 (AGENTS.md)](AGENTS.md)
 - 📐 [架构决策记录 (docs/ADR/)](docs/ADR/)
 

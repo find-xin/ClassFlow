@@ -121,7 +121,9 @@ public struct CourseCardView: View {
                             .font(.system(size: CGFloat(settings.cardFontSize), weight: .bold))
                             .foregroundColor(effectiveTextColor)
                             .multilineTextAlignment(settings.cardTextHorizontalCenter ? .center : .leading)
-                            .lineLimit(height < 55 ? 1 : 2)
+                            // Taller cards let SwiftUI wrap the title into the available height.
+                            // Compact cards retain one line so their content stays inside the time slot.
+                            .lineLimit(height < 55 ? 1 : nil)
                             .strikethrough(item.status == .cancelled, color: effectiveTextColor.opacity(0.8))
 
                         if !settings.cardTextHorizontalCenter {

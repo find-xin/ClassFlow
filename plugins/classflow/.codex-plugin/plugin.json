@@ -1,6 +1,6 @@
 {
   "name": "classflow",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "管理本机 ClassFlow 的课程、日程、待办、专注与云同步。",
   "author": {"name": "ClassFlow"},
   "license": "Apache-2.0",

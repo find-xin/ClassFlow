@@ -105,9 +105,12 @@ object TimelineProjection {
                         }
                     }
                     WeekPatternType.CUSTOM -> {
-                        if (sched.customWeeks.isNotEmpty()) sched.customWeeks.contains(selectedWeek) else true
+                        sched.customWeeks.contains(selectedWeek)
                     }
                 }
+
+                if (selectedWeek < sched.startWeek || selectedWeek > sched.endWeek) continue
+                if (sched.weekPattern == WeekPatternType.CUSTOM && sched.customWeeks.isEmpty()) continue
 
                 // If non-current week courses are disabled and this course is inactive this week, skip
                 if (!isWeekActive) {
@@ -151,13 +154,13 @@ object TimelineProjection {
                             }
                         }
                         ExceptionType.RESCHEDULE -> {
-                            status = OccurrenceStatus.RESCHEDULED
+                            status = OccurrenceStatus.CANCELLED
                             if (!ex.reason.isNullOrBlank()) {
                                 effectiveNotes = if (effectiveNotes.isNullOrBlank()) ex.reason else "$effectiveNotes (${ex.reason})"
                             }
                         }
                         ExceptionType.ROOM_CHANGE -> {
-                            if (!ex.targetClassroom.isNullOrBlank()) {
+                            if (ex.targetClassroom != null) {
                                 effectiveLocation = ex.targetClassroom
                             }
                         }
@@ -191,165 +194,25 @@ object TimelineProjection {
             }
         }
 
+        // Project arrivals on the target date, including moves across teaching weeks.
+        for (exception in exceptions.filter { it.type == ExceptionType.RESCHEDULE && it.targetDate != null }) {
+            val course = safeCourses.firstOrNull { c -> c.schedules.any { it.id == exception.scheduleId } } ?: continue
+            val slot = course.schedules.first { it.id == exception.scheduleId }
+            val day = (1..7).firstOrNull { calculateDateString(semesterStartDate, selectedWeek, it) == exception.targetDate } ?: continue
+            val first = exception.targetStartSection ?: slot.startSection
+            val last = exception.targetEndSection ?: slot.endSection
+            results.add(TimelineItem(id = "course_arrival_${exception.id}", courseId = course.id, scheduleId = slot.id,
+                title = course.name, location = exception.targetClassroom ?: slot.classroom, date = exception.targetDate!!,
+                dayOfWeek = day, startSection = first, endSection = last,
+                startTime = sectionTimes.firstOrNull { it.section == first }?.startTime,
+                endTime = sectionTimes.firstOrNull { it.section == last }?.endTime,
+                weekNumber = selectedWeek, isCurrentWeek = true, status = OccurrenceStatus.RESCHEDULED,
+                color = course.color, teacher = slot.teacher ?: course.teacher, notes = exception.reason ?: course.notes, credit = course.credit))
+        }
+
         // 2. Project Calendar Events / Agenda Schedules
         for (event in safeSchedules) {
-            // Check week matrix filtering: if customWeeks is configured, must contain selectedWeek
-            if (event.customWeeks.isNotEmpty() && !event.customWeeks.contains(selectedWeek)) {
-                continue
-            }
-
-            val normFreq = normalizeFrequency(event.frequency)
-
-            for (day in 1..7) {
-                val dateStr = calculateDateString(semesterStartDate, selectedWeek, day)
-
-                // Check event startDate bounds (safe 10-char comparison to prevent time suffix mismatches)
-                val sDate = event.startDate?.take(10)
-                if (!sDate.isNullOrBlank() && dateStr < sDate) {
-                    continue
-                }
-
-                val isRecurring = normFreq != "none"
-                if (!isRecurring) {
-                    // Check event endDate bounds for single event
-                    val eDate = event.endDate?.take(10)
-                    if (!eDate.isNullOrBlank() && dateStr > eDate) {
-                        continue
-                    }
-                } else {
-                    // Check recurrence endRepeatUntil bounds
-                    if (event.endRepeatType == "untilDate" && !event.endRepeatUntil.isNullOrBlank()) {
-                        val uDate = event.endRepeatUntil.take(10)
-                        if (dateStr > uDate) {
-                            continue
-                        }
-                    }
-                    val eDate = event.endDate?.take(10)
-                    if (!eDate.isNullOrBlank() && dateStr > eDate) {
-                        continue
-                    }
-                }
-
-                var shouldInclude = false
-                when (normFreq) {
-                    "daily" -> {
-                        shouldInclude = if (event.customDaysOfWeek.isNotEmpty()) event.customDaysOfWeek.contains(day) else true
-                    }
-                    "workdays" -> {
-                        shouldInclude = if (event.customDaysOfWeek.isNotEmpty()) event.customDaysOfWeek.contains(day) else (day in 1..5)
-                    }
-                    "weekends" -> {
-                        shouldInclude = if (event.customDaysOfWeek.isNotEmpty()) event.customDaysOfWeek.contains(day) else (day in 6..7)
-                    }
-                    "weekly" -> {
-                        if (event.customDaysOfWeek.isNotEmpty()) {
-                            shouldInclude = event.customDaysOfWeek.contains(day)
-                        } else if (!sDate.isNullOrBlank()) {
-                            shouldInclude = (day == getDayOfWeekFromDateString(sDate))
-                        } else if (event.startTime.length >= 10 && event.startTime.contains("-")) {
-                            shouldInclude = (day == getDayOfWeekFromDateString(event.startTime.substring(0, 10)))
-                        } else {
-                            shouldInclude = (day == 1)
-                        }
-                    }
-                    "customDays", "custom" -> {
-                        shouldInclude = if (event.customDaysOfWeek.isNotEmpty()) event.customDaysOfWeek.contains(day) else (day == 1)
-                    }
-                    "customWeeks" -> {
-                        if (event.customDaysOfWeek.isNotEmpty()) {
-                            shouldInclude = event.customDaysOfWeek.contains(day)
-                        } else if (!sDate.isNullOrBlank()) {
-                            shouldInclude = (day == getDayOfWeekFromDateString(sDate))
-                        } else if (event.startTime.length >= 10 && event.startTime.contains("-")) {
-                            shouldInclude = (day == getDayOfWeekFromDateString(event.startTime.substring(0, 10)))
-                        } else {
-                            shouldInclude = (day == 1)
-                        }
-                    }
-                    else -> { // "none"
-                        if (event.customDaysOfWeek.isNotEmpty()) {
-                            shouldInclude = event.customDaysOfWeek.contains(day)
-                        } else if (!sDate.isNullOrBlank()) {
-                            shouldInclude = (sDate == dateStr)
-                        } else if (event.startTime.startsWith(dateStr)) {
-                            shouldInclude = true
-                        } else {
-                            shouldInclude = (day == 1 && selectedWeek == currentWeek)
-                        }
-                    }
-                }
-
-                if (!shouldInclude) continue
-
-                // Check exception cancellation for this calendar event occurrence
-                val ex = exceptions.firstOrNull { it.scheduleId == event.id && it.originalDate == dateStr }
-                var status = OccurrenceStatus.NORMAL
-                if (ex != null && ex.type == ExceptionType.CANCEL) {
-                    if (ex.reason == "单次删除") {
-                        continue
-                    }
-                    status = OccurrenceStatus.CANCELLED
-                }
-
-                // Strip full ISO timestamps if present
-                val rawStartT = event.startTime
-                val startT = when {
-                    rawStartT.contains("T") -> rawStartT.substringAfter("T").take(5)
-                    rawStartT.contains(" ") -> rawStartT.substringAfter(" ").take(5)
-                    rawStartT.isNotBlank() -> rawStartT
-                    else -> sectionTimes.find { it.section == (event.startSection ?: 1) }?.startTime ?: "08:00"
-                }
-
-                val rawEndT = event.endTime
-                val endT = when {
-                    rawEndT.contains("T") -> rawEndT.substringAfter("T").take(5)
-                    rawEndT.contains(" ") -> rawEndT.substringAfter(" ").take(5)
-                    rawEndT.isNotBlank() -> rawEndT
-                    else -> sectionTimes.find { it.section == (event.endSection ?: event.startSection ?: 1) }?.endTime ?: "09:00"
-                }
-
-                var resolvedStart = event.startSection
-                var resolvedEnd = event.endSection
-                if (resolvedStart == null && sectionTimes.isNotEmpty() && startT.isNotBlank()) {
-                    val sMatch = sectionTimes.firstOrNull { it.endTime >= startT }?.section
-                    val eMatch = if (endT.isNotBlank()) {
-                        sectionTimes.lastOrNull { it.startTime <= endT }?.section ?: sMatch
-                    } else sMatch
-                    if (sMatch != null) {
-                        resolvedStart = minOf(sMatch, eMatch ?: sMatch)
-                        resolvedEnd = maxOf(sMatch, eMatch ?: sMatch)
-                    }
-                }
-                val secStart = resolvedStart ?: 1
-                val secEnd = resolvedEnd ?: secStart
-
-                val isRec = normFreq != "none" || event.customWeeks.isNotEmpty() || event.customDaysOfWeek.size > 1
-
-                results.add(
-                    TimelineItem(
-                        id = "event_occ_${event.id}_${selectedWeek}_$day",
-                        calendarEventId = event.id,
-                        scheduleId = event.id,
-                        title = event.title,
-                        location = event.location,
-                        date = dateStr,
-                        dayOfWeek = day,
-                        startSection = secStart,
-                        endSection = secEnd,
-                        startTime = startT,
-                        endTime = endT,
-                        weekNumber = selectedWeek,
-                        isCurrentWeek = true,
-                        status = status,
-                        color = event.color,
-                        teacher = null,
-                        notes = event.description,
-                        isAllDay = event.isAllDay,
-                        isTask = false,
-                        isRecurring = isRec
-                    )
-                )
-            }
+            results.addAll(CalendarEventProjection.project(event, semesterStartDate, selectedWeek, sectionTimes, exceptions))
         }
 
         // 3. Annotate conflicts across active occurrences on the same day

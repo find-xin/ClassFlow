@@ -805,7 +805,7 @@ public struct StudyFocusView: View {
             appState.focusSession = session
         } else {
             appState.focusSession = FocusSession(taskId: activeTask?.id, title: activeTask?.title ?? "自由心流专注",
-                mode: focusMode, durationMinutes: focusDurationMinutes, startedAt: Date())
+                mode: focusMode, durationMinutes: focusDurationMinutes, startedAt: Date(), courseId: activeTask?.courseId, courseName: activeTask?.courseName)
         }
         appState.save()
         restoreFocusSession()

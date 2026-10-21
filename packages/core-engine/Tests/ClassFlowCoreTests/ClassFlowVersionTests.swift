@@ -5,6 +5,6 @@ import ClassFlowCore
 struct ClassFlowVersionTests {
     @Test("Verify version string")
     func testVersion() {
-        #expect(ClassFlowVersion.version == "1.0.0")
+        #expect(ClassFlowVersion.version == "1.2.0")
     }
 }

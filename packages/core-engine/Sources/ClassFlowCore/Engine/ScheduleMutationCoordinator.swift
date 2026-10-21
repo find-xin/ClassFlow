@@ -58,7 +58,11 @@ public struct ScheduleMutationCoordinator: Sendable {
                 scheduleId: originalSchedule.id,
                 originalDate: occurrenceDate,
                 exceptionType: exceptionType,
-                targetDate: occurrenceDate,
+                targetDate: {
+                    let formatter = DateFormatter(); formatter.dateFormat = "yyyy-MM-dd"; formatter.locale = Locale(identifier: "en_US_POSIX")
+                    guard let original = formatter.date(from: occurrenceDate), let target = Calendar.current.date(byAdding: .day, value: updatedDayOfWeek - originalSchedule.dayOfWeek, to: original) else { return occurrenceDate }
+                    return formatter.string(from: target)
+                }(),
                 targetDayOfWeek: updatedDayOfWeek,
                 targetStartSection: updatedStartSection,
                 targetEndSection: updatedEndSection,
@@ -95,7 +99,9 @@ public struct ScheduleMutationCoordinator: Sendable {
                     endSection: updatedEndSection,
                     classroom: updatedClassroom,
                     teacher: originalSchedule.teacher,
-                    weekPattern: .custom(Array(futureWeeks))
+                    weekPattern: .custom(Array(futureWeeks)),
+                    customStartTime: originalSchedule.customStartTime,
+                    customEndTime: originalSchedule.customEndTime
                 )
                 mutableCourse.schedules.append(newSchedule)
             }

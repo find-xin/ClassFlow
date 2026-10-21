@@ -4,6 +4,7 @@ import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.classflow.data.model.*
+import org.classflow.data.local.CourseDataManager
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
@@ -81,52 +82,9 @@ object FullSyncManager {
         }
         root.put("courses", coursesArr)
 
-        // Schedules (Calendar Events)
-        val schedsArr = JSONArray()
-        bundle.schedules.forEach { s ->
-            val sObj = JSONObject()
-            sObj.put("id", s.id)
-            if (s.semesterId != null) sObj.put("semesterId", s.semesterId)
-            sObj.put("title", s.title)
-            sObj.put("startTime", s.startTime)
-            sObj.put("endTime", s.endTime)
-            sObj.put("isAllDay", s.isAllDay)
-            sObj.put("location", s.location ?: "")
-            sObj.put("description", s.description ?: "")
-            sObj.put("color", s.color)
-            sObj.put("frequency", s.frequency)
-            schedsArr.put(sObj)
-        }
-        root.put("schedules", schedsArr)
-
-        // ToDos (Tasks)
-        val todosArr = JSONArray()
-        bundle.todos.forEach { t ->
-            val tObj = JSONObject()
-            tObj.put("id", t.id)
-            if (t.semesterId != null) tObj.put("semesterId", t.semesterId)
-            tObj.put("title", t.title)
-            tObj.put("isCompleted", t.isCompleted)
-            tObj.put("color", t.color)
-            tObj.put("description", t.description ?: "")
-            todosArr.put(tObj)
-        }
-        root.put("todos", todosArr)
-
-        // Study Tasks
-        val studyTasksArr = JSONArray()
-        bundle.studyTasks.forEach { st ->
-            val stObj = JSONObject()
-            stObj.put("id", st.id)
-            if (st.semesterId != null) stObj.put("semesterId", st.semesterId)
-            stObj.put("title", st.title)
-            stObj.put("courseName", st.courseName ?: "")
-            stObj.put("targetMinutes", st.targetMinutes)
-            stObj.put("completedMinutes", st.completedMinutes)
-            stObj.put("isCompleted", st.isCompleted)
-            studyTasksArr.put(stObj)
-        }
-        root.put("studyTasks", studyTasksArr)
+        root.put("schedules", JSONArray(CourseDataManager.serializeSchedules(bundle.schedules)))
+        root.put("todos", JSONArray(CourseDataManager.serializeSchedules(bundle.todos)))
+        root.put("studyTasks", JSONArray(CourseDataManager.serializeStudyTasks(bundle.studyTasks)))
 
         // Focus Records
         val recordsArr = JSONArray()
@@ -217,69 +175,9 @@ object FullSyncManager {
             }
         }
 
-        // Schedules
-        val schedules = mutableListOf<CalendarEvent>()
-        val schedArr = root.optJSONArray("schedules")
-        if (schedArr != null) {
-            for (i in 0 until schedArr.length()) {
-                val sObj = schedArr.getJSONObject(i)
-                schedules.add(
-                    CalendarEvent(
-                        id = sObj.optString("id", UUID.randomUUID().toString()),
-                        semesterId = sObj.optString("semesterId").ifEmpty { null },
-                        title = sObj.optString("title", "未命名日程"),
-                        startTime = sObj.optString("startTime", "08:00"),
-                        endTime = sObj.optString("endTime", "09:00"),
-                        isAllDay = sObj.optBoolean("isAllDay", false),
-                        location = sObj.optString("location").ifEmpty { null },
-                        description = sObj.optString("description").ifEmpty { null },
-                        color = sObj.optString("color", "#039BE5"),
-                        frequency = sObj.optString("frequency", "none"),
-                        isTask = false
-                    )
-                )
-            }
-        }
-
-        // ToDos
-        val todos = mutableListOf<CalendarEvent>()
-        val todosArr = root.optJSONArray("todos")
-        if (todosArr != null) {
-            for (i in 0 until todosArr.length()) {
-                val tObj = todosArr.getJSONObject(i)
-                todos.add(
-                    CalendarEvent(
-                        id = tObj.optString("id", UUID.randomUUID().toString()),
-                        semesterId = tObj.optString("semesterId").ifEmpty { null },
-                        title = tObj.optString("title", "未命名待办"),
-                        isCompleted = tObj.optBoolean("isCompleted", false),
-                        color = tObj.optString("color", "#059669"),
-                        description = tObj.optString("description").ifEmpty { null },
-                        isTask = true
-                    )
-                )
-            }
-        }
-
-        // Study Tasks
-        val studyTasks = mutableListOf<StudyTask>()
-        val studyArr = root.optJSONArray("studyTasks")
-        if (studyArr != null) {
-            for (i in 0 until studyArr.length()) {
-                val stObj = studyArr.getJSONObject(i)
-                studyTasks.add(
-                    StudyTask(
-                        id = stObj.optString("id", UUID.randomUUID().toString()),
-                        semesterId = stObj.optString("semesterId").ifEmpty { null },
-                        title = stObj.optString("title", "自习任务"),
-                        courseName = stObj.optString("courseName").ifEmpty { null },
-                        targetMinutes = stObj.optInt("targetMinutes", 45),
-                        completedMinutes = stObj.optInt("completedMinutes", 0),
-                        isCompleted = stObj.optBoolean("isCompleted", false)
-                    )
-                )
-            }
-        }
+        val schedules = CourseDataManager.deserializeSchedules(root.optJSONArray("schedules")?.toString() ?: "[]")
+        val todos = CourseDataManager.deserializeSchedules(root.optJSONArray("todos")?.toString() ?: "[]").map { it.copy(isTask = true) }
+        val studyTasks = CourseDataManager.deserializeStudyTasks(root.optJSONArray("studyTasks")?.toString() ?: "[]")
 
         // Focus Records
         val focusRecords = mutableListOf<FocusRecord>()

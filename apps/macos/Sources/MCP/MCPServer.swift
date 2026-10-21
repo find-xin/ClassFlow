@@ -121,7 +121,7 @@ public final class MCPServer: Sendable {
                 ],
                 "serverInfo": [
                     "name": "classflow-mcp",
-                    "version": "1.0.0"
+                    "version": "1.2.0"
                 ]
             ]
             sendResult(id: id, result: result)
@@ -204,11 +204,16 @@ public final class MCPServer: Sendable {
     }
 
     func invokeTool(name: String, arguments: [String: Any]) throws -> String {
+        try validateEditingArguments(name: name, arguments: arguments)
         if handlers.enablesAppIntegration {
             return try MCPDesktopBridge.call(tool: name, arguments: arguments)
         }
         try handlers.database.validateForAutomation()
         switch name {
+        case "get_editing_context": return try handlers.editingContext(arguments: arguments)
+        case "manage_course_schedule": return try handlers.manageCourseSchedule(arguments: arguments)
+        case "batch_edit_items": return try handlers.batchEdit(arguments: arguments)
+        case "reset_focus_timer": return try handlers.resetFocus()
         case "get_status":
             let status = handlers.getStatus()
             let data = try JSONSerialization.data(withJSONObject: status, options: [.prettyPrinted])
@@ -772,6 +777,15 @@ public final class MCPServer: Sendable {
             schema["properties"] = properties
             tools[i]["inputSchema"] = schema
         }
+        for replacement in completeEditingDefinitions() {
+            let name = replacement["name"] as? String ?? ""
+            let readOnly = name == "get_editing_context"
+            var definition = replacement
+            definition["annotations"] = ["readOnlyHint": readOnly, "destructiveHint": ["delete_course", "delete_calendar_event", "manage_course_schedule", "update_course", "update_calendar_event", "reset_focus_timer", "batch_edit_items"].contains(name),
+                "idempotentHint": readOnly || name == "reset_focus_timer" || name == "batch_edit_items", "openWorldHint": false]
+            if let index = tools.firstIndex(where: { $0["name"] as? String == name }) { tools[index] = definition }
+            else { tools.append(definition) }
+        }
         return tools
     }
 
@@ -791,7 +805,7 @@ public final class MCPServer: Sendable {
             "openapi": "3.1.0",
             "info": [
                 "title": "ClassFlow API",
-                "version": "1.0.0",
+                "version": "1.2.0",
                 "description": "OpenAPI specification for ClassFlow local macOS companion."
             ],
             "servers": [

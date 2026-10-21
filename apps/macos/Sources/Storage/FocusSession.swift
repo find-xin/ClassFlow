@@ -11,6 +11,9 @@ public struct FocusSession: Codable, Sendable, Equatable, Identifiable {
     public var startedAt: Date
     public var accumulatedSeconds: Int = 0
     public var pausedAt: Date?
+    public var courseId: UUID?
+    public var courseName: String?
+    public var location: String?
 
     public func elapsedSeconds(at now: Date) -> Int {
         let elapsed = accumulatedSeconds + max(0, Int((pausedAt ?? now).timeIntervalSince(startedAt)))

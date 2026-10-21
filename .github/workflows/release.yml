@@ -9,7 +9,7 @@ on:
       tag:
         description: 'Tag to release'
         required: true
-        default: 'v1.0.0'
+        default: 'v1.2.0'
 
 permissions:
   contents: write
@@ -39,6 +39,7 @@ jobs:
           test -f "$NOTES"
           PLUGIN_VERSION=$(python3 -c 'import json; print(json.load(open("plugins/classflow/.codex-plugin/plugin.json"))["version"])')
           APP_VERSION="${RELEASE_TAG#v}"
+          BAND_VERSION=$(python3 -c 'import json; print(json.load(open("apps/band-xiaomi/manifest.json"))["versionName"])')
           assets=(
             "dist/ClassFlow-${APP_VERSION}-macOS-arm64.dmg"
             "dist/ClassFlow-${APP_VERSION}-macOS-arm64.dmg.sha256"
@@ -46,10 +47,10 @@ jobs:
             "dist/ClassFlow-${APP_VERSION}-macOS-arm64.zip.sha256"
             "dist/ClassFlow-${APP_VERSION}-android.apk"
             "dist/ClassFlow-${APP_VERSION}-android.apk.sha256"
-            "dist/ClassFlow-${APP_VERSION}-xiaomi-band.rpk"
-            "dist/ClassFlow-${APP_VERSION}-xiaomi-band.rpk.sha256"
-            "dist/ClassFlow-${APP_VERSION}-xiaomi-band.zip"
-            "dist/ClassFlow-${APP_VERSION}-xiaomi-band.zip.sha256"
+            "dist/ClassFlow-${BAND_VERSION}-xiaomi-band.rpk"
+            "dist/ClassFlow-${BAND_VERSION}-xiaomi-band.rpk.sha256"
+            "dist/ClassFlow-${BAND_VERSION}-xiaomi-band.zip"
+            "dist/ClassFlow-${BAND_VERSION}-xiaomi-band.zip.sha256"
             "dist/ClassFlow-Local-Plugin-${PLUGIN_VERSION}.zip"
             "dist/ClassFlow-Local-Plugin-${PLUGIN_VERSION}.zip.sha256"
             dist/ClassFlow-ChatGPT-Setup.md

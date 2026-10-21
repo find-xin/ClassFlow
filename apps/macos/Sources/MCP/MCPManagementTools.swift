@@ -81,63 +81,11 @@ extension MCPToolHandlers {
     }
 
     public func updateCalendarEvent(arguments: [String: Any]) throws -> String {
-        var payload = database.load()
-        let query = arguments["event_id"] as? String ?? arguments["title"] as? String ?? ""
-        let i = try uniqueIndex(payload.calendarEvents, query: query, id: { $0.id }, title: { $0.title })
-        var event = payload.calendarEvents[i]
-        if let value = arguments["new_title"] as? String {
-            guard !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw automationError("标题不能为空。") }
-            event.title = value
-        }
-        let date = arguments["date"] as? String ?? event.startDate ?? String(event.startTime.prefix(10))
-        try validateDate(date)
-        let start = arguments["start_time"] as? String ?? String(event.startTime.dropFirst(11).prefix(5))
-        let end = arguments["end_time"] as? String ?? String(event.endTime.dropFirst(11).prefix(5))
-        try validateTime(start)
-        try validateTime(end)
-        if let value = arguments["is_all_day"] as? Bool { event.isAllDay = value }
-        guard event.isAllDay || start < end else { throw automationError("结束时间必须晚于开始时间。") }
-        event.startDate = date
-        if event.frequency == nil || event.frequency == "none" { event.endDate = date }
-        event.startTime = "\(date)T\(start):00"
-        event.endTime = "\(date)T\(end):00"
-        if let value = arguments["location"] as? String { event.location = value }
-        if let value = arguments["notes"] as? String { event.description = value }
-        if let value = arguments["color"] as? String { event.color = resolveColorHex(value) }
-        payload.calendarEvents[i] = event
-        try database.save(payload)
-        notifyAppAndWidgets(payload: payload)
-        return "已更新日程「\(event.title)」。"
+        return try editCalendar(arguments: arguments)
     }
 
     public func updateTask(arguments: [String: Any]) throws -> String {
-        var payload = database.load()
-        let query = arguments["task_id"] as? String ?? arguments["title"] as? String ?? ""
-        let i = try uniqueIndex(payload.pomodoroTasks, query: query, id: { $0.id }, title: { $0.title })
-        var task = payload.pomodoroTasks[i]
-        if let value = arguments["new_title"] as? String {
-            guard !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw automationError("标题不能为空。") }
-            task.title = value
-        }
-        if let value = arguments["notes"] as? String { task.notes = value }
-        if let value = arguments["due_date"] as? String {
-            if !value.isEmpty { try validateDate(value) }
-            task.dueDate = value.isEmpty ? nil : value
-        }
-        if let value = arguments["estimated_pomodoros"] as? Int {
-            guard (1...10000).contains(value) else { throw automationError("预估番茄数必须为 1–10000。") }
-            task.estimatedPomodoros = value
-        }
-        if let value = arguments["priority"] as? String {
-            guard let priority = ["high": TaskPriority.high, "medium": .medium, "low": .low][value] else {
-                throw automationError("优先级必须为 high、medium 或 low。")
-            }
-            task.priority = priority
-        }
-        payload.pomodoroTasks[i] = task
-        try database.save(payload)
-        notifyAppAndWidgets(payload: payload)
-        return "已更新待办「\(task.title)」。"
+        return try editTask(arguments: arguments)
     }
 }
 

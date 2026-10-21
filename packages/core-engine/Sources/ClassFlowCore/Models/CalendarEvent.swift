@@ -11,6 +11,8 @@ public struct CalendarEvent: Codable, Sendable, Identifiable, Equatable, Hashabl
     /// ISO 8601 DateTime string
     public var endTime: String
     public var isAllDay: Bool
+    /// Explicit binding to school sections; nil preserves legacy concrete timestamps.
+    public var timeMode: String?
     public var location: String?
     public var description: String?
     /// RFC 5545 RRULE string if recurring
@@ -44,6 +46,7 @@ public struct CalendarEvent: Codable, Sendable, Identifiable, Equatable, Hashabl
         startTime: String,
         endTime: String,
         isAllDay: Bool = false,
+        timeMode: String? = nil,
         location: String? = nil,
         description: String? = nil,
         recurrenceRule: String? = nil,
@@ -68,6 +71,7 @@ public struct CalendarEvent: Codable, Sendable, Identifiable, Equatable, Hashabl
         self.startTime = startTime
         self.endTime = endTime
         self.isAllDay = isAllDay
+        self.timeMode = timeMode
         self.location = location
         self.description = description
         self.recurrenceRule = recurrenceRule
@@ -115,6 +119,7 @@ public struct CalendarEvent: Codable, Sendable, Identifiable, Equatable, Hashabl
         self.startTime = try container.decode(String.self, forKey: .startTime)
         self.endTime = try container.decode(String.self, forKey: .endTime)
         self.isAllDay = try container.decode(Bool.self, forKey: .isAllDay)
+        self.timeMode = try container.decodeIfPresent(String.self, forKey: .timeMode)
         self.location = try container.decodeIfPresent(String.self, forKey: .location)
         self.description = try container.decodeIfPresent(String.self, forKey: .description)
         self.recurrenceRule = try container.decodeIfPresent(String.self, forKey: .recurrenceRule)

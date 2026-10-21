@@ -8,6 +8,7 @@ public protocol NotificationServiceProtocol: Sendable {
     func requestAccess() async throws -> Bool
     func schedulePreClassAlerts(occurrences: [TimelineItem], offsetMinutes: Int) async
     func scheduleDailyBriefing(todayOccurrences: [TimelineItem], hour: Int, minute: Int) async
+    func scheduleCalendarAlerts(events: [CalendarEvent], semesters: [Semester], exceptions: [ScheduleException]) async
     func cancelClassAlerts() async
     func cancelAll() async
 }
@@ -57,7 +58,7 @@ public final class NotificationService: @unchecked Sendable, NotificationService
         let activeItems = occurrences.filter { $0.status != .cancelled }
 
         var count = 0
-        let maxAllowedAlerts = 50 // Leave headroom for daily briefing
+        let maxAllowedAlerts = 30 // Leave headroom for daily briefing
 
         for item in activeItems {
             guard count < maxAllowedAlerts else { break }
@@ -102,6 +103,24 @@ public final class NotificationService: @unchecked Sendable, NotificationService
             } catch {
                 print("[NotificationService] Failed to schedule alert for \(item.title): \(error)")
             }
+        }
+    }
+
+    public func scheduleCalendarAlerts(events: [CalendarEvent], semesters: [Semester], exceptions: [ScheduleException]) async {
+        guard let center else { return }
+        let pending = await center.pendingNotificationRequests()
+        center.removePendingNotificationRequests(withIdentifiers: pending.filter { $0.identifier.hasPrefix("classflow_event_") }.map { $0.identifier })
+        guard await checkAccess() else { return }
+        for plan in CalendarAlertPlan.make(events: events, semesters: semesters, exceptions: exceptions) {
+            let content = UNMutableNotificationContent()
+            content.title = "日程提醒：" + plan.title
+            content.body = plan.location ?? "日程即将开始"
+            content.sound = .default
+            content.userInfo = ["type": "calendar_event"]
+            let components = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute, .second], from: plan.fireDate)
+            let request = UNNotificationRequest(identifier: plan.id, content: content, trigger: UNCalendarNotificationTrigger(dateMatching: components, repeats: false))
+            do { try await center.add(request) }
+            catch { NSLog("[NotificationService] Calendar reminder scheduling failed (%@)", String(describing: type(of: error))) }
         }
     }
 
@@ -182,6 +201,8 @@ public final class MockNotificationService: @unchecked Sendable, NotificationSer
     public func scheduleDailyBriefing(todayOccurrences: [TimelineItem], hour: Int, minute: Int) async {
         dailyBriefingScheduled = true
     }
+
+    public func scheduleCalendarAlerts(events: [CalendarEvent], semesters: [Semester], exceptions: [ScheduleException]) async {}
 
     public func cancelClassAlerts() async {
         scheduledPreClassAlertsCount = 0

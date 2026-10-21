@@ -294,10 +294,20 @@ object CourseDataManager {
                         startTime = obj.optString("startTime", "08:00"),
                         endTime = obj.optString("endTime", "09:00"),
                         isAllDay = obj.optBoolean("isAllDay", false),
+                        isTask = obj.optBoolean("isTask", false),
+                        isCompleted = obj.optBoolean("isCompleted", false),
+                        courseId = obj.optString("courseId").ifEmpty { null },
+                        courseName = obj.optString("courseName").ifEmpty { null },
+                        priority = obj.optString("priority", "medium"),
+                        dueDate = obj.optString("dueDate").ifEmpty { null },
+                        targetMinutes = if (obj.has("targetMinutes") && !obj.isNull("targetMinutes")) obj.getInt("targetMinutes") else null,
                         location = obj.optString("location").ifEmpty { null },
                         description = obj.optString("description").ifEmpty { null },
                         color = obj.optString("color", "#039BE5"),
-                        frequency = obj.optString("frequency", "每天"),
+                        frequency = obj.optString("frequency", "none"),
+                        timeMode = obj.optString("timeMode").takeIf { it == "sections" || it == "time" },
+                        alertMinutes = if (obj.has("alertMinutesBefore") && !obj.isNull("alertMinutesBefore")) obj.getInt("alertMinutesBefore") else if (obj.has("alertMinutes") && !obj.isNull("alertMinutes")) obj.getInt("alertMinutes") else null,
+                        intervalWeeks = obj.optInt("intervalWeeks", 1),
                         startSection = if (obj.has("startSection") && !obj.isNull("startSection")) obj.getInt("startSection") else null,
                         endSection = if (obj.has("endSection") && !obj.isNull("endSection")) obj.getInt("endSection") else null,
                         customDaysOfWeek = daysList,
@@ -327,10 +337,20 @@ object CourseDataManager {
             obj.put("startTime", s.startTime)
             obj.put("endTime", s.endTime)
             obj.put("isAllDay", s.isAllDay)
+            obj.put("isTask", s.isTask)
+            obj.put("isCompleted", s.isCompleted)
+            if (s.courseId != null) obj.put("courseId", s.courseId)
+            if (s.courseName != null) obj.put("courseName", s.courseName)
+            obj.put("priority", s.priority)
+            if (s.dueDate != null) obj.put("dueDate", s.dueDate)
+            if (s.targetMinutes != null) obj.put("targetMinutes", s.targetMinutes)
             obj.put("location", s.location ?: "")
             obj.put("description", s.description ?: "")
             obj.put("color", s.color)
             obj.put("frequency", s.frequency)
+            if (s.timeMode != null) obj.put("timeMode", s.timeMode)
+            if (s.alertMinutes != null) obj.put("alertMinutesBefore", s.alertMinutes)
+            obj.put("intervalWeeks", s.intervalWeeks)
             if (s.startSection != null) obj.put("startSection", s.startSection)
             if (s.endSection != null) obj.put("endSection", s.endSection)
             val daysArr = JSONArray()
@@ -641,6 +661,7 @@ object CourseDataManager {
                         semesterId = o.optString("semesterId").ifEmpty { null },
                         title = o.optString("title", "自习任务"),
                         courseName = o.optString("courseName").ifEmpty { null },
+                        courseId = o.optString("courseId").ifEmpty { null },
                         targetMinutes = o.optInt("targetMinutes", 25),
                         completedMinutes = o.optInt("completedMinutes", 0),
                         isCompleted = o.optBoolean("isCompleted", false),
@@ -671,6 +692,7 @@ object CourseDataManager {
             if (t.semesterId != null) o.put("semesterId", t.semesterId)
             o.put("title", t.title)
             o.put("courseName", t.courseName ?: "")
+            if (t.courseId != null) o.put("courseId", t.courseId)
             o.put("targetMinutes", t.targetMinutes)
             o.put("completedMinutes", t.completedMinutes)
             o.put("isCompleted", t.isCompleted)

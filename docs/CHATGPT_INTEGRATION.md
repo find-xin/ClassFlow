@@ -53,17 +53,24 @@
 
 如果 `init` 报已有配置，不自动覆盖；先检查已有 profile。已有正确 profile 可用 `tunnel-client doctor --profile classflow --explain` 和 `tunnel-client run --profile classflow` 复用，运行密钥仍来自环境引用。账户或工作区功能不可用时记录 `[BLOCKED]` 及实际错误，不伪装成已连接。
 
-## 24 个工具的覆盖范围
+## 28 个工具的覆盖范围（编辑接口 v1.2）
 
-- 状态和课表：`get_status`、`query_timetable`、`list_courses`。
-- 批量迁移：`import_calendar_events`，每批 1–500 条，先 dry_run 预览，全批验证后原子写入；固定 batch_id 和内容可安全重试。
-- 课程：`add_course`、`update_course`、`delete_course`；属性包括教师、学分、颜色、备注、地点。修改星期、节次、周次时，多课时课程必须提供 `schedule_id`。
-- 日程：`list_calendar_events`、`add_calendar_event`、`update_calendar_event`、`delete_calendar_event`；支持标题、日期、时间、全天、地点、颜色、备注。
-- 待办：`list_tasks`、`add_task`、`update_task`、`complete_task`、`delete_task`；支持备注、预估番茄、截止日期和优先级。待办颜色由优先级决定，现有领域模型没有独立颜色字段。
-- 专注：`start_focus_timer`、`pause_focus_timer`、`resume_focus_timer`、`stop_focus_timer`、`get_focus_statistics`。按实际经过时间记账，暂停时间排除；未满一分钟不编造一分钟记录。重复结束返回错误，避免重复记账。
-- App 与同步：`open_app`、`switch_semester_or_week`、`trigger_cloud_sync`。云同步使用 App 内已有 BYOC 配置，不接受或返回密钥。
+| 领域 | 能力与入口 |
+| --- | --- |
+| 完整读取 | `get_editing_context` 返回各类总数与分页的学期、作息、课程/独立时段、日程、待办、异常、当前专注；`kind/offset/limit` 分页，默认每类 50 项。保留原状态/课表/列表查询。 |
+| 课程 | `add_course/update_course/delete_course`：名称、学分、备注、颜色；多时段完整替换、逐时段教师/教室、节次/具体时间、任意周次。`schedules=[]` 清空时段；省略不变，null 清空可选字段。 |
+| 时段 | `manage_course_schedule`：新增、修改、删除独立时段；三级作用域调课/停课；单次恢复；target_date 支持跨周调课。单次异常使用节次和教室，自定义时间使用时段编辑或后续规则拆分；不接受未实现的单次教师/自定义时间覆盖。 |
+| 日程 | `add_calendar_event/update_calendar_event/delete_calendar_event`：标题、颜色、地点、备注、全天、跨天、具体时间/节次跟随、全部重复频次、自定义星期/周次、间隔、结束日期/次数、独立提醒（null 无提醒，0 开始时）。修改/删除支持三级范围，后两者必须 occurrence_date，单次拆出独立日程，后续拆出系列并保留历史。 |
+| 待办 | `add_task/update_task/complete_task/delete_task`：标题、备注、关联/解除课程、三级优先级、开始日期、截止日期时间、精确分钟/番茄数、全部重复字段。完成重复任务在 Mac 生成下次，稳定 UUID 避免重复完成重复生成；统计由真实专注产生。 |
+| 专注 | `start_focus_timer` 支持 pomodoro/count_up/countdown，关联待办或课程，可指定时段绑定教室；暂停/继续/停止/重置、统计。reset 丢弃本次。暂停不计时；停止不接受伪造时长。 |
+| 批量 | `batch_edit_items` 每批 1–100 项混合编辑，临时库逐项预检后单次提交；一项失败整批不写入；dry_run；固定 batch_id+内容安全重放。`import_calendar_events` 保留每批 1–500 条展开日程迁移和去重。 |
+| 导航/同步 | `open_app/switch_semester_or_week/trigger_cloud_sync`；凭据仍在 App/Keychain 中配置。 |
 
-这些工具不代表 macOS 的所有系统功能或 ClassFlow 所有设置页面均有接口。学期创建、备份导入导出、系统日历授权等需要另行定义明确工具，不应声称已覆盖。
+所有编辑通过 Mac App 主线程执行并记录 BYOC 增量同步。Android 保留新字段并使用同样的重复次数、跨天、节次与调课投影；Mac 的运行中专注会话不会同步成手机上的远程计时器。新增工具需要在 ChatGPT 连接设置刷新工具发现，本地客户端重连 MCP；仅更新技能文字不会更新已缓存的工具列表。
+
+界限：本版本覆盖上述三类业务编辑与专注操作，不代表系统授权、钥匙串、所有设置页、学期创建或备份导入导出都有自动化接口。课程/待办备注是当前 App 的文本字段；优先级三档；历史补全和配色面板属于界面交互。不能把这些界面名称误报为额外领域能力。
+
+日程提醒使用真实 UNUserNotificationCenter，需系统授权；课程最多 30 条、日程最多 30 条加每日简报，保留系统队列余量。滚动计划随 App 启动、保存和自动化写入刷新；退出 App 后仅已提交的通知能继续触发，不承诺无限期后台排程。真实系统通知送达与 Android 真机同步标记为 `[UNVERIFIED]`，不能仅据单元测试宣称已经验收。
 
 ## 执行与数据规则
 
@@ -125,6 +132,6 @@ python3 scripts/test_mcp_transport.py apps/macos/.build/debug/ClassFlow
 
 ## Batch calendar migration
 
-Tool count is now 24. import_calendar_events accepts a stable batch_id, 1-500 expanded occurrences and optional dry_run=true (no writes). Convert times to the Mac local timezone first; end_date supports cross-day events and is inclusive for all-day events. Recurrences must be expanded. Identity deduplication uses title, start/end, all-day, location and recurrence; it preserves existing notes/colors. The same batch ID/content replays its original receipt, even after later edits or deletions; changed content with the same ID is rejected. Receipts are device-local, excluded from BYOC and backups. Cloud chat must refresh tool discovery after updating the App; old 23-tool connections do not acquire a new tool automatically. Platform call/context limits still apply.
+Historical batch-import milestone (24 tools; superseded by the 28-tool editing interface above). import_calendar_events accepts a stable batch_id, 1-500 expanded occurrences and optional dry_run=true (no writes). Convert times to the Mac local timezone first; end_date supports cross-day events and is inclusive for all-day events. Recurrences must be expanded. Identity deduplication uses title, start/end, all-day, location and recurrence; it preserves existing notes/colors. The same batch ID/content replays its original receipt, even after later edits or deletions; changed content with the same ID is rejected. Receipts are device-local, excluded from BYOC and backups. Cloud chat must refresh tool discovery after updating the App; old 23-tool connections do not acquire a new tool automatically. Platform call/context limits still apply.
 
 [VERIFIED] Installed App batch import: preview and acknowledged commit completed; an independent MCP read verified 258 unique occurrences, 223 newly inserted, all 35 prior records preserved, and exact identity coverage against the source manifest. This verifies App/stdio execution; cloud-chat discovery of the new tool still needs a connection refresh. Private migration data is stored outside the repository.

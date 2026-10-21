@@ -41,6 +41,7 @@ public struct TimelineEngine: Sendable {
         // 1. Process regular schedules
         for course in courses {
             for schedule in course.schedules {
+                if schedule.weekPattern.type == .custom && schedule.weekPattern.customWeeks?.isEmpty == true { continue }
                 let isActiveInWeek = schedule.weekPattern.isActive(
                     inWeek: weekNumber,
                     totalWeeks: semester.totalWeeks
@@ -135,7 +136,7 @@ public struct TimelineEngine: Sendable {
         }
 
         for (targetDate, exList) in exceptionByTargetDate where datesInWeek.contains(targetDate) {
-            for ex in exList {
+            for ex in exList where ex.exceptionType == .reschedule || ex.exceptionType == .makeup {
                 guard let (course, schedule) = scheduleMap[ex.scheduleId] else { continue }
                 guard let targetDayOfWeek = ex.targetDayOfWeek,
                       let targetStart = ex.targetStartSection,

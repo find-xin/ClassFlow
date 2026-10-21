@@ -6,8 +6,18 @@ ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 MACOS_DIR="${ROOT_DIR}/apps/macos"
 DIST_DIR="${ROOT_DIR}/dist"
 APP_NAME="ClassFlow"
+APP_VERSION=$(python3 - "${ROOT_DIR}/packages/core-engine/Sources/ClassFlowCore/ClassFlowVersion.swift" <<'PYVERSION'
+import pathlib, re, sys
+source = pathlib.Path(sys.argv[1]).read_text()
+match = re.search(r'version = "([0-9]+\.[0-9]+\.[0-9]+)"', source)
+if match is None:
+    raise SystemExit("Missing semantic App version")
+print(match.group(1))
+PYVERSION
+)
+BUILD_NUMBER="2"
 BUNDLE_DIR="${DIST_DIR}/${APP_NAME}.app"
-DMG_NAME="${APP_NAME}-1.0.0-macOS-arm64.dmg"
+DMG_NAME="${APP_NAME}-${APP_VERSION}-macOS-arm64.dmg"
 
 echo "============================================================"
 echo " Packaging ClassFlow for macOS (Apple Silicon arm64)"
@@ -28,7 +38,7 @@ fi
 # 2. Prepare .app Bundle Structure
 echo "[2/6] Constructing ${APP_NAME}.app bundle..."
 mkdir -p "${DIST_DIR}"
-rm -rf "${BUNDLE_DIR}" "${DIST_DIR}/${DMG_NAME}" "${DIST_DIR}/${APP_NAME}-1.0.0-macOS-arm64.zip"*
+rm -rf "${BUNDLE_DIR}" "${DIST_DIR}/${DMG_NAME}" "${DIST_DIR}/${APP_NAME}-${APP_VERSION}-macOS-arm64.zip"*
 mkdir -p "${BUNDLE_DIR}/Contents/MacOS"
 mkdir -p "${BUNDLE_DIR}/Contents/Resources"
 mkdir -p "${BUNDLE_DIR}/Contents/PlugIns"
@@ -42,7 +52,7 @@ fi
 
 # 3. Write Info.plist
 echo "[3/6] Generating Info.plist..."
-cat << 'EOF' > "${BUNDLE_DIR}/Contents/Info.plist"
+cat << EOF > "${BUNDLE_DIR}/Contents/Info.plist"
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -60,11 +70,11 @@ cat << 'EOF' > "${BUNDLE_DIR}/Contents/Info.plist"
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0.0</string>
+    <string>${APP_VERSION}</string>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>${BUILD_NUMBER}</string>
     <key>LSMinimumSystemVersion</key>
-    <string>15.0</string>
+    <string>15.8</string>
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSCalendarsUsageDescription</key>
@@ -108,7 +118,7 @@ SDK_PATH=$(xcrun --show-sdk-path --sdk macosx)
 swiftc \
     -module-cache-path /tmp/clang-cache \
     -parse-as-library \
-    -target arm64-apple-macos15.0 \
+    -target arm64-apple-macos15.8 \
     -sdk "${SDK_PATH}" \
     -framework WidgetKit \
     -framework SwiftUI \
@@ -122,7 +132,7 @@ swiftc \
 
 chmod +x "${WIDGET_DIR}/Contents/MacOS/ClassFlowWidgets"
 
-cat << 'EOF' > "${WIDGET_DIR}/Contents/Info.plist"
+cat << EOF > "${WIDGET_DIR}/Contents/Info.plist"
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -142,15 +152,15 @@ cat << 'EOF' > "${WIDGET_DIR}/Contents/Info.plist"
     <key>CFBundlePackageType</key>
     <string>XPC!</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0.0</string>
+    <string>${APP_VERSION}</string>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>${BUILD_NUMBER}</string>
     <key>CFBundleSupportedPlatforms</key>
     <array>
         <string>MacOSX</string>
     </array>
     <key>LSMinimumSystemVersion</key>
-    <string>15.0</string>
+    <string>15.8</string>
     <key>NSExtension</key>
     <dict>
         <key>NSExtensionPointIdentifier</key>
@@ -167,7 +177,9 @@ codesign --force --sign - --entitlements "${MACOS_DIR}/Entitlements/ClassFlow.en
 
 # Install / update to /Applications if writable and register with macOS
 LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
-if [[ -d "/Applications" && -w "/Applications" ]]; then
+if [[ "${CLASSFLOW_SKIP_INSTALL:-0}" == "1" ]]; then
+    echo "Skipping local installation and widget registration."
+elif [[ -d "/Applications" && -w "/Applications" ]]; then
     echo "Installing updated ClassFlow.app into /Applications..."
     rm -rf "/Applications/ClassFlow.app"
     cp -R "${BUNDLE_DIR}" "/Applications/ClassFlow.app"
@@ -189,7 +201,7 @@ fi
 # 5. Create ZIP Distribution
 echo "[5/6] Creating ZIP archive..."
 cd "${DIST_DIR}"
-zip -r -q "${APP_NAME}-1.0.0-macOS-arm64.zip" "${APP_NAME}.app"
+ditto -c -k --sequesterRsrc --keepParent "${APP_NAME}.app" "${APP_NAME}-${APP_VERSION}-macOS-arm64.zip"
 
 # 6. Create DMG Disk Image with Applications symlink
 echo "[6/6] Building Apple DMG disk image..."
@@ -199,7 +211,7 @@ cp -R "${BUNDLE_DIR}" "${STAGING_DIR}/"
 ln -s /Applications "${STAGING_DIR}/Applications"
 
 hdiutil create \
-    -volname "ClassFlow" \
+    -volname "ClassFlow ${APP_VERSION}" \
     -srcfolder "${STAGING_DIR}" \
     -ov \
     -format UDZO \
@@ -210,7 +222,7 @@ rm -rf "${STAGING_DIR}"
 # Generate Checksums
 cd "${DIST_DIR}"
 shasum -a 256 "${DMG_NAME}" > "${DMG_NAME}.sha256"
-shasum -a 256 "${APP_NAME}-1.0.0-macOS-arm64.zip" > "${APP_NAME}-1.0.0-macOS-arm64.zip.sha256"
+shasum -a 256 "${APP_NAME}-${APP_VERSION}-macOS-arm64.zip" > "${APP_NAME}-${APP_VERSION}-macOS-arm64.zip.sha256"
 
 echo "============================================================"
 echo " Packaging Complete!"

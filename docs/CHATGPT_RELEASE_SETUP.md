@@ -5,9 +5,9 @@
 | 你使用的入口 | 需要下载什么 | 如何连接 |
 | --- | --- | --- |
 | 普通 ChatGPT 聊天 | macOS App；本说明 | 在 App 设置中连接 Secure MCP Tunnel，然后在 ChatGPT 添加同一隧道 |
-| 本地 Work / Codex | macOS App；`ClassFlow-Local-Plugin-1.1.0.zip` | 解压后运行下面的本地安装脚本 |
+| 本地 Work / Codex | macOS App；`ClassFlow-Local-Plugin-1.2.0.zip` | 解压后运行下面的本地安装脚本 |
 
-插件版本 1.1.0 与 App 版本 1.0.0 分别编号。插件包包含本地插件、安装脚本、许可证和接入文档，不含 App、官方隧道客户端或任何人的密钥。
+插件版本 1.2.0 与 App 版本 1.2.0 分别编号。插件包包含本地插件、安装脚本、许可证和接入文档，不含 App、官方隧道客户端或任何人的密钥。
 
 ## 普通 ChatGPT 聊天
 
@@ -33,3 +33,8 @@ bash scripts/install_mcp.sh
 Claude 等其他支持 stdio MCP 的客户端可自行配置 `/Applications/ClassFlow.app/Contents/MacOS/ClassFlow`，参数为 `["--mcp"]`；上述脚本只安装 Work / Codex 插件。
 
 详细工具列表和排错见 [项目集成指南](https://github.com/find-xin/ClassFlow/blob/main/docs/CHATGPT_INTEGRATION.md)。官方连接方式见 [OpenAI Secure MCP Tunnel](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels)。
+
+
+### 编辑接口 v1.2 更新
+
+使用包含 28 项工具的 Mac App 后，在已有 ChatGPT ClassFlow 连接中刷新工具列表（本地客户端重连 MCP）。应能看到 `get_editing_context`、`manage_course_schedule`、`batch_edit_items`、`reset_focus_timer`。只上传新的本地插件 ZIP 不会自动替换云端连接缓存。无需重新填写隧道 Token；凭据仍保存在系统钥匙串。完整字段与作用域说明见 `docs/CHATGPT_INTEGRATION.md`。Mac 提供执行器；手机经已配置的 BYOC 接收数据，不会接收 Mac 的运行中计时器。

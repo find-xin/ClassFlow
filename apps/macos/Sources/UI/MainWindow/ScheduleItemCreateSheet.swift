@@ -193,18 +193,14 @@ public struct ScheduleItemCreateSheet: View {
                 self._endRepeatUntil = State(initialValue: d)
             }
 
-            if let startSec = ev.startSection {
+            if ev.timeMode == "sections", let startSec = ev.startSection {
                 self._timeMode = State(initialValue: .bySection)
                 self._startSection = State(initialValue: startSec)
                 self._endSection = State(initialValue: ev.endSection ?? startSec)
             } else {
                 self._timeMode = State(initialValue: .byTime)
-                if ev.startTime.contains(" ") {
-                    self._startTimeStr = State(initialValue: String(ev.startTime.split(separator: " ").last?.prefix(5) ?? "09:00"))
-                }
-                if ev.endTime.contains(" ") {
-                    self._endTimeStr = State(initialValue: String(ev.endTime.split(separator: " ").last?.prefix(5) ?? "10:30"))
-                }
+                if ev.startTime.count >= 16 { self._startTimeStr = State(initialValue: String(ev.startTime.dropFirst(11).prefix(5))) }
+                if ev.endTime.count >= 16 { self._endTimeStr = State(initialValue: String(ev.endTime.dropFirst(11).prefix(5))) }
             }
         } else if let tk = editingTask {
             self._mode = State(initialValue: .task)
@@ -924,6 +920,7 @@ public struct ScheduleItemCreateSheet: View {
             updated.startTime = resolvedStart
             updated.endTime = resolvedEnd
             updated.isAllDay = isAllDay
+            updated.timeMode = timeMode == .bySection ? "sections" : "time"
             updated.location = location.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : location
             updated.description = eventNotes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : eventNotes
             updated.color = eventColor
@@ -948,6 +945,7 @@ public struct ScheduleItemCreateSheet: View {
                 startTime: resolvedStart,
                 endTime: resolvedEnd,
                 isAllDay: isAllDay,
+                timeMode: timeMode == .bySection ? "sections" : "time",
                 location: location.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : location,
                 description: eventNotes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : eventNotes,
                 recurrenceRule: nil,

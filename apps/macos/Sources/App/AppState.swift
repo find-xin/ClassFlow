@@ -154,8 +154,8 @@ public final class AppState {
         let handlers = MCPToolHandlers(database: database, enablesAppIntegration: false)
         let server = MCPServer(handlers: handlers)
         let result = try server.invokeTool(name: name, arguments: arguments)
-        let reads: Set<String> = ["get_status", "query_timetable", "list_courses", "list_calendar_events", "list_tasks", "get_focus_statistics"]
-        if reads.contains(name) || (name == "import_calendar_events" && arguments["dry_run"] as? Bool == true) { return result }
+        let reads: Set<String> = ["get_editing_context", "get_status", "query_timetable", "list_courses", "list_calendar_events", "list_tasks", "get_focus_statistics"]
+        if reads.contains(name) || (["import_calendar_events", "batch_edit_items"].contains(name) && arguments["dry_run"] as? Bool == true) { return result }
         var after = database.load()
         recordAutomationChanges(before: before, after: after)
         after.syncDeviceId = syncEngine.deviceId
@@ -164,6 +164,7 @@ public final class AppState {
         load()
         if name == "switch_semester_or_week", let week = arguments["week"] as? Int { selectedWeek = week }
         updateWidgetData()
+        await scheduleNotifications()
         if name == "open_app" {
             // Navigation must run in the main actor, with an acknowledgement to the caller.
             let tab = arguments["tab"] as? String ?? "courses"
@@ -520,6 +521,11 @@ public final class AppState {
         if let idx = pomodoroTasks.firstIndex(where: { $0.id == id }) {
             pomodoroTasks[idx].isCompleted.toggle()
             pomodoroTasks[idx].completedAt = pomodoroTasks[idx].isCompleted ? Date() : nil
+            if pomodoroTasks[idx].isCompleted, let semester = semesters.first(where: { $0.id == pomodoroTasks[idx].semesterId }) ?? currentSemester,
+               let next = TaskRecurrence.next(after: pomodoroTasks[idx], semester: semester), !pomodoroTasks.contains(where: { $0.id == next.id }) {
+                pomodoroTasks.append(next)
+                if let data = try? JSONEncoder().encode(next) { _ = syncEngine.recordOperation(action: "CREATE", entityType: "pomodoroTask", entityId: next.id, payload: data) }
+            }
             if let data = try? JSONEncoder().encode(pomodoroTasks[idx]) {
                 _ = syncEngine.recordOperation(action: "UPDATE", entityType: "pomodoroTask", entityId: id, payload: data)
             }
@@ -750,208 +756,8 @@ public final class AppState {
     }
 
     private func projectCalendarEvent(_ event: CalendarEvent, weekDates: [String], semester: Semester) -> [TimelineItem] {
-        var results: [TimelineItem] = []
-        let df = Self.isoDateFormatter
-        let cal = Calendar.current
-        let normFreq = Self.normalizeFrequency(event.frequency)
-
-        // 1. Check week matrix filtering: if customWeeks is configured, must contain selectedWeek
-        if let weeks = event.customWeeks, !weeks.isEmpty {
-            if !weeks.contains(selectedWeek) {
-                return []
-            }
-        }
-
-        // 2. Check every N weeks interval
-        if let interval = event.intervalWeeks, interval > 1 {
-            let startWeek: Int
-            if let startDStr = event.startDate ?? event.startTime.split(separator: "T").first.map(String.init) ?? event.startTime.split(separator: " ").first.map(String.init),
-               let sDate = df.date(from: String(startDStr.prefix(10))),
-               let semDate = df.date(from: String(semester.startDate.prefix(10))) {
-                let diffDays = cal.dateComponents([.day], from: semDate, to: sDate).day ?? 0
-                startWeek = max(1, (diffDays / 7) + 1)
-            } else {
-                startWeek = 1
-            }
-            if selectedWeek >= startWeek && ((selectedWeek - startWeek) % interval != 0) {
-                return []
-            }
-        }
-
-        for (dayIdx, dateStr) in weekDates.enumerated() {
-            let dayOfWeek = dayIdx + 1 // 1 = Monday ... 7 = Sunday
-
-            // 3. Check start and end date boundaries (compare canonical 10-char "yyyy-MM-dd")
-            if let sDate = event.startDate, !sDate.isEmpty, dateStr < String(sDate.prefix(10)) {
-                continue
-            }
-            let isRec = (normFreq != "none")
-            if !isRec {
-                if let eDate = event.endDate, !eDate.isEmpty, dateStr > String(eDate.prefix(10)) {
-                    continue
-                }
-            } else {
-                // 4. Check recurrence termination condition
-                if event.endRepeatType == "untilDate", let until = event.endRepeatUntil, !until.isEmpty, dateStr > String(until.prefix(10)) {
-                    continue
-                }
-                if let eDate = event.endDate, !eDate.isEmpty, dateStr > String(eDate.prefix(10)) {
-                    continue
-                }
-            }
-
-            var shouldInclude = false
-
-            switch normFreq {
-            case "daily":
-                shouldInclude = true
-            case "workdays":
-                shouldInclude = (dayOfWeek <= 5)
-            case "weekends":
-                shouldInclude = (dayOfWeek == 6 || dayOfWeek == 7)
-            case "weekly":
-                if let days = event.customDaysOfWeek, !days.isEmpty {
-                    shouldInclude = days.contains(dayOfWeek)
-                } else {
-                    let baseDateStr = event.startDate ?? event.startTime.split(separator: "T").first.map(String.init) ?? event.startTime.split(separator: " ").first.map(String.init)
-                    if let baseStr = baseDateStr, let eventDate = df.date(from: String(baseStr.prefix(10))) {
-                        let evWeekday = cal.component(.weekday, from: eventDate)
-                        let evDayOfWeek = evWeekday == 1 ? 7 : (evWeekday - 1)
-                        if evDayOfWeek == dayOfWeek {
-                            shouldInclude = true
-                        }
-                    } else {
-                        shouldInclude = (dayOfWeek == 1)
-                    }
-                }
-            case "biweekly":
-                if selectedWeek % 2 == 1 {
-                    if let days = event.customDaysOfWeek, !days.isEmpty {
-                        shouldInclude = days.contains(dayOfWeek)
-                    } else {
-                        let baseDateStr = event.startDate ?? event.startTime.split(separator: "T").first.map(String.init) ?? event.startTime.split(separator: " ").first.map(String.init)
-                        if let baseStr = baseDateStr, let eventDate = df.date(from: String(baseStr.prefix(10))) {
-                            let evWeekday = cal.component(.weekday, from: eventDate)
-                            let evDayOfWeek = evWeekday == 1 ? 7 : (evWeekday - 1)
-                            if evDayOfWeek == dayOfWeek {
-                                shouldInclude = true
-                            }
-                        } else {
-                            shouldInclude = (dayOfWeek == 1)
-                        }
-                    }
-                }
-            case "customWeeks":
-                if let weeks = event.customWeeks, weeks.contains(selectedWeek) {
-                    if let days = event.customDaysOfWeek, !days.isEmpty {
-                        shouldInclude = days.contains(dayOfWeek)
-                    } else {
-                        let baseDateStr = event.startDate ?? event.startTime.split(separator: "T").first.map(String.init) ?? event.startTime.split(separator: " ").first.map(String.init)
-                        if let baseStr = baseDateStr, let eventDate = df.date(from: String(baseStr.prefix(10))) {
-                            let evWeekday = cal.component(.weekday, from: eventDate)
-                            let evDayOfWeek = evWeekday == 1 ? 7 : (evWeekday - 1)
-                            if evDayOfWeek == dayOfWeek {
-                                shouldInclude = true
-                            }
-                        } else {
-                            shouldInclude = true
-                        }
-                    }
-                }
-            case "customDays":
-                if let days = event.customDaysOfWeek, !days.isEmpty {
-                    shouldInclude = days.contains(dayOfWeek)
-                } else {
-                    shouldInclude = true
-                }
-            case "monthly":
-                let baseDateStr = event.startDate ?? event.startTime.split(separator: "T").first.map(String.init) ?? event.startTime.split(separator: " ").first.map(String.init)
-                if let baseStr = baseDateStr,
-                   let eventDate = df.date(from: String(baseStr.prefix(10))),
-                   let curDate = df.date(from: dateStr) {
-                    let evDay = cal.component(.day, from: eventDate)
-                    let curDay = cal.component(.day, from: curDate)
-                    if evDay == curDay {
-                        shouldInclude = true
-                    }
-                }
-            default: // "none"
-                if event.startTime.hasPrefix(dateStr) || (event.startDate != nil && event.startDate!.hasPrefix(dateStr)) {
-                    shouldInclude = true
-                }
-            }
-
-            if shouldInclude {
-                let timeOnlyStart: String
-                if event.startTime.contains("T") {
-                    timeOnlyStart = String(event.startTime.split(separator: "T").last?.prefix(5) ?? "")
-                } else if event.startTime.contains(" ") {
-                    timeOnlyStart = String(event.startTime.split(separator: " ").last?.prefix(5) ?? "")
-                } else {
-                    timeOnlyStart = event.startTime
-                }
-
-                let timeOnlyEnd: String
-                if event.endTime.contains("T") {
-                    timeOnlyEnd = String(event.endTime.split(separator: "T").last?.prefix(5) ?? "")
-                } else if event.endTime.contains(" ") {
-                    timeOnlyEnd = String(event.endTime.split(separator: " ").last?.prefix(5) ?? "")
-                } else {
-                    timeOnlyEnd = event.endTime
-                }
-
-                var startSec = event.startSection
-                var endSec = event.endSection
-                if startSec == nil && !semester.sections.isEmpty && !timeOnlyStart.isEmpty {
-                    if let sMatch = semester.sections.first(where: { $0.endTime >= timeOnlyStart })?.section {
-                        let eMatch = (!timeOnlyEnd.isEmpty ? semester.sections.last(where: { $0.startTime <= timeOnlyEnd })?.section : nil) ?? sMatch
-                        startSec = min(sMatch, eMatch)
-                        endSec = max(sMatch, eMatch)
-                    }
-                }
-                let resolvedStartSec = startSec ?? 1
-                let resolvedEndSec = endSec ?? resolvedStartSec
-
-                // Check matching exceptions for this calendar event
-                var itemStatus: TimelineItem.OccurrenceStatus = .normal
-                if let ex = exceptions.first(where: { $0.scheduleId == event.id && $0.originalDate == dateStr }) {
-                    if ex.exceptionType == .cancel {
-                        if ex.reason == "单次删除" {
-                            continue
-                        }
-                        itemStatus = .cancelled
-                    }
-                }
-
-                let isRec = (event.frequency != nil && event.frequency != "none")
-                    || (event.customWeeks != nil && !event.customWeeks!.isEmpty)
-                    || (event.customDaysOfWeek != nil && event.customDaysOfWeek!.count > 1)
-
-                let item = TimelineItem(
-                    id: "event_occ_\(event.id)_\(dateStr)",
-                    sourceType: .calendarEvent,
-                    calendarEventId: event.id,
-                    title: event.title,
-                    location: event.location,
-                    date: dateStr,
-                    dayOfWeek: dayOfWeek,
-                    startSection: resolvedStartSec,
-                    endSection: resolvedEndSec,
-                    startTime: timeOnlyStart.isEmpty ? nil : timeOnlyStart,
-                    endTime: timeOnlyEnd.isEmpty ? nil : timeOnlyEnd,
-                    weekNumber: selectedWeek,
-                    isCurrentWeek: true,
-                    status: itemStatus,
-                    color: event.color,
-                    teacher: nil,
-                    notes: event.description,
-                    isAllDay: event.isAllDay,
-                    isRecurring: isRec
-                )
-                results.append(item)
-            }
-        }
-        return results
+        let week = weekDates.first.flatMap { timelineEngine.weekCalculator.weekIndex(for: $0, semesterStartDate: semester.startDate) } ?? selectedWeek
+        return CalendarEventProjector().project(event, semester: semester, week: week, exceptions: exceptions)
     }
 
     // MARK: - Calendar Event CRUD
@@ -1448,6 +1254,7 @@ public final class AppState {
             await notificationService.cancelClassAlerts()
         }
 
+        await notificationService.scheduleCalendarAlerts(events: calendarEvents, semesters: semesters, exceptions: exceptions)
         let todayStr = timelineEngine.weekCalculator.formatDate(Date())
         let todayItems = weekOccurrences.filter { $0.date == todayStr }
         if settings.enableDailyBriefing {
