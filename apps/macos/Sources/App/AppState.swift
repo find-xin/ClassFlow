@@ -879,8 +879,6 @@ public final class AppState {
             }
 
             if shouldInclude {
-                let startSec = event.startSection ?? 1
-                let endSec = event.endSection ?? startSec
                 let timeOnlyStart: String
                 if event.startTime.contains("T") {
                     timeOnlyStart = String(event.startTime.split(separator: "T").last?.prefix(5) ?? "")
@@ -898,6 +896,18 @@ public final class AppState {
                 } else {
                     timeOnlyEnd = event.endTime
                 }
+
+                var startSec = event.startSection
+                var endSec = event.endSection
+                if startSec == nil && !semester.sections.isEmpty && !timeOnlyStart.isEmpty {
+                    if let sMatch = semester.sections.first(where: { $0.endTime >= timeOnlyStart })?.section {
+                        let eMatch = (!timeOnlyEnd.isEmpty ? semester.sections.last(where: { $0.startTime <= timeOnlyEnd })?.section : nil) ?? sMatch
+                        startSec = min(sMatch, eMatch)
+                        endSec = max(sMatch, eMatch)
+                    }
+                }
+                let resolvedStartSec = startSec ?? 1
+                let resolvedEndSec = endSec ?? resolvedStartSec
 
                 // Check matching exceptions for this calendar event
                 var itemStatus: TimelineItem.OccurrenceStatus = .normal
@@ -922,8 +932,8 @@ public final class AppState {
                     location: event.location,
                     date: dateStr,
                     dayOfWeek: dayOfWeek,
-                    startSection: startSec,
-                    endSection: endSec,
+                    startSection: resolvedStartSec,
+                    endSection: resolvedEndSec,
                     startTime: timeOnlyStart.isEmpty ? nil : timeOnlyStart,
                     endTime: timeOnlyEnd.isEmpty ? nil : timeOnlyEnd,
                     weekNumber: selectedWeek,

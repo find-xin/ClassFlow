@@ -173,13 +173,17 @@ public struct TimetableGridView: View {
         return String(parts[2])
     }
 
-    private func parseTimeToMinutes(_ timeStr: String) -> Int? {
+    static func parseTimeToMinutes(_ timeStr: String) -> Int? {
         let parts = timeStr.split(separator: ":")
         guard parts.count >= 2, let h = Int(parts[0]), let m = Int(parts[1]) else { return nil }
         return h * 60 + m
     }
 
-    private func yOffset(forMinutes minutes: Int, sections: [SectionTime], periodHeight: CGFloat, periodSpacing: CGFloat) -> CGFloat {
+    private func parseTimeToMinutes(_ timeStr: String) -> Int? {
+        Self.parseTimeToMinutes(timeStr)
+    }
+
+    static func yOffset(forMinutes minutes: Int, sections: [SectionTime], periodHeight: CGFloat, periodSpacing: CGFloat) -> CGFloat {
         let secTimes = sections.compactMap { s -> (sec: SectionTime, start: Int, end: Int)? in
             guard let sM = parseTimeToMinutes(s.startTime), let eM = parseTimeToMinutes(s.endTime) else { return nil }
             return (s, sM, eM)
@@ -223,6 +227,10 @@ public struct TimetableGridView: View {
         }
 
         return CGFloat(totalSections - 1) * (periodHeight + periodSpacing)
+    }
+
+    private func yOffset(forMinutes minutes: Int, sections: [SectionTime], periodHeight: CGFloat, periodSpacing: CGFloat) -> CGFloat {
+        Self.yOffset(forMinutes: minutes, sections: sections, periodHeight: periodHeight, periodSpacing: periodSpacing)
     }
 
     public var body: some View {
@@ -584,7 +592,7 @@ public struct TimetableGridView: View {
         .padding(.bottom, 4)
     }
 
-    private struct CardLayoutInfo: Identifiable {
+    struct CardLayoutInfo: Identifiable {
         let id: String
         let item: TimelineItem
         let topOffset: CGFloat
@@ -602,26 +610,56 @@ public struct TimetableGridView: View {
 
     // MARK: - Accurate Google Calendar Style Interval Conflict Layout
 
-    private func computeDayLayout(items: [TimelineItem], columnWidth: CGFloat, periodHeight: CGFloat) -> [CardLayoutInfo] {
+    static func itemsOverlap(_ a: TimelineItem, _ b: TimelineItem, sections: [SectionTime] = []) -> Bool {
+        func minutesRange(for item: TimelineItem) -> (start: Int, end: Int)? {
+            if let s = item.startTime, let e = item.endTime,
+               let sm = parseTimeToMinutes(s), let em = parseTimeToMinutes(e), em > sm {
+                return (sm, em)
+            }
+            let matching = sections.filter { $0.section >= item.startSection && $0.section <= item.endSection }
+            if let first = matching.first, let last = matching.last,
+               let sm = parseTimeToMinutes(first.startTime), let em = parseTimeToMinutes(last.endTime), em > sm {
+                return (sm, em)
+            }
+            if let s = item.startTime, let sm = parseTimeToMinutes(s) {
+                return (sm, sm + 45)
+            }
+            return nil
+        }
+
+        if let aMin = minutesRange(for: a), let bMin = minutesRange(for: b) {
+            return (aMin.start < bMin.end) && (bMin.start < aMin.end)
+        }
+
+        let aRange = min(a.startSection, a.endSection)...max(a.startSection, a.endSection)
+        let bRange = min(b.startSection, b.endSection)...max(b.startSection, b.endSection)
+        return aRange.overlaps(bRange)
+    }
+
+    static func computeDayLayout(
+        items: [TimelineItem],
+        sections: [SectionTime],
+        columnWidth: CGFloat,
+        periodHeight: CGFloat,
+        periodSpacing: CGFloat
+    ) -> [CardLayoutInfo] {
         guard !items.isEmpty else { return [] }
 
-        // Filter items: Active courses for the current week always take absolute precedence.
-        // A non-current week course should only appear in an empty time slot where no active current-week course runs.
+        // Filter items: Active courses and arrangements for the current week always take absolute precedence.
+        // A non-current week course should only appear in an empty time slot where no active current-week arrangement runs.
         let activeItems = items.filter { $0.isCurrentWeek }
         let nonCurrentItems = items.filter { !$0.isCurrentWeek }
 
         var displayItems = activeItems
         for nonCurr in nonCurrentItems {
-            let nonCurrRange = nonCurr.startSection...max(nonCurr.startSection, nonCurr.endSection)
             let overlapsActive = activeItems.contains { act in
-                let actRange = act.startSection...max(act.startSection, act.endSection)
-                return nonCurrRange.overlaps(actRange)
+                itemsOverlap(nonCurr, act, sections: sections)
             }
             if !overlapsActive {
                 // If multiple non-current week courses overlap in the same empty slot,
                 // keep the first one so they don't split the column unnecessarily.
                 let overlapsExistingNonCurr = displayItems.contains { disp in
-                    !disp.isCurrentWeek && (disp.startSection...max(disp.startSection, disp.endSection)).overlaps(nonCurrRange)
+                    !disp.isCurrentWeek && itemsOverlap(disp, nonCurr, sections: sections)
                 }
                 if !overlapsExistingNonCurr {
                     displayItems.append(nonCurr)
@@ -636,15 +674,15 @@ public struct TimetableGridView: View {
 
             if let sTime = item.startTime, let eTime = item.endTime,
                let sM = parseTimeToMinutes(sTime), let eM = parseTimeToMinutes(eTime), eM > sM {
-                yTop = yOffset(forMinutes: sM, sections: effectiveSections, periodHeight: periodHeight, periodSpacing: periodSpacing)
-                yBottom = yOffset(forMinutes: eM, sections: effectiveSections, periodHeight: periodHeight, periodSpacing: periodSpacing)
+                yTop = yOffset(forMinutes: sM, sections: sections, periodHeight: periodHeight, periodSpacing: periodSpacing)
+                yBottom = yOffset(forMinutes: eM, sections: sections, periodHeight: periodHeight, periodSpacing: periodSpacing)
                 let minH: CGFloat = 28
                 if yBottom - yTop < minH {
                     yBottom = yTop + minH
                 }
             } else {
-                let sIdx = effectiveSections.firstIndex(where: { $0.section == item.startSection }) ?? max(0, min(effectiveSections.count - 1, item.startSection - 1))
-                let eIdx = effectiveSections.firstIndex(where: { $0.section == item.endSection }) ?? max(sIdx, min(effectiveSections.count - 1, item.endSection - 1))
+                let sIdx = sections.firstIndex(where: { $0.section == item.startSection }) ?? max(0, min(sections.count - 1, item.startSection - 1))
+                let eIdx = sections.firstIndex(where: { $0.section == item.endSection }) ?? max(sIdx, min(sections.count - 1, item.endSection - 1))
                 yTop = CGFloat(sIdx) * (periodHeight + periodSpacing)
                 let span = CGFloat(eIdx - sIdx + 1)
                 let h = span * periodHeight + (span - 1) * periodSpacing
@@ -729,6 +767,16 @@ public struct TimetableGridView: View {
         }
 
         return result
+    }
+
+    private func computeDayLayout(items: [TimelineItem], columnWidth: CGFloat, periodHeight: CGFloat) -> [CardLayoutInfo] {
+        Self.computeDayLayout(
+            items: items,
+            sections: effectiveSections,
+            columnWidth: columnWidth,
+            periodHeight: periodHeight,
+            periodSpacing: periodSpacing
+        )
     }
 
     @ViewBuilder

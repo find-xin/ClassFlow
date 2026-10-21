@@ -767,6 +767,131 @@ struct MacOSViewModelTests {
         let occs = state.currentWeekOccurrences
         #expect(occs.contains(where: { $0.title == "晚课" && $0.endSection == 10 }))
     }
+
+    @Test("CalendarEvent dynamically infers startSection and endSection from time when nil")
+    @MainActor
+    func testCalendarEventSectionInferenceWhenStartSectionIsNil() {
+        let state = makeIsolatedAppState()
+        guard let currentSem = state.currentSemester else {
+            Issue.record("Expected current semester")
+            return
+        }
+
+        // Default sections in isolated state: section 1 (08:00-08:45), 2 (08:50-09:35), 3 (10:00-10:45), 4 (10:50-11:35)
+        let semStart = currentSem.startDate.prefix(10)
+        let df = DateFormatter()
+        df.dateFormat = "yyyy-MM-dd"
+        guard let startDate = df.date(from: String(semStart)) else {
+            Issue.record("Failed to parse start date")
+            return
+        }
+        let cal = Calendar.current
+        // Day 4 of week 1
+        let targetDate = cal.date(byAdding: .day, value: 3, to: startDate)!
+        let targetDateStr = df.string(from: targetDate)
+
+        let event = CalendarEvent(
+            id: UUID(),
+            calendarId: UUID(),
+            semesterId: currentSem.id,
+            title: "实验室研讨",
+            startTime: "\(targetDateStr) 10:00",
+            endTime: "\(targetDateStr) 11:35",
+            isAllDay: false,
+            startSection: nil,
+            endSection: nil
+        )
+        state.addCalendarEvent(event)
+
+        state.selectedWeek = 1
+        let occs = state.currentWeekOccurrences
+        guard let occ = occs.first(where: { $0.title == "实验室研讨" }) else {
+            Issue.record("Expected event occurrence")
+            return
+        }
+        // Should infer sections 3 to 4 based on 10:00-11:35, rather than falling back to 1
+        #expect(occ.startSection == 3)
+        #expect(occ.endSection == 4)
+    }
+
+    @Test("Non-current week courses are hidden when the time slot has active arrangements, shown only when slot is free")
+    @MainActor
+    func testNonCurrentWeekCoursesHiddenWhenSlotHasActiveArrangement() {
+        let state = makeIsolatedAppState()
+        guard let currentSem = state.currentSemester else {
+            Issue.record("Expected current semester")
+            return
+        }
+
+        let sections = currentSem.sections
+
+        // Active event on Thursday 10:00-11:35 (section 3-4)
+        let activeItem = TimelineItem(
+            id: "active_event",
+            sourceType: .calendarEvent,
+            title: "本周活跃组会",
+            date: "2026-09-04",
+            dayOfWeek: 4,
+            startSection: 3,
+            endSection: 4,
+            startTime: "10:00",
+            endTime: "11:35",
+            weekNumber: 1,
+            isCurrentWeek: true,
+            status: .normal
+        )
+
+        // Non-current week course on Thursday 10:00-11:40 (section 3-4), inactive in week 1
+        let nonCurrentBusySlotCourse = TimelineItem(
+            id: "non_current_overlap",
+            sourceType: .course,
+            title: "非本周课程A (与组会重叠)",
+            date: "2026-09-04",
+            dayOfWeek: 4,
+            startSection: 3,
+            endSection: 4,
+            startTime: "10:00",
+            endTime: "11:40",
+            weekNumber: 1,
+            isCurrentWeek: false,
+            status: .normal
+        )
+
+        // Non-current week course on Thursday 15:25-17:00 (section 7-8), empty slot
+        let nonCurrentFreeSlotCourse = TimelineItem(
+            id: "non_current_free",
+            sourceType: .course,
+            title: "非本周课程B (空闲时段)",
+            date: "2026-09-04",
+            dayOfWeek: 4,
+            startSection: 7,
+            endSection: 8,
+            startTime: "15:25",
+            endTime: "17:00",
+            weekNumber: 1,
+            isCurrentWeek: false,
+            status: .normal
+        )
+
+        let dayItems = [activeItem, nonCurrentBusySlotCourse, nonCurrentFreeSlotCourse]
+        let layout = TimetableGridView.computeDayLayout(
+            items: dayItems,
+            sections: sections,
+            columnWidth: 100,
+            periodHeight: 60,
+            periodSpacing: 4
+        )
+
+        let renderedIds = layout.map { $0.id }
+        // 1. Active item must be present
+        #expect(renderedIds.contains("active_event"))
+        // 2. Non-current course in busy slot MUST be hidden (no side-by-side squeezing)
+        #expect(!renderedIds.contains("non_current_overlap"))
+        // 3. Non-current course in free slot MUST be displayed
+        #expect(renderedIds.contains("non_current_free"))
+        // 4. Exactly 2 items rendered
+        #expect(layout.count == 2)
+    }
 }
 
 

@@ -291,16 +291,13 @@ object TimelineProjection {
                     status = OccurrenceStatus.CANCELLED
                 }
 
-                val secStart = event.startSection ?: 1
-                val secEnd = event.endSection ?: secStart
-
                 // Strip full ISO timestamps if present
                 val rawStartT = event.startTime
                 val startT = when {
                     rawStartT.contains("T") -> rawStartT.substringAfter("T").take(5)
                     rawStartT.contains(" ") -> rawStartT.substringAfter(" ").take(5)
                     rawStartT.isNotBlank() -> rawStartT
-                    else -> sectionTimes.find { it.section == secStart }?.startTime ?: "08:00"
+                    else -> sectionTimes.find { it.section == (event.startSection ?: 1) }?.startTime ?: "08:00"
                 }
 
                 val rawEndT = event.endTime
@@ -308,8 +305,23 @@ object TimelineProjection {
                     rawEndT.contains("T") -> rawEndT.substringAfter("T").take(5)
                     rawEndT.contains(" ") -> rawEndT.substringAfter(" ").take(5)
                     rawEndT.isNotBlank() -> rawEndT
-                    else -> sectionTimes.find { it.section == secEnd }?.endTime ?: "09:00"
+                    else -> sectionTimes.find { it.section == (event.endSection ?: event.startSection ?: 1) }?.endTime ?: "09:00"
                 }
+
+                var resolvedStart = event.startSection
+                var resolvedEnd = event.endSection
+                if (resolvedStart == null && sectionTimes.isNotEmpty() && startT.isNotBlank()) {
+                    val sMatch = sectionTimes.firstOrNull { it.endTime >= startT }?.section
+                    val eMatch = if (endT.isNotBlank()) {
+                        sectionTimes.lastOrNull { it.startTime <= endT }?.section ?: sMatch
+                    } else sMatch
+                    if (sMatch != null) {
+                        resolvedStart = minOf(sMatch, eMatch ?: sMatch)
+                        resolvedEnd = maxOf(sMatch, eMatch ?: sMatch)
+                    }
+                }
+                val secStart = resolvedStart ?: 1
+                val secEnd = resolvedEnd ?: secStart
 
                 val isRec = normFreq != "none" || event.customWeeks.isNotEmpty() || event.customDaysOfWeek.size > 1
 

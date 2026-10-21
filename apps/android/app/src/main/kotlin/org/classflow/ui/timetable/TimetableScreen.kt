@@ -343,10 +343,49 @@ data class OverlapCluster(
 )
 
 /**
+ * Determines whether two timeline items overlap in time interval or section range.
+ */
+fun itemsOverlap(a: TimelineItem, b: TimelineItem): Boolean {
+    fun parseMinutes(t: String?): Int? {
+        if (t.isNullOrBlank()) return null
+        val parts = t.split(":")
+        if (parts.size >= 2) {
+            val h = parts[0].toIntOrNull() ?: return null
+            val m = parts[1].toIntOrNull() ?: return null
+            return h * 60 + m
+        }
+        return null
+    }
+
+    val aStart = parseMinutes(a.startTime)
+    val aEnd = parseMinutes(a.endTime)
+    val bStart = parseMinutes(b.startTime)
+    val bEnd = parseMinutes(b.endTime)
+
+    val aRange = if (aStart != null && aEnd != null && aEnd > aStart) {
+        aStart to aEnd
+    } else if (aStart != null) {
+        aStart to (aStart + 45)
+    } else null
+
+    val bRange = if (bStart != null && bEnd != null && bEnd > bStart) {
+        bStart to bEnd
+    } else if (bStart != null) {
+        bStart to (bStart + 45)
+    } else null
+
+    if (aRange != null && bRange != null) {
+        return aRange.first < bRange.second && bRange.first < aRange.second
+    }
+
+    return maxOf(a.startSection, b.startSection) <= minOf(a.endSection, b.endSection)
+}
+
+/**
  * Clusters courses of a day into groups of mutually overlapping courses.
  * Non-overlapping courses form 1-item clusters; overlapping courses form multi-item clusters.
  * Active current-week courses always take precedence. Non-current week courses are only
- * displayed if they do not overlap with any active course for the current week.
+ * displayed if they do not overlap with any active course or schedule for the current week.
  */
 fun clusterDayCourses(courses: List<TimelineItem>, dayOfWeek: Int): List<OverlapCluster> {
     if (courses.isEmpty()) return emptyList()
@@ -357,9 +396,14 @@ fun clusterDayCourses(courses: List<TimelineItem>, dayOfWeek: Int): List<Overlap
 
     // 2. Active items take absolute precedence for the current week view.
     // A non-current-week item is only displayed if it does NOT overlap with any active item this week.
-    val displayableNonCurrent = nonCurrentItems.filter { nonItem ->
-        activeItems.none { active ->
-            maxOf(nonItem.startSection, active.startSection) <= minOf(nonItem.endSection, active.endSection)
+    val displayableNonCurrent = mutableListOf<TimelineItem>()
+    for (nonItem in nonCurrentItems) {
+        val overlapsActive = activeItems.any { active -> itemsOverlap(nonItem, active) }
+        if (!overlapsActive) {
+            val overlapsExisting = displayableNonCurrent.any { existing -> itemsOverlap(nonItem, existing) }
+            if (!overlapsExisting) {
+                displayableNonCurrent.add(nonItem)
+            }
         }
     }
 
@@ -370,7 +414,7 @@ fun clusterDayCourses(courses: List<TimelineItem>, dayOfWeek: Int): List<Overlap
         var placed = false
         for (cluster in clusters) {
             val overlaps = cluster.any { other ->
-                maxOf(item.startSection, other.startSection) <= minOf(item.endSection, other.endSection)
+                itemsOverlap(item, other)
             }
             if (overlaps) {
                 cluster.add(item)

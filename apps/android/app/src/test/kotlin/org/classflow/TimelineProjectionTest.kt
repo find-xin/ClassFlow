@@ -660,6 +660,103 @@ class TimelineProjectionTest {
         assertEquals(1, clusters.size)
         assertEquals("Two truly conflicting active courses should form a 2-item cluster", 2, clusters.first().items.size)
     }
+
+    @Test
+    fun testCalendarEventDynamicSectionInferenceWhenStartSectionIsNull() {
+        val event = CalendarEvent(
+            id = "ev_seminar",
+            title = "学术讲座",
+            startTime = "2026-09-03 10:00",
+            endTime = "2026-09-03 11:35",
+            startSection = null,
+            endSection = null,
+            frequency = "none"
+        )
+        val sections = listOf(
+            SectionTime(1, "08:00", "08:45"),
+            SectionTime(2, "08:50", "09:35"),
+            SectionTime(3, "10:00", "10:45"),
+            SectionTime(4, "10:50", "11:35")
+        )
+
+        val occs = TimelineProjection.projectOccurrences(
+            courses = emptyList(),
+            schedules = listOf(event),
+            selectedWeek = 1,
+            currentWeek = 1,
+            semesterStartDate = "2026-08-31",
+            sectionTimes = sections
+        )
+
+        val evOcc = occs.find { it.title == "学术讲座" }
+        assertNotNull("Event occurrence should be generated", evOcc)
+        assertEquals("Should dynamically infer startSection = 3 from 10:00", 3, evOcc!!.startSection)
+        assertEquals("Should dynamically infer endSection = 4 from 11:35", 4, evOcc.endSection)
+    }
+
+    @Test
+    fun testClusterDayCoursesSuppressesNonCurrentCourseWhenOverlappingWithActiveSchedule() {
+        // Active schedule item: e.g. meeting 10:00-11:35 on Thursday
+        val activeSchedule = TimelineItem(
+            id = "sched_active",
+            calendarEventId = "ev_active",
+            title = "课题组周会",
+            date = "2026-09-03",
+            dayOfWeek = 4,
+            startSection = 3,
+            endSection = 4,
+            startTime = "10:00",
+            endTime = "11:35",
+            isCurrentWeek = true
+        )
+
+        // Non-current week course on Thursday 10:00-11:40 (sections 3..4)
+        val nonCurrentCourse = TimelineItem(
+            id = "course_non_current",
+            courseId = "c_overlap",
+            title = "并行计算 (非本周)",
+            date = "2026-09-03",
+            dayOfWeek = 4,
+            startSection = 3,
+            endSection = 4,
+            startTime = "10:00",
+            endTime = "11:40",
+            isCurrentWeek = false
+        )
+
+        // Non-current week course on Thursday 15:25-17:00 (sections 7..8, unoccupied slot)
+        val freeNonCurrentCourse = TimelineItem(
+            id = "course_non_current_free",
+            courseId = "c_free",
+            title = "机器学习 (非本周，空闲时段)",
+            date = "2026-09-03",
+            dayOfWeek = 4,
+            startSection = 7,
+            endSection = 8,
+            startTime = "15:25",
+            endTime = "17:00",
+            isCurrentWeek = false
+        )
+
+        val clusters = org.classflow.ui.timetable.clusterDayCourses(
+            listOf(activeSchedule, nonCurrentCourse, freeNonCurrentCourse),
+            dayOfWeek = 4
+        )
+
+        // 1. Active schedule must be rendered in its own cluster
+        val schedCluster = clusters.find { c -> c.items.any { it.id == "sched_active" } }
+        assertNotNull("Active schedule should be displayed", schedCluster)
+        assertEquals(1, schedCluster!!.items.size)
+
+        // 2. Non-current course overlapping with active schedule MUST be suppressed
+        val overlapCluster = clusters.find { c -> c.items.any { it.id == "course_non_current" } }
+        assertNull("Non-current course overlapping with active schedule must NOT be displayed", overlapCluster)
+
+        // 3. Non-current course in free slot MUST be displayed
+        val freeCluster = clusters.find { c -> c.items.any { it.id == "course_non_current_free" } }
+        assertNotNull("Non-current course in free slot must be displayed", freeCluster)
+        assertEquals(1, freeCluster!!.items.size)
+    }
 }
 
 
