@@ -13,12 +13,38 @@ struct MacOSViewModelTests {
         return AppState(database: db, notificationService: MockNotificationService())
     }
 
-    @Test("AppState bootstraps default semester and courses")
+    @discardableResult
+    @MainActor
+    func addMockCourse(to state: AppState) -> Course {
+        let mathCourse = Course(
+            id: UUID(),
+            semesterId: state.currentSemesterId ?? UUID(),
+            name: "高等数学 (上)",
+            teacher: "张楚楚",
+            color: "#4F46E5",
+            notes: "期末统考占 60%",
+            schedules: [
+                CourseSchedule(
+                    id: UUID(),
+                    courseId: UUID(),
+                    dayOfWeek: 1,
+                    startSection: 1,
+                    endSection: 2,
+                    classroom: "东九楼 D102",
+                    weekPattern: .all
+                )
+            ]
+        )
+        state.addCourse(mathCourse)
+        return mathCourse
+    }
+
+    @Test("AppState bootstraps default semester and clean empty courses")
     @MainActor
     func testBootstrapLoading() {
         let state = makeIsolatedAppState()
         #expect(!state.semesters.isEmpty)
-        #expect(!state.courses.isEmpty)
+        #expect(state.courses.isEmpty)
         #expect(state.currentSemester != nil)
         #expect(state.currentSemester?.name == "2026-2027 秋季学期")
     }
@@ -72,7 +98,7 @@ struct MacOSViewModelTests {
     @MainActor
     func testApplySingleOccurrenceMutation() {
         let state = makeIsolatedAppState()
-        let mathCourse = state.courses.first(where: { $0.name.contains("高等数学") })!
+        let mathCourse = addMockCourse(to: state)
         let mathSched = mathCourse.schedules[0]
 
         state.applyMutation(
@@ -97,6 +123,7 @@ struct MacOSViewModelTests {
     @MainActor
     func testExportAndImportBackupInAppState() throws {
         let state1 = makeIsolatedAppState()
+        _ = addMockCourse(to: state1)
         let backupData = try state1.exportClassFlowBackup()
         #expect(backupData.count > 0)
 
@@ -118,6 +145,7 @@ struct MacOSViewModelTests {
     @MainActor
     func testExportAndImportICSInAppState() {
         let state = makeIsolatedAppState()
+        _ = addMockCourse(to: state)
         guard let icsText = state.exportCurrentSemesterICS() else {
             Issue.record("Failed to export ICS")
             return
@@ -170,6 +198,7 @@ struct MacOSViewModelTests {
     @MainActor
     func testCalendarSyncPlanGeneration() {
         let state = makeIsolatedAppState()
+        _ = addMockCourse(to: state)
         guard let sem = state.currentSemester else {
             Issue.record("Missing current semester")
             return
@@ -545,6 +574,7 @@ struct MacOSViewModelTests {
     @MainActor
     func testAutocompleteCandidateExtractionAndFiltering() {
         let state = makeIsolatedAppState()
+        _ = addMockCourse(to: state)
 
         // 1. Verify candidate extraction from bootstrapped courses
         let courseNames = Array(Set(state.courses.map { $0.name.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty })).sorted()

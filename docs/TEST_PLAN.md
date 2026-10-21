@@ -109,3 +109,7 @@ duplicate starts; persistent auto-start; cancellation during preparation; cross-
 locking; malicious health URLs; safe runtime-exit diagnostics; and termination of a real
 owned subprocess. Fake child processes isolate lifecycle logic from external accounts.
 A local ready status does not replace a real cloud-chat tool call with user credentials.
+
+### Release plugin kit
+
+`python3 scripts/test_chatgpt_package.py` verifies deterministic ZIP bytes, hidden manifests, executable mode, checksums and missing-file failure. It extracts the kit into a path with spaces and runs its real installer with an isolated HOME and a stub Codex CLI; no user client is changed.

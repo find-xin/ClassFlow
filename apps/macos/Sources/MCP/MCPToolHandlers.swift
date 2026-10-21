@@ -795,24 +795,24 @@ public struct MCPToolHandlers: Sendable {
 
         let provider: any StorageProvider
         if providerType == "webdav" {
-            let serverURL = CloudSettings.defaults.string(forKey: "webdav_url") ?? "https://dav.jianguoyun.com/dav/"
+            let serverURL = CloudSettings.defaults.string(forKey: "webdav_url") ?? ""
             let user = CloudSettings.defaults.string(forKey: "webdav_user") ?? ""
             let pwd = CloudSettings.secret("webdav_pwd") ?? ""
             let prefix = CloudSettings.defaults.string(forKey: "webdav_path_prefix") ?? "ClassFlow/"
-            guard !user.isEmpty, !pwd.isEmpty else {
-                throw automationError("未配置 WebDAV 凭据，请先在设置中完成配置。")
+            guard !serverURL.isEmpty, !user.isEmpty, !pwd.isEmpty else {
+                throw automationError("未配置 WebDAV 凭据或服务器地址，请先在设置中完成配置。")
             }
             let config = WebDAVStorageProvider.Configuration(serverURL: serverURL, username: user, password: pwd, pathPrefix: prefix)
             provider = WebDAVStorageProvider(config: config)
         } else {
             let endpoint = CloudSettings.defaults.string(forKey: "s3_endpoint") ?? ""
-            let region = CloudSettings.defaults.string(forKey: "s3_region") ?? "cn-east-1"
+            let region = CloudSettings.defaults.string(forKey: "s3_region") ?? ""
             let bucket = CloudSettings.defaults.string(forKey: "s3_bucket") ?? ""
             let ak = CloudSettings.secret("s3_access_key") ?? ""
             let sk = CloudSettings.secret("s3_secret_key") ?? ""
             let prefix = CloudSettings.defaults.string(forKey: "s3_path_prefix") ?? "classflow-sync/"
-            guard !ak.isEmpty, !sk.isEmpty, !bucket.isEmpty else {
-                throw automationError("未配置 S3 凭据，请先在设置中完成配置。")
+            guard !endpoint.isEmpty, !ak.isEmpty, !sk.isEmpty, !bucket.isEmpty else {
+                throw automationError("未配置 S3 凭据或 Endpoint 服务地址，请先在设置中完成配置。")
             }
             let config = S3StorageProvider.Configuration(endpoint: endpoint, region: region, bucket: bucket, accessKey: ak, secretKey: sk, pathPrefix: prefix)
             provider = S3StorageProvider(config: config)

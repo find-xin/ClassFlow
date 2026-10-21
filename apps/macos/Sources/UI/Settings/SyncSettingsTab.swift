@@ -9,14 +9,14 @@ public struct SyncSettingsTab: View {
     @State private var providerType: String = "webdav"
 
     // WebDAV Credentials
-    @State private var webdavServerURL: String = "https://dav.jianguoyun.com/dav/"
+    @State private var webdavServerURL: String = ""
     @State private var webdavUsername: String = ""
     @State private var webdavPassword: String = ""
     @State private var webdavPathPrefix: String = "ClassFlow/"
 
     // S3 / Qiniu Credentials
-    @State private var endpoint: String = "https://s3.cn-east-1.qiniucs.com"
-    @State private var region: String = "cn-east-1"
+    @State private var endpoint: String = ""
+    @State private var region: String = ""
     @State private var bucket: String = ""
     @State private var accessKey: String = ""
     @State private var secretKey: String = ""
@@ -44,22 +44,22 @@ public struct SyncSettingsTab: View {
 
             if providerType == "webdav" {
                 Section("WebDAV 服务器配置") {
-                    TextField("服务器地址 (Server URL)", text: $webdavServerURL, prompt: Text("https://dav.jianguoyun.com/dav/"))
+                    TextField("服务器地址 (Server URL)", text: $webdavServerURL, prompt: Text("例如：https://dav.jianguoyun.com/dav/"))
                     TextField("同步目录 (Path)", text: $webdavPathPrefix, prompt: Text("ClassFlow/"))
                     TextField("账号 / 邮箱 (Username)", text: $webdavUsername)
                     SecureField("应用授权密码 (App Password)", text: $webdavPassword)
                 }
             } else {
                 Section("S3 对象存储配置") {
-                    TextField("Endpoint 服务地址", text: $endpoint, prompt: Text("https://s3.cn-south-1.qiniucs.com"))
+                    TextField("Endpoint 服务地址", text: $endpoint, prompt: Text("例如：https://s3.cn-south-1.qiniucs.com"))
                         .onChange(of: endpoint) { _, newEndpoint in
-                            if newEndpoint.contains("cn-south-1") && region == "cn-east-1" {
+                            if newEndpoint.contains("cn-south-1") && (region.isEmpty || region == "cn-east-1") {
                                 region = "cn-south-1"
-                            } else if newEndpoint.contains("cn-north-1") && region == "cn-east-1" {
+                            } else if newEndpoint.contains("cn-north-1") && (region.isEmpty || region == "cn-east-1") {
                                 region = "cn-north-1"
                             }
                         }
-                    TextField("Region 区域代号", text: $region, prompt: Text("cn-south-1"))
+                    TextField("Region 区域代号", text: $region, prompt: Text("例如：cn-south-1"))
                     TextField("存储桶 Bucket", text: $bucket)
                     TextField("存储路径前缀", text: $pathPrefix, prompt: Text("classflow-sync/"))
                 }
@@ -190,7 +190,7 @@ public struct SyncSettingsTab: View {
         if providerType == "webdav" {
             return !webdavServerURL.isEmpty && !webdavUsername.isEmpty && !webdavPassword.isEmpty
         } else {
-            return !bucket.isEmpty && !accessKey.isEmpty && !secretKey.isEmpty
+            return !endpoint.isEmpty && !bucket.isEmpty && !accessKey.isEmpty && !secretKey.isEmpty
         }
     }
 

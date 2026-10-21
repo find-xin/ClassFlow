@@ -693,11 +693,7 @@ object CourseDataManager {
         return arr.toString()
     }
 
-    fun defaultStudyTasks(): List<StudyTask> = listOf(
-        StudyTask(id = "st_1", title = "高等数学 · 习题册第4章复习", courseName = "高等数学", targetMinutes = 60, completedMinutes = 45, isCompleted = false, priority = "high"),
-        StudyTask(id = "st_2", title = "大学英语六级 · 听力真题精听与词汇", courseName = "大学英语", targetMinutes = 45, completedMinutes = 30, isCompleted = false, priority = "medium"),
-        StudyTask(id = "st_3", title = "计算机网络 · 路由仿真实验报告", courseName = "计算机网络", targetMinutes = 90, completedMinutes = 90, isCompleted = true, priority = "low")
-    )
+    fun defaultStudyTasks(): List<StudyTask> = emptyList()
 
     fun loadStudyTasks(context: Context): List<StudyTask> {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -901,70 +897,9 @@ object CourseDataManager {
 
     // MARK: - Default Data Providers
 
-    fun defaultCourses(): List<Course> {
-        val mainId = "sem_main"
-        return listOf(
-            Course(
-                id = "c_math",
-                semesterId = mainId,
-                name = "高等数学",
-                teacher = "张教授",
-                color = "#4F46E5",
-                schedules = listOf(
-                    CourseSchedule(
-                        dayOfWeek = 3,
-                        startSection = 1,
-                        endSection = 2,
-                        classroom = "东上 101",
-                        weekPattern = WeekPatternType.ALL,
-                        customWeeks = (1..16).toList()
-                    )
-                )
-            ),
-            Course(
-                id = "c_cs",
-                semesterId = mainId,
-                name = "数据结构与算法",
-                teacher = "李教授",
-                color = "#0B8043",
-                schedules = listOf(
-                    CourseSchedule(
-                        dayOfWeek = 3,
-                        startSection = 3,
-                        endSection = 4,
-                        classroom = "信息楼 302",
-                        weekPattern = WeekPatternType.ALL,
-                        customWeeks = (1..16).toList()
-                    )
-                )
-            )
-        )
-    }
+    fun defaultCourses(): List<Course> = emptyList()
 
-    fun defaultSchedules(): List<CalendarEvent> {
-        return listOf(
-            CalendarEvent(
-                id = "sched_1",
-                title = "晨读早自习",
-                startTime = "07:20",
-                endTime = "07:55",
-                location = "图书馆一楼中庭",
-                color = "#039BE5",
-                frequency = "每天",
-                customDaysOfWeek = (1..7).toList()
-            ),
-            CalendarEvent(
-                id = "sched_2",
-                title = "实验室科研讨论会",
-                startTime = "21:30",
-                endTime = "22:30",
-                location = "工科实验大楼 504",
-                color = "#8E24AA",
-                frequency = "每周",
-                customDaysOfWeek = listOf(3)
-            )
-        )
-    }
+    fun defaultSchedules(): List<CalendarEvent> = emptyList()
 
     fun defaultSectionTimes(): List<SectionTime> {
         return listOf(
@@ -985,62 +920,12 @@ object CourseDataManager {
 
     fun defaultSemesters(): List<Semester> {
         val mainId = "sem_main"
-        val prevId = "sem_prev"
         return listOf(
-            Semester(id = mainId, name = "2026-2027 秋季学期", startDate = "2026-09-01", endDate = "2027-01-20", totalWeeks = 16, isCurrent = true),
-            Semester(id = prevId, name = "大三下学期", startDate = "2026-02-25", endDate = "2026-07-15", totalWeeks = 20, isCurrent = false)
+            Semester(id = mainId, name = "2026-2027 秋季学期", startDate = "2026-09-01", endDate = "2027-01-20", totalWeeks = 16, isCurrent = true)
         )
     }
 
-    fun defaultFocusRecords(): List<FocusRecord> {
-        return listOf(
-            FocusRecord(
-                id = "rec_1",
-                taskTitle = "高等数学 · 习题册第4章复习",
-                courseName = "高等数学",
-                durationMinutes = 25,
-                completedAt = "今日 10:15"
-            ),
-            FocusRecord(
-                id = "rec_2",
-                taskTitle = "大学英语六级 · 听力真题精听与词汇",
-                courseName = "大学英语",
-                durationMinutes = 25,
-                completedAt = "昨日 16:40"
-            ),
-            FocusRecord(
-                id = "rec_3",
-                taskTitle = "自习 · 深入浅出操作系统导论",
-                courseName = "操作系统",
-                durationMinutes = 45,
-                completedAt = "10/14 20:30"
-            )
-        )
-    }
+    fun defaultFocusRecords(): List<FocusRecord> = emptyList()
 
-    fun defaultDailyMinutes(): Map<String, Int> {
-        val map = mutableMapOf<String, Int>()
-        val cal = java.util.Calendar.getInstance()
-        val df = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
-        for (i in 0..90) {
-            cal.time = java.util.Date()
-            cal.add(java.util.Calendar.DAY_OF_YEAR, -i)
-            val key = df.format(cal.time)
-            val mins = when {
-                i == 0 -> 50
-                i == 1 -> 25
-                i == 2 -> 45
-                i == 5 -> 75
-                i == 7 -> 30
-                i == 12 -> 60
-                i == 18 -> 45
-                i == 25 -> 90
-                i == 30 -> 35
-                i == 42 -> 60
-                else -> 0
-            }
-            if (mins > 0) map[key] = mins
-        }
-        return map
-    }
+    fun defaultDailyMinutes(): Map<String, Int> = emptyMap()
 }

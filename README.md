@@ -80,7 +80,7 @@ ClassFlow Repository
 │   ├── macos/               # macOS 原生客户端 (SwiftUI 6 + AppKit + WidgetKit .appex)
 │   └── android/             # Android 原生客户端 (Jetpack Compose + Room + Glance)
 ├── plugins/
-│   └── chatgpt/             # ChatGPT 插件清单与 OpenAPI 3.1 协议定义
+│   └── classflow/           # 本地 Work/Codex 插件、MCP 入口与技能说明
 ├── dist/                    # 正式发布打包镜像 (DMG, ZIP, APK, RPK)
 ├── docs/                    # 完整架构规范、同步协议与 ADR 记录
 └── scripts/                 # 构建与自动化安装脚本 (package_macos.sh, install_mcp.sh)
@@ -136,11 +136,12 @@ ClassFlow 提供业界最完整的 **AI 本地与云端接管体系**，无论�
 
 | 平台 | 安装包名称 | 文件大小 | SHA-256 校验和 |
 | :--- | :--- | :--- | :--- |
-| **macOS (Apple Silicon)** | `ClassFlow-1.0.0-macOS-arm64.dmg` | 4.4 MB | `db91423f6297fe9c9988a5e27c156fc4ca29cffa133d374ea10c5dd86214e316` |
-| **macOS 绿色免安装** | `ClassFlow-1.0.0-macOS-arm64.zip` | 6.8 MB | `6acd32451d3924477053ea63e3677e1a56612c4b2474035906ea84eb426208a8` |
-| **Android 客户端** | `ClassFlow-1.0.0-android.apk` | 13.4 MB | `0dc583a250f3ae4ff3f22b78b1aff4c6e766c9834abaf30af4170c6e20bdc884` |
-| **小米手环快应用** | `ClassFlow-1.0.0-xiaomi-band.rpk` | 5.0 KB | `b296eb9640944c38a6c559074f04c1033d2c353eb92c62a20a3b01ad4322bf74` |
-| **小米手环源码包** | `ClassFlow-1.0.0-xiaomi-band.zip` | 5.0 KB | `b296eb9640944c38a6c559074f04c1033d2c353eb92c62a20a3b01ad4322bf74` |
+| **macOS (Apple Silicon)** | `ClassFlow-1.0.0-macOS-arm64.dmg` | 4.4 MB | `5840cbfde696cb37f3c72b74a07d7e309703fd99d3ca00d65e7a3f59c6034f83` |
+| **macOS 绿色免安装** | `ClassFlow-1.0.0-macOS-arm64.zip` | 6.8 MB | `4fabfa03448f8821a6d6f4c28aaa77517b77cdbc229858ea936cd0e69dc596c0` |
+| **Android 客户端** | `ClassFlow-1.0.0-android.apk` | 13.4 MB | `a07137a280094137b487640c04bf3dccf0702f6107decc7c3ab7261b27912b8a` |
+| **小米手环快应用** | `ClassFlow-1.0.0-xiaomi-band.rpk` | 5.0 KB | `8a3b4c6cbcfd3d6ec4e4a7580b13ea6dc98c6b543bca3735de98aae926938602` |
+| **小米手环源码包** | `ClassFlow-1.0.0-xiaomi-band.zip` | 5.0 KB | `8a3b4c6cbcfd3d6ec4e4a7580b13ea6dc98c6b543bca3735de98aae926938602` |
+| **本地 Work / Codex 插件** | `ClassFlow-Local-Plugin-1.1.0.zip` | 14.9 KB | `ee82f0eacc4cb8fccfa701ff6fdf5f03e29e8a067cd7f66b9cf018824508c689` |
 
 > 校验命令：`cd dist && shasum -a 256 -c SHA256SUMS.txt`
 
@@ -158,15 +159,14 @@ swift test --package-path apps/macos
 ./scripts/package_macos.sh
 ```
 
-### 接入 ChatGPT / Claude / Codex (MCP)
-```bash
-# 1. 自动注册本地 MCP 工具至 Claude Desktop / 客户端
-./scripts/install_mcp.sh
+### 接入 ChatGPT / Work / Codex (MCP)
 
-# 2. 云端 ChatGPT 接入：
-# 打开 ClassFlow 设置 -> AI 助手 -> 填入安全隧道 URL 与 Token -> 开启隧道连接
-# 在 ChatGPT 中输入：“查询我今天下午有什么课” 或 “帮我添加周二下午第 3-4 节机器学习课程”
-```
+| 入口 | Release 下载 | 安装方式 |
+| --- | --- | --- |
+| 普通 ChatGPT 聊天 | macOS App + [接入说明](https://github.com/find-xin/ClassFlow/releases/download/v1.0.0/ClassFlow-ChatGPT-Setup.md) | 安装官方 tunnel-client，在 App 的 AI / ChatGPT 设置填写 Tunnel ID 和专用运行密钥，再在 ChatGPT 添加同一 Tunnel 连接 |
+| 本地 Work / Codex | macOS App + [本地插件包 1.1.0](https://github.com/find-xin/ClassFlow/releases/download/v1.0.0/ClassFlow-Local-Plugin-1.1.0.zip) | 解压插件包，在其目录运行 `bash scripts/install_mcp.sh`，新建本地会话选用插件 |
+
+本地插件包不等于普通云端聊天的连接方式，也不代表已上架 ChatGPT 官方公共目录。插件版本与 App 版本分别编号。详见 [简明接入说明](docs/CHATGPT_RELEASE_SETUP.md)。
 
 ---
 

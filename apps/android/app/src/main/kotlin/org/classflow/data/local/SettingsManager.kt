@@ -135,13 +135,13 @@ object SettingsManager {
 
     data class SyncCredentials(
         val providerType: String = "s3", // "s3", "webdav", "none"
-        val s3Endpoint: String = "https://s3.cn-east-1.qiniucs.com",
-        val s3Region: String = "cn-east-1",
+        val s3Endpoint: String = "",
+        val s3Region: String = "",
         val s3Bucket: String = "",
         val s3AccessKey: String = "",
         val s3SecretKey: String = "",
         val s3PathPrefix: String = "classflow-sync/",
-        val webdavUrl: String = "https://dav.jianguoyun.com/dav/",
+        val webdavUrl: String = "",
         val webdavUsername: String = "",
         val webdavPassword: String = "",
         val webdavRootDir: String = "ClassFlow"
@@ -159,13 +159,13 @@ object SettingsManager {
             val obj = JSONObject(jsonStr)
             SyncCredentials(
                 providerType = obj.optString("providerType", "s3"),
-                s3Endpoint = obj.optString("s3Endpoint", "https://s3.cn-east-1.qiniucs.com"),
-                s3Region = obj.optString("s3Region", "cn-east-1"),
+                s3Endpoint = obj.optString("s3Endpoint", ""),
+                s3Region = obj.optString("s3Region", ""),
                 s3Bucket = obj.optString("s3Bucket", ""),
                 s3AccessKey = obj.optString("s3AccessKey", ""),
                 s3SecretKey = obj.optString("s3SecretKey", ""),
                 s3PathPrefix = obj.optString("s3PathPrefix", "classflow-sync/"),
-                webdavUrl = obj.optString("webdavUrl", "https://dav.jianguoyun.com/dav/"),
+                webdavUrl = obj.optString("webdavUrl", ""),
                 webdavUsername = obj.optString("webdavUsername", ""),
                 webdavPassword = obj.optString("webdavPassword", ""),
                 webdavRootDir = obj.optString("webdavRootDir", "ClassFlow")

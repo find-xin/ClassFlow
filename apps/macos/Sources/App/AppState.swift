@@ -399,11 +399,11 @@ public final class AppState {
         } else {
             guard let ak = CloudSettings.secret("s3_access_key"), !ak.isEmpty,
                   let sk = CloudSettings.secret("s3_secret_key"), !sk.isEmpty,
+                  let endpoint = CloudSettings.defaults.string(forKey: "s3_endpoint"), !endpoint.isEmpty,
                   let bucket = CloudSettings.defaults.string(forKey: "s3_bucket"), !bucket.isEmpty else {
                 return nil
             }
-            let endpoint = CloudSettings.defaults.string(forKey: "s3_endpoint") ?? "https://s3.cn-east-1.qiniucs.com"
-            let region = CloudSettings.defaults.string(forKey: "s3_region") ?? "cn-east-1"
+            let region = CloudSettings.defaults.string(forKey: "s3_region") ?? ""
             let prefix = CloudSettings.defaults.string(forKey: "s3_path_prefix") ?? "classflow-sync/"
             let config = S3StorageProvider.Configuration(
                 endpoint: endpoint,

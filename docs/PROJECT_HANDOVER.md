@@ -209,3 +209,9 @@ ls -1 ClassFlow-*.{apk,dmg,zip,rpk} | xargs shasum -a 256 > SHA256SUMS.txt
 `[VERIFIED]` 精简版 Release 已安装并通过签名校验，56 项 macOS 测试及安装版 23 项 MCP 协议检查通过。
 修正连接诊断测试被周期性就绪消息覆盖的断言时序，仅调整测试隔离条件，未修改运行时逻辑。
 用户完成系统钥匙串授权后，已实际核对安装版页面仅保留连接设置，高级选项默认收起；自动启用保持开启，App 托管隧道自动恢复就绪。
+
+### ChatGPT Release 附件（2026-10-21）
+
+新增明确文件清单的可复现插件打包脚本、独立用户接入说明及安装包测试；Release 工作流自动附带插件 ZIP、说明和 SHA-256，重跑保留已有 Release。修正文档中 URL/Actions 与本地插件适用入口的混淆。发布版 macOS ZIP 的 SHA-256 与在线附件一致，并实际通过 23 项 MCP 工具协议检查。
+
+Release 补发状态：本地插件 ZIP、接入说明、各自 SHA-256 与合并校验清单均已生成；当前 gh 凭据对上传/覆盖附件和修改正文返回 HTTP 403（Resource not accessible by personal access token），线上 Release 未更新。用户偏好自行操作网页，应在 v1.0.0 Release 上传附件并更新 AI 接入段落；源码/工作流修改也尚未推送。

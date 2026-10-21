@@ -63,14 +63,18 @@ ClassFlow 是一款专为 macOS 与 Android 打造的高颜值、本地离线优
 2. 允许浏览器/文件管理器“安装未知来源应用”权限并点击安装；
 3. 首次启动授权日历和通知权限以享受自动日历导入与课前提醒。
 
-### 🧠 ChatGPT / Codex AI 接管配置
-1. **本地 Codex 模式**：
-   - 运行 `./scripts/install_mcp.sh` 一键注册 ClassFlow 本地 stdio MCP 服务器；
-   - 在支持 MCP 的客户端（如 Claude Desktop、Cursor、Codex）中直接调用。
-2. **云端 ChatGPT 聊天接管模式**：
-   - 打开 ClassFlow 设置 ->「AI 助手」选项卡；
-   - 填入您的安全隧道服务 URL 与 Token（安全存储在 Keychain），点击「连接隧道」；
-   - 在 ChatGPT 网页端/客户端添加 Action 或自定义 GPT，直接用自然语言管理课程、日程与专注打卡。
+### 🧠 ChatGPT / Work / Codex 接入与插件下载
+
+Release 现提供独立附件：
+
+- [ClassFlow-Local-Plugin-1.1.0.zip](https://github.com/find-xin/ClassFlow/releases/download/v1.0.0/ClassFlow-Local-Plugin-1.1.0.zip)：本地 Work / Codex 插件、安装脚本及文档；插件版本与 App 版本分别编号。
+- [ClassFlow-ChatGPT-Setup.md](https://github.com/find-xin/ClassFlow/releases/download/v1.0.0/ClassFlow-ChatGPT-Setup.md)：两种入口的安装与连接步骤。对应 `.sha256` 文件用于下载校验。
+
+**本地 Work / Codex**：先安装 macOS App 和支持插件的客户端，确保 `codex` CLI 与 Python 3 可用；解压插件 ZIP，在 `ClassFlow-Local-Plugin` 文件夹运行 `bash scripts/install_mcp.sh`，新建本地会话选用 ClassFlow。脚本不自动配置 Claude 等其他客户端。
+
+**普通 ChatGPT 聊天**：安装官方 [tunnel-client](https://github.com/openai/tunnel-client/releases/latest)，在 Platform 创建自己的隧道和专用运行密钥。打开 ClassFlow → 课表设置 → **AI / ChatGPT**，填写 **Tunnel ID（不是 URL）**及运行密钥，连接至「隧道已就绪」。随后在 ChatGPT 添加自定义 MCP，Connection 选择 **Tunnel** 并选用同一 ID。可开启 App 内自动启用，日常不需要常驻终端。
+
+普通聊天使用隧道连接；本地插件 ZIP 适用于本地执行入口。每位用户需要自己的账户、工作区权限、隧道及密钥，发布包不含任何预置凭据。GitHub 发布插件包不等于上架 ChatGPT 官方公共目录。详见 [官方隧道说明](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels)。
 
 ### ⌚️ 小米手环 9 / 10
 1. 下载 `ClassFlow-1.0.0-xiaomi-band.rpk`；

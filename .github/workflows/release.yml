@@ -19,36 +19,56 @@ jobs:
     name: Publish GitHub Release
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
+      - name: Checkout release source
         uses: actions/checkout@v4
 
-      - name: Create GitHub Release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Test and package ChatGPT integration
         run: |
-          TAG="${{ github.event.inputs.tag || github.ref_name }}"
-          NOTES="RELEASE_NOTES_${TAG}.md"
-          if [ ! -f "$NOTES" ]; then
-            NOTES="RELEASE_NOTES_v1.0.0.md"
+          python3 scripts/test_chatgpt_package.py
+          python3 scripts/package_chatgpt.py
+
+      - name: Publish release and assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]] || { echo 'Invalid release tag'; exit 1; }
+          NOTES="RELEASE_NOTES_${RELEASE_TAG}.md"
+          test -f "$NOTES"
+          PLUGIN_VERSION=$(python3 -c 'import json; print(json.load(open("plugins/classflow/.codex-plugin/plugin.json"))["version"])')
+          APP_VERSION="${RELEASE_TAG#v}"
+          assets=(
+            "dist/ClassFlow-${APP_VERSION}-macOS-arm64.dmg"
+            "dist/ClassFlow-${APP_VERSION}-macOS-arm64.dmg.sha256"
+            "dist/ClassFlow-${APP_VERSION}-macOS-arm64.zip"
+            "dist/ClassFlow-${APP_VERSION}-macOS-arm64.zip.sha256"
+            "dist/ClassFlow-${APP_VERSION}-android.apk"
+            "dist/ClassFlow-${APP_VERSION}-android.apk.sha256"
+            "dist/ClassFlow-${APP_VERSION}-xiaomi-band.rpk"
+            "dist/ClassFlow-${APP_VERSION}-xiaomi-band.rpk.sha256"
+            "dist/ClassFlow-${APP_VERSION}-xiaomi-band.zip"
+            "dist/ClassFlow-${APP_VERSION}-xiaomi-band.zip.sha256"
+            "dist/ClassFlow-Local-Plugin-${PLUGIN_VERSION}.zip"
+            "dist/ClassFlow-Local-Plugin-${PLUGIN_VERSION}.zip.sha256"
+            dist/ClassFlow-ChatGPT-Setup.md
+            dist/ClassFlow-ChatGPT-Setup.md.sha256
+          )
+          for asset in "${assets[@]}"; do test -f "$asset"; done
+          python3 - "${assets[@]}" <<'PY'
+          import hashlib, pathlib, sys
+          files = [pathlib.Path(name) for name in sys.argv[1:] if not name.endswith('.sha256')]
+          pathlib.Path('dist/SHA256SUMS.txt').write_text(''.join(
+              f'{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}\n' for path in sorted(files)))
+          PY
+          assets+=(dist/SHA256SUMS.txt)
+          # Preserve the existing release and its URL when a workflow is re-run.
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
+            gh release edit "$RELEASE_TAG" --notes-file "$NOTES"
+          else
+            gh release create "$RELEASE_TAG" "${assets[@]}" \
+              --verify-tag --title "ClassFlow ${RELEASE_TAG} - Native Cross-Platform Timetable & AI Suite" \
+              --notes-file "$NOTES"
           fi
-
-          echo "Publishing GitHub release for tag ${TAG}..."
-          
-          # Delete existing release for this tag if it exists (allows clean re-release)
-          gh release delete "${TAG}" --yes --repo "${{ github.repository }}" || true
-
-          gh release create "${TAG}" \
-            dist/ClassFlow-1.0.0-macOS-arm64.dmg \
-            dist/ClassFlow-1.0.0-macOS-arm64.dmg.sha256 \
-            dist/ClassFlow-1.0.0-macOS-arm64.zip \
-            dist/ClassFlow-1.0.0-macOS-arm64.zip.sha256 \
-            dist/ClassFlow-1.0.0-android.apk \
-            dist/ClassFlow-1.0.0-android.apk.sha256 \
-            dist/ClassFlow-1.0.0-xiaomi-band.rpk \
-            dist/ClassFlow-1.0.0-xiaomi-band.rpk.sha256 \
-            dist/ClassFlow-1.0.0-xiaomi-band.zip \
-            dist/ClassFlow-1.0.0-xiaomi-band.zip.sha256 \
-            dist/SHA256SUMS.txt \
-            --title "ClassFlow ${TAG} - Native Cross-Platform Timetable & AI Suite" \
-            --notes-file "${NOTES}" \
-            --repo "${{ github.repository }}"

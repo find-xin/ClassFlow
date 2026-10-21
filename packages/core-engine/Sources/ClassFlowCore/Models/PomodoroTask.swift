@@ -250,46 +250,7 @@ public struct PomodoroTask: Identifiable, Codable, Sendable, Equatable {
     }
 
     public static func defaultSampleTasks() -> [PomodoroTask] {
-        [
-            PomodoroTask(
-                title: "高等数学 · 习题册第4章复习",
-                courseName: "高等数学",
-                estimatedPomodoros: 3,
-                completedPomodoros: 2,
-                totalFocusMinutes: 50,
-                priority: .high,
-                notes: "重点攻克多元微分学与拉格朗日乘数法"
-            ),
-            PomodoroTask(
-                title: "英语六级 · 听力真题精听与词汇整理",
-                courseName: "大学英语",
-                estimatedPomodoros: 2,
-                completedPomodoros: 1,
-                totalFocusMinutes: 25,
-                priority: .medium,
-                notes: "完成 2024 年 12 月卷一听力第二套"
-            ),
-            PomodoroTask(
-                title: "计算机网络 · Lab 2 路由协议模拟",
-                courseName: "计算机网络",
-                estimatedPomodoros: 4,
-                completedPomodoros: 0,
-                totalFocusMinutes: 0,
-                priority: .high,
-                notes: "实现 RIP 协议收敛仿真并在周五前提交代码"
-            ),
-            PomodoroTask(
-                title: "近代史纲要 · 期末论文参考文献查阅",
-                courseName: "中国近现代史纲要",
-                estimatedPomodoros: 2,
-                completedPomodoros: 2,
-                totalFocusMinutes: 50,
-                isCompleted: true,
-                priority: .low,
-                notes: "已搜集 5 篇核心期刊文献",
-                completedAt: Date()
-            )
-        ]
+        []
     }
 }
 
@@ -386,32 +347,6 @@ public struct PomodoroRecord: Identifiable, Codable, Sendable, Equatable {
     }
 
     public static func defaultSampleRecords() -> [PomodoroRecord] {
-        let now = Date()
-        return [
-            PomodoroRecord(
-                taskTitle: "高等数学 · 习题册第4章复习",
-                courseName: "高等数学",
-                focusMode: .pomodoro,
-                durationMinutes: 25,
-                completedAt: now.addingTimeInterval(-7200),
-                tag: "课后作业"
-            ),
-            PomodoroRecord(
-                taskTitle: "高等数学 · 习题册第4章复习",
-                courseName: "高等数学",
-                focusMode: .pomodoro,
-                durationMinutes: 25,
-                completedAt: now.addingTimeInterval(-3600),
-                tag: "课后作业"
-            ),
-            PomodoroRecord(
-                taskTitle: "英语六级 · 听力真题精听与词汇整理",
-                courseName: "大学英语",
-                focusMode: .pomodoro,
-                durationMinutes: 25,
-                completedAt: now.addingTimeInterval(-1800),
-                tag: "四六级"
-            )
-        ]
+        []
     }
 }

@@ -259,32 +259,13 @@
         { name: '一' }, { name: '二' }, { name: '三' }, { name: '四' },
         { name: '五' }, { name: '六' }, { name: '日' }
       ],
-      nextClass: {
-        title: '高等数学',
-        location: '东上101',
-        startSection: 3,
-        endSection: 4,
-        startTime: '10:00',
-        endTime: '11:35',
-        statusText: '上课中 🟢'
-      },
+      nextClass: null,
       scheduleData: {
-        0: [
-          { title: '大学英语', location: '外文楼201', startSection: 1, endSection: 2, startTime: '08:00', endTime: '09:35', colorHex: '#50E3C2' }
-        ],
-        1: [
-          { title: '近代史纲要', location: '教三102', startSection: 3, endSection: 4, startTime: '10:00', endTime: '11:35', colorHex: '#E8A87C' }
-        ],
-        2: [
-          { title: '高等数学', location: '东上101', startSection: 3, endSection: 4, startTime: '10:00', endTime: '11:35', colorHex: '#FF5A5F' },
-          { title: '计算机网络', location: '信息楼302', startSection: 7, endSection: 8, startTime: '16:00', endTime: '17:35', colorHex: '#5B7FB5' }
-        ],
-        3: [
-          { title: '大学体育', location: '西操场', startSection: 5, endSection: 6, startTime: '14:00', endTime: '15:35', colorHex: '#56A3A6' }
-        ],
-        4: [
-          { title: '线性代数', location: '东中204', startSection: 1, endSection: 2, startTime: '08:00', endTime: '09:35', colorHex: '#9B59B6' }
-        ],
+        0: [],
+        1: [],
+        2: [],
+        3: [],
+        4: [],
         5: [],
         6: []
       }

@@ -651,7 +651,7 @@ private fun SyncSettingsView(
                     OutlinedTextField(
                         value = serverUrl,
                         onValueChange = { serverUrl = it; testMsg = null },
-                        label = { Text("服务器地址") },
+                        label = { Text("服务器地址 (如 https://dav.jianguoyun.com/dav/)") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -693,7 +693,7 @@ private fun SyncSettingsView(
                                 }
                             }
                         },
-                        enabled = !isTesting && username.isNotBlank(),
+                        enabled = !isTesting && serverUrl.isNotBlank() && username.isNotBlank(),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(if (isTesting) "正在测试..." else "测试连接")
@@ -740,8 +740,8 @@ private fun SyncSettingsView(
                     modifier = Modifier.verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    OutlinedTextField(value = endpoint, onValueChange = { endpoint = it; testMsg = null }, label = { Text("Endpoint") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                    OutlinedTextField(value = region, onValueChange = { region = it; testMsg = null }, label = { Text("Region (区域)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(value = endpoint, onValueChange = { endpoint = it; testMsg = null }, label = { Text("Endpoint 服务地址 (如 https://s3.cn-south-1.qiniucs.com)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(value = region, onValueChange = { region = it; testMsg = null }, label = { Text("Region 区域 (如 cn-south-1)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                     OutlinedTextField(value = bucket, onValueChange = { bucket = it; testMsg = null }, label = { Text("Bucket 桶名") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                     OutlinedTextField(value = ak, onValueChange = { ak = it; testMsg = null }, label = { Text("Access Key") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                     OutlinedTextField(value = sk, onValueChange = { sk = it; testMsg = null }, label = { Text("Secret Key") }, singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -769,7 +769,7 @@ private fun SyncSettingsView(
                                 }
                             }
                         },
-                        enabled = !isTesting && bucket.isNotBlank() && ak.isNotBlank(),
+                        enabled = !isTesting && endpoint.isNotBlank() && bucket.isNotBlank() && ak.isNotBlank(),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(if (isTesting) "正在测试..." else "测试连接")

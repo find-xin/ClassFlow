@@ -1,0 +1,35 @@
+# ClassFlow：ChatGPT / Work / Codex 接入
+
+请先安装 Release 中的 macOS 版 ClassFlow.app，并放入 `/Applications`。
+
+| 你使用的入口 | 需要下载什么 | 如何连接 |
+| --- | --- | --- |
+| 普通 ChatGPT 聊天 | macOS App；本说明 | 在 App 设置中连接 Secure MCP Tunnel，然后在 ChatGPT 添加同一隧道 |
+| 本地 Work / Codex | macOS App；`ClassFlow-Local-Plugin-1.1.0.zip` | 解压后运行下面的本地安装脚本 |
+
+插件版本 1.1.0 与 App 版本 1.0.0 分别编号。插件包包含本地插件、安装脚本、许可证和接入文档，不含 App、官方隧道客户端或任何人的密钥。
+
+## 普通 ChatGPT 聊天
+
+1. 从 [OpenAI 官方发布页](https://github.com/openai/tunnel-client/releases/latest) 安装适合 Mac 的 `tunnel-client`。例如放在 `~/.local/bin/tunnel-client`，确保文件可执行；也可在 ClassFlow 的高级选项中选择客户端文件。
+2. 在 [Platform 隧道设置](https://platform.openai.com/settings/organization/tunnels) 创建自己的隧道，并关联使用的 ChatGPT 工作区。创建需要 Tunnels Read + Manage；专用运行密钥需要 Tunnels Read + Use。账户和工作区必须允许使用自定义 MCP。
+3. 打开 ClassFlow → 课表设置 → **AI / ChatGPT**。填写 `tunnel_…` 格式的 **Tunnel ID** 和专用运行密钥，保存后点击「连接 ChatGPT」。密钥存入本机钥匙串；不要发给他人或放进 GitHub。
+4. 等待显示「隧道已就绪」，按需勾选「打开 ClassFlow 时自动启用」。连接由 App 后台管理，不需常驻终端；退出 App、Mac 离线或休眠会中断连接。
+5. 在 ChatGPT 的插件入口添加自定义 MCP 服务器，Connection 选择 **Tunnel**，选择或填入同一个 Tunnel ID，按页面要求完成认证和授权。
+6. 在聊天中选用 ClassFlow，先询问「今天有什么课」，确认返回真实课表，再使用添加、修改等操作。
+
+本地插件 ZIP 适用于本地执行入口；普通云端聊天使用上述隧道路径。GitHub 发布插件包不会自动将插件上架到 ChatGPT 官方公共目录。
+
+## 本地 Work / Codex
+
+先安装并登录支持插件的本地 Work / Codex，确保其 `codex` CLI 可从终端调用，并安装 Python 3。解压插件 ZIP 后，在 `ClassFlow-Local-Plugin` 文件夹内运行：
+
+```bash
+bash scripts/install_mcp.sh
+```
+
+脚本会注册本地插件库和 ClassFlow 插件。新建本地会话并选用 ClassFlow，调用 `get_status` 或查询今天的课程即可验证。安装时可能需要终端；日常调用不需要额外常驻终端。不要同时保留旧版同名 MCP 连接。
+
+Claude 等其他支持 stdio MCP 的客户端可自行配置 `/Applications/ClassFlow.app/Contents/MacOS/ClassFlow`，参数为 `["--mcp"]`；上述脚本只安装 Work / Codex 插件。
+
+详细工具列表和排错见 [项目集成指南](https://github.com/find-xin/ClassFlow/blob/main/docs/CHATGPT_INTEGRATION.md)。官方连接方式见 [OpenAI Secure MCP Tunnel](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels)。

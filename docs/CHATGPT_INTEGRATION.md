@@ -21,8 +21,8 @@
 
 ## 安装本地插件
 
-1. 构建并安装当前版本 ClassFlow.app，打开一次。
-2. 运行 `bash scripts/install_mcp.sh`。
+1. 下载并安装 Release 中的 macOS 版 ClassFlow.app，打开一次。
+2. 下载 `ClassFlow-Local-Plugin-1.1.0.zip`，解压后在其 `ClassFlow-Local-Plugin` 文件夹内运行 `bash scripts/install_mcp.sh`；源码仓库内也可直接运行同一脚本。需要 Python 3 与支持插件的 `codex` CLI。
 3. 新建本地 Work / Codex 会话并选用 ClassFlow 插件。
 4. 调用 `get_status`，确认返回的是自己的学期和日期；再查询课表。
 
@@ -117,3 +117,7 @@ python3 scripts/test_mcp_transport.py apps/macos/.build/debug/ClassFlow
 - `[VERIFIED]` 含原生隧道设置的 Release 已安装至 `/Applications/ClassFlow.app`，签名及安装版 23 项 stdio 工具检查通过。安装版首次 GUI 启动曾等待已有云同步凭据的 macOS 钥匙串授权；堆栈位于 `SecItemCopyMatching`，不是启动崩溃。用户授权后已验证实际课表正常打开，AI / ChatGPT 设置显示安装版路径、已有 Tunnel ID、默认关闭的自动启用开关。运行密钥尚未保存；App 托管云端调用仍需单独验收。
 
 - `[VERIFIED]` 用户保存运行密钥并开启自动启用后，安装版设置实际显示 App 管理的隧道已就绪；这验证了 App 内后台连接，普通云端聊天的实际工具调用仍为独立验收项。
+
+## Release 附件打包
+
+`python3 scripts/package_chatgpt.py` 从明确文件清单生成本地插件 ZIP、独立接入说明及各自的 SHA-256 文件，不读取用户配置、隧道 profile 或钥匙串。隐藏的插件 manifest 与 `.mcp.json` 包含在 ZIP 中；无需克隆源码仓库即可运行其中的安装脚本。普通 ChatGPT 聊天使用 App 中的隧道连接，本地插件附件不表示已上架官方公共目录。简明用户说明见 [CHATGPT_RELEASE_SETUP.md](CHATGPT_RELEASE_SETUP.md)。

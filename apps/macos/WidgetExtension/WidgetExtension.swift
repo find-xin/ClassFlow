@@ -44,46 +44,11 @@ public struct ClassFlowTimelineProvider: TimelineProvider {
 
     private func makeSamplePayload() -> WidgetTimelinePayload {
         WidgetTimelinePayload(
-            semesterName: "2026年秋季学期",
-            currentWeek: 6,
-            todayDateString: "2026-10-14",
-            nextClass: WidgetCourseItem(
-                id: "sample_next",
-                title: "高等数学",
-                location: "东上101",
-                teacher: "张教授",
-                startTime: "10:00",
-                endTime: "11:35",
-                startSection: 3,
-                endSection: 4,
-                colorHex: "#4A90E2",
-                isOngoing: false,
-                minutesUntilStart: 25
-            ),
-            todayClasses: [
-                WidgetCourseItem(
-                    id: "sample_1",
-                    title: "大学英语",
-                    location: "外文楼201",
-                    teacher: "李老师",
-                    startTime: "08:00",
-                    endTime: "09:35",
-                    startSection: 1,
-                    endSection: 2,
-                    colorHex: "#50E3C2"
-                ),
-                WidgetCourseItem(
-                    id: "sample_2",
-                    title: "高等数学",
-                    location: "东上101",
-                    teacher: "张教授",
-                    startTime: "10:00",
-                    endTime: "11:35",
-                    startSection: 3,
-                    endSection: 4,
-                    colorHex: "#4A90E2"
-                )
-            ]
+            semesterName: "",
+            currentWeek: 1,
+            todayDateString: "",
+            nextClass: nil,
+            todayClasses: []
         )
     }
 }
