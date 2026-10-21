@@ -17,6 +17,7 @@ public struct LocalDatabase: Sendable {
         public var tombstones: [SyncTombstone]
         public var syncDeviceId: String?
         public var syncSequence: Int?
+        public var focusSession: FocusSession?
 
         public init(
             semesters: [Semester] = [],
@@ -31,7 +32,8 @@ public struct LocalDatabase: Sendable {
             calendarEvents: [CalendarEvent] = [],
             tombstones: [SyncTombstone] = [],
             syncDeviceId: String? = nil,
-            syncSequence: Int? = nil
+            syncSequence: Int? = nil,
+            focusSession: FocusSession? = nil
         ) {
             self.semesters = semesters
             self.courses = courses
@@ -46,6 +48,7 @@ public struct LocalDatabase: Sendable {
             self.tombstones = tombstones
             self.syncDeviceId = syncDeviceId
             self.syncSequence = syncSequence
+            self.focusSession = focusSession
         }
 
         public init(from decoder: Decoder) throws {
@@ -63,6 +66,7 @@ public struct LocalDatabase: Sendable {
             self.tombstones = try container.decodeIfPresent([SyncTombstone].self, forKey: .tombstones) ?? []
             self.syncDeviceId = try container.decodeIfPresent(String.self, forKey: .syncDeviceId)
             self.syncSequence = try container.decodeIfPresent(Int.self, forKey: .syncSequence)
+            self.focusSession = try container.decodeIfPresent(FocusSession.self, forKey: .focusSession)
         }
     }
 
@@ -78,6 +82,13 @@ public struct LocalDatabase: Sendable {
         }
     }
 
+    /// Automation must fail closed on corruption rather than overwrite data with sample courses.
+    public func validateForAutomation() throws {
+        if FileManager.default.fileExists(atPath: fileURL.path) {
+            _ = try JSONDecoder().decode(DatabasePayload.self, from: Data(contentsOf: fileURL))
+        }
+    }
+
     /// Loads the database payload, or generates sample bootstrap data if missing.
     public func load() -> DatabasePayload {
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
@@ -89,7 +100,7 @@ public struct LocalDatabase: Sendable {
             let payload = try JSONDecoder().decode(DatabasePayload.self, from: data)
             return payload
         } catch {
-            print("[LocalDatabase] Failed to decode existing database, falling back to bootstrap: \(error)")
+            fputs("[LocalDatabase] Failed to decode existing database.\n", stderr)
             return makeBootstrapData()
         }
     }

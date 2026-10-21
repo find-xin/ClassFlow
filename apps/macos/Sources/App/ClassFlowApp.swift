@@ -4,6 +4,7 @@ import ClassFlowCore
 
 struct ClassFlowApp: App {
     @State private var appState = AppState()
+    @NSApplicationDelegateAdaptor(ClassFlowAppDelegate.self) private var appDelegate
 
     var body: some Scene {
         // 1. Primary Application Window
@@ -94,5 +95,17 @@ struct ClassFlowApp: App {
         case "dark": return .dark
         default: return nil
         }
+    }
+}
+
+
+@MainActor
+final class ClassFlowAppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        Task { @MainActor in TunnelManager.shared.startOnAppLaunch() }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        TunnelManager.shared.shutdown()
     }
 }

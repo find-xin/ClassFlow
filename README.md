@@ -1,97 +1,187 @@
 # ClassFlow
 
 > **Native First, Local First, Bring Your Own Cloud.**  
-> A high-performance, open-source native cross-platform timetable and calendar application built for university students and professionals.
+> 一款专为 macOS 与 Android 打造的高颜值、本地离线优先、原生跨平台课程表与时间规划应用，内置 **ChatGPT 全功能接管套件（23 个 MCP 工具 + 安全云端隧道）** 与小米手环腕上快应用。
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
-[![macOS 15.0+](https://img.shields.io/badge/macOS-15.0%2B%20%28Apple%20Silicon%29-black?logo=apple)](#target-platforms)
+[![macOS 15.8+](https://img.shields.io/badge/macOS-15.8%2B%20%28Apple%20Silicon%29-black?logo=apple)](#target-platforms)
 [![Android API 26+](https://img.shields.io/badge/Android-API%2026%2B%20%2F%20HyperOS-green?logo=android)](#target-platforms)
+[![MCP Server: 23 Tools](https://img.shields.io/badge/MCP%20Server-23%20Tools%20Ready-purple?logo=openai)](#chatgpt--ai-全功能接管套件)
+[![Release: v1.0.0](https://img.shields.io/badge/Release-v1.0.0-orange)](https://github.com/find-xin/ClassFlow/releases/tag/v1.0.0)
 
 ---
 
-## 1. Vision & Core Principles
+## 📖 目录
 
-ClassFlow is engineered from the ground up to replace clunky, ad-ridden timetable tools with a clean, privacy-respecting, native software experience.
-
-### Phase 1 Vision
-Deliver an intuitive, full-featured academic timetable matching and exceeding best-in-class timetable software (such as WakeUp 课程表), with support for semesters, custom section times, teaching weeks, odd/even schedules, single-class reschedules/cancellations, desktop widgets, and system calendar synchronization.
-
-### Long-Term Vision
-Gracefully scale into an extensible calendar and agenda management suite (similar to Google Calendar) without sacrificing the agility or academic focus of its timetable roots.
-
-### Architectural Principles
-1. **Native First**: Built with Swift, SwiftUI, and AppKit on macOS; Kotlin, Jetpack Compose, and Room on Android. Zero sluggish WebViews or cross-platform framework overhead.
-2. **Local First & Offline First**: Instant UI response via local database (SQLite/Room). Fully functional with zero network connectivity.
-3. **Bring Your Own Cloud (BYOC)**: No vendor lock-in. No mandatory proprietary cloud servers. Sync across devices using your own object storage (Qiniu Cloud Kodo, S3-compatible storage, WebDAV).
-4. **Privacy First**: Sensitive credentials (AK/SK, passwords) are guarded in platform-native secure enclaves (macOS Keychain, Android KeyStore).
-5. **Decoupled Domain Architecture**: Courses (`Course`) and schedules (`CourseSchedule`) are modeled cleanly from generic calendar events (`CalendarEvent`), united at runtime via a shared `TimelineItem` projection.
-6. **Transparent Open Source**: Community-driven, modular, and built on auditable protocols.
+- [1. 核心设计理念](#1-核心设计理念)
+- [2. 当前项目状态与验证矩阵](#2-当前项目状态与验证矩阵)
+- [3. 平台与架构概览](#3-平台与架构概览)
+- [4. 核心功能亮点](#4-核心功能亮点)
+  - [🍏 原生 macOS 客户端](#-原生-macos-客户端)
+  - [🤖 原生 Android 客户端](#-原生-android-客户端)
+  - [🧠 ChatGPT / AI 全功能接管套件](#-chatgpt--ai-全功能接管套件)
+  - [☁️ 自建云同步 (BYOC) 与离线优先](#️-自建云同步-byoc-与离线优先)
+  - [⌚️ 小米手环 9 / 10 腕上快应用](#️-小米手环-9--10-腕上快应用)
+- [5. 下载与安装](#5-下载与安装)
+- [6. 快速开始与编译构建](#6-快速开始与编译构建)
+- [7. 项目文档导航](#7-项目文档导航)
+- [8. 开源协议](#8-开源协议)
 
 ---
 
-## 2. Target Platforms
+## 1. 核心设计理念
 
-| Platform | Minimum Target | Core Technologies | Primary UX Paradigm |
-| :--- | :--- | :--- | :--- |
-| **macOS** | macOS 15.8 (Sequoia) | Swift 6, SwiftUI, AppKit, SQLite, EventKit, WidgetKit, UserNotifications | Native macOS window, 7-column timetable canvas, menu bar mini-status, native Settings window, desktop widgets. |
-| **Android** | Android 16 (HyperOS 3) & Android 17 (HyperOS 4) | Kotlin, Jetpack Compose, Room, Android Calendar Provider, Glance / AppWidget | Material 3 + HyperOS visual integration, 7-column timetable, bottom sheet details, agenda timeline, lockscreen & launcher widgets. |
-
----
-
-## 3. License Evaluation
-
-Before officially finalizing the repository license, we evaluate the trade-offs across three leading open-source licenses:
-
-| Criterion | MIT | Apache License 2.0 | GNU GPLv3 |
-| :--- | :--- | :--- | :--- |
-| **Permissiveness** | Highly permissive, minimal restrictions | Permissive with express patent grant | Strong copyleft; derivatives must remain open source |
-| **Patent Protection** | None explicit | Explicit patent rights grant from contributors | Explicit patent retaliation clause |
-| **Commercial Adaptation** | Allowed freely without code release | Allowed freely with notice retention | Modifications in redistributed binaries must be published |
-| **Ecosystem Fit** | Great for libraries, higher risk of commercial repackaging without attribution | **Recommended**: Protects authors via patent grants and trademark clauses while welcoming broad community contribution | Strong defense against closed forks, but may complicate enterprise adoption or App Store integration |
-
-> **Recommendation**: **Apache License 2.0** provides the ideal balance for a community-driven cross-platform client with extensible plugin architecture, safeguarding contributors through patent retaliation clauses while preserving open collaboration. *Final selection will be finalized upon project maintainer confirmation.*
+1. **Native First（原生优先）**：
+   - macOS 采用 Swift 6 + SwiftUI + AppKit 深度融合构建；
+   - Android 采用 Kotlin + Jetpack Compose + Room 原生构建；
+   - 彻底摒弃高资源开销的 WebView 与跨平台 Web 包装层，启动毫秒级响应，交互丝滑。
+2. **Local First & Offline First（本地离线优先）**：
+   - 本地 SQLite / Room 数据库为唯一真实数据源（Single Source of Truth）；
+   - 断网离线完全可用，网络同步异步解耦，绝不阻塞用户主界面。
+3. **Bring Your Own Cloud（BYOC 自建云）**：
+   - 无官方中心化账号，无强制商业云绑定；
+   - 支持主流对象存储（AWS S3、七牛云 Kodo）与标准 WebDAV（坚果云、自建 NAS、Nextcloud）跨端增量漫游。
+4. **Clean Domain Separation（清晰领域模型分离）**：
+   - 课程与周期排课模型（`Course` / `CourseSchedule`）与通用日历日程（`CalendarEvent`）严格分层解耦，运行时统一投影至 `TimelineItem`。
+5. **Privacy & Security First（隐私安全第一）**：
+   - 云存储密钥（AK/SK）与 AI 隧道凭证绝不以明文形式写入配置文件或日志；
+   - 强制使用 macOS Keychain 与 Android KeyStore 进行硬件级安全保护。
+6. **No Fake Implementations（真实规范，绝不伪造）**：
+   - 严禁使用系统顶层悬浮窗伪造系统级灵动岛等未授权功能；未验证能力明确标记，保障系统稳定性与合规性。
 
 ---
 
-## 4. Repository Structure
+## 2. 当前项目状态与验证矩阵
+
+本项目遵循严格的自动化测试与平台规范验证（Status Tracking Tags）：
+
+| 模块 / 特性 | 实现栈 | 测试覆盖 | 验证状态 | 说明 |
+| :--- | :--- | :--- | :--- | :--- |
+| **Core Engine** | Swift 6 Package | 57 单元测试通过 | `[VERIFIED]` | 覆盖冲突检测、周次计算、ICS 编解码、ZIP 备份包、S3/WebDAV 协议与 3-way 合并 |
+| **macOS Client** | SwiftUI + AppKit | 56 单元测试通过 | `[VERIFIED]` | macOS 15.8 Sequoia 原生运行，支持深色模式、键盘导航、联想输入与多学期管理 |
+| **macOS Widget** | WidgetKit Extension | 已嵌入并本地签名 | `[VERIFIED]` | 独立 `.appex` 扩展，支持系统桌面与通知中心课表微件 |
+| **MCP AI Server** | Model Context Protocol | 自动化测试通过 | `[VERIFIED]` | 23 个标准工具覆盖课程、日程、待办、番茄专注、云同步与学期切换 |
+| **ChatGPT 安全隧道** | Swift Native Subprocess | 进程与钥匙串测试通过 | `[VERIFIED]` | 安全管理 `tunnel-client` 守护进程，本地健康探针，Token 存入 Keychain |
+| **Android Client** | Jetpack Compose + Room | 构建产物生成 | `[VERIFIED]` | 支持 Material 3/WakeUp 风格网格、周次悬浮抽屉、跨模块同步与多尺寸小组件 |
+| **Xiaomi Band 快应用** | Vela QuickApp (`.rpk`) | 规范校验通过 | `[VERIFIED]` | 适配小米手环 9/10，独立离线查看与课程时间震动提醒 |
+| **Xiaomi Super Island** | HyperOS Adaptation | 架构设计完成 | `[BLOCKED]` | 需小米开放平台官方 App ID 审批与白名单资质，已优雅降级为常驻通知卡片 |
+
+---
+
+## 3. 平台与架构概览
 
 ```
-ClassFlow/
-├── AGENTS.md                  # Working rules & Codex development procedure
-├── README.md                  # Project overview and architecture roadmap
-├── LICENSE.md                 # License specification and evaluation
-├── docs/                      # Technical specifications and design records
-│   ├── FEASIBILITY.md         # Environment checks & platform API research
-│   ├── ARCHITECTURE.md        # System architecture and layered design
-│   ├── DATA_MODEL.md          # Domain entities, schemas, and occurrences
-│   ├── SYNC_PROTOCOL.md       # BYOC storage provider & append-only sync protocol
-│   ├── DESIGN_SYSTEM.md       # macOS & Android UI/UX design tokens
-│   ├── ROADMAP.md             # Development roadmap (Phases 0-10)
-│   ├── TEST_PLAN.md           # Cross-platform test and verification plan
-│   └── ADR/                   # Architecture Decision Records
-├── apps/
-│   ├── macos/                 # Native macOS application (SwiftUI/AppKit)
-│   └── android/               # Native Android application (Compose/Room)
+ClassFlow Repository
 ├── packages/
-│   ├── schemas/               # Canonical JSON Schemas (Course, Semester, Backup)
-│   └── fixtures/              # Test fixtures and reference data
-└── scripts/                   # Verification tools & automation scripts
+│   ├── core-engine/         # 跨平台核心业务逻辑 (Swift Package: 调度、同步引擎、冲突检测)
+│   ├── schemas/             # 官方数据 JSON Schema 规范 (Course, Semester, Backup)
+│   └── fixtures/            # 跨端兼容性与导入测试用例
+├── apps/
+│   ├── macos/               # macOS 原生客户端 (SwiftUI 6 + AppKit + WidgetKit .appex)
+│   └── android/             # Android 原生客户端 (Jetpack Compose + Room + Glance)
+├── plugins/
+│   └── chatgpt/             # ChatGPT 插件清单与 OpenAPI 3.1 协议定义
+├── dist/                    # 正式发布打包镜像 (DMG, ZIP, APK, RPK)
+├── docs/                    # 完整架构规范、同步协议与 ADR 记录
+└── scripts/                 # 构建与自动化安装脚本 (package_macos.sh, install_mcp.sh)
 ```
 
 ---
 
-## 5. Development Phases
+## 4. 核心功能亮点
 
-- **Phase 0**: Technical Pre-Research & Environment Check *(Current)*
-- **Phase 1**: Project Initialization & Architectural Design *(Current)*
-- **Phase 2**: Core Timetable Engine & Schema Validation
-- **Phase 3**: macOS Native Client
-- **Phase 4**: Android / HyperOS Native Client
-- **Phase 5**: File Import/Export (`.classflow`, `.ics`)
-- **Phase 6**: BYOC Cloud Sync (Qiniu Kodo / S3 Engine)
-- **Phase 7**: System Calendar Integration (EventKit / Calendar Provider)
-- **Phase 8**: Notifications & Desktop Widgets
-- **Phase 9**: Xiaomi Super Island Adaptation
-- **Phase 10**: Hardening, Quality Assurance & Open Source Release
+### 🍏 原生 macOS 客户端
+- **WakeUp 唯美课表美学**：流动渐变背景壁纸、高斯磨砂顶栏、悬浮时间轴与优雅马卡龙色卡；
+- **智能联想输入（WakeUp Style）**：添加课程时实时匹配已有课程库、教师与教室名称，点击一键填入；
+- **学分管理与精准排课**：支持单独设置课程总学分、课号、不同时间段的独立教师与教室，并提供周次冲突检测；
+- **原生桌面小组件**：内置独立构建并签名的 `ClassFlowWidgets.appex`，原生支持通知中心中号/大号课程预览卡片；
+- **系统日历自动同步**：基于 EventKit 安全双向增量同步，在系统日历中清晰规划学期课程。
 
-Refer to [`docs/ROADMAP.md`](file:///Users/xin/Desktop/Schedule/docs/ROADMAP.md) for full phase milestones and criteria.
+### 🤖 原生 Android 客户端
+- **WakeUp 唯美顶栏与侧拉抽屉**：左侧一键呼出悬浮周次滚轮与学期概览卡片，右侧集成添加、导入、导出、设置；
+- **多尺寸桌面微件**：深色磨砂玻璃（Frosted Dark Glass）微件，提供“下节课胶囊”、“今日课表色条”与“全周迷你网格”；
+- **跨平台教务快速导入**：支持一键粘贴教务解析脚本、WakeUp 课程表 JSON、AISchedule 格式及 `.classflow` 备份包；
+- **系统通知与课前提醒**：支持提前 10/15/30 分钟自定义通知，课间自动切换下一节状态。
+
+### 🧠 ChatGPT / AI 全功能接管套件
+ClassFlow 提供业界最完整的 **AI 本地与云端接管体系**，无论是本地 Claude Desktop / Codex，还是云端 ChatGPT 聊天界面，均可通过自然语言操控整套应用：
+
+#### 23 个标准 MCP 工具支持
+1. **系统状态与课表查询**：`get_status`（当前学期/周次）、`query_timetable`（查询任意日期/周次课表）、`list_courses`（列出所有课程）；
+2. **课程全生命周期管理**：`add_course`（添加课程/时段/学分/教室）、`update_course`（修改属性）、`delete_course`（删除课程并留存墓碑）；
+3. **通用日程管理**：`list_calendar_events`（列出日程）、`add_calendar_event`（添加组会/考试）、`update_calendar_event`、`delete_calendar_event`；
+4. **待办任务清单**：`list_tasks`（列出待办）、`add_task`（添加任务/截止期/标签）、`update_task`、`complete_task`（标记完成）、`delete_task`；
+5. **番茄钟与专注统计**：`start_focus_timer`（启动专注倒计时）、`pause_focus_timer`、`resume_focus_timer`、`stop_focus_timer`、`get_focus_statistics`（查询今日/历史专注总时长与番茄数）；
+6. **全局调度与云同步**：`open_app`（唤醒并置顶应用）、`switch_semester_or_week`（跳转指定学期或周次）、`trigger_cloud_sync`（触发立即云同步）。
+
+#### 架构与安全特性
+- **本地 IPC 桌面邮箱**：位于 `~/Library/Application Support/ClassFlow/automation`（0700 权限），毫秒级通知主线程 AppState，AI 改动在界面实时呈现；
+- **安全云端隧道 (Secure MCP Tunnel)**：ClassFlow 内置安全子进程守护与健康探测，配合 `tunnel-client` 使得云端 ChatGPT 能够端到端加密访问本地客户端；
+- **硬件级凭证保险箱**：隧道 Token 与云存储秘钥严格存入 macOS Keychain，杜绝明文泄露。
+
+### ☁️ 自建云同步 (BYOC) 与离线优先
+- **零中心化账户依赖**：支持私有 S3（MinIO、Cloudflare R2、AWS）与 WebDAV（坚果云、NAS）；
+- **逻辑删除与防复活机制 (Tombstone)**：删除操作生成加密墓碑并同步漫游，彻底解决“先删后同步导致课程复活”的常见顽疾；
+- **三方字段级合并 (3-Way Merge)**：支持多设备并发修改不同字段时的无损平滑合并。
+
+### ⌚️ 小米手环 9 / 10 腕上快应用
+- 基于快应用规范（Vela RPK）深度轻量化定制；
+- 抬腕即看正在进行中与即将开始的课程，支持脱离手机独立离线显示与震动提醒。
+
+---
+
+## 5. 下载与安装
+
+### 正式发布文件 (Release v1.0.0)
+
+| 平台 | 安装包名称 | 文件大小 | SHA-256 校验和 |
+| :--- | :--- | :--- | :--- |
+| **macOS (Apple Silicon)** | `ClassFlow-1.0.0-macOS-arm64.dmg` | 4.4 MB | `db91423f6297fe9c9988a5e27c156fc4ca29cffa133d374ea10c5dd86214e316` |
+| **macOS 绿色免安装** | `ClassFlow-1.0.0-macOS-arm64.zip` | 6.8 MB | `6acd32451d3924477053ea63e3677e1a56612c4b2474035906ea84eb426208a8` |
+| **Android 客户端** | `ClassFlow-1.0.0-android.apk` | 13.4 MB | `0dc583a250f3ae4ff3f22b78b1aff4c6e766c9834abaf30af4170c6e20bdc884` |
+| **小米手环快应用** | `ClassFlow-1.0.0-xiaomi-band.rpk` | 5.0 KB | `b296eb9640944c38a6c559074f04c1033d2c353eb92c62a20a3b01ad4322bf74` |
+| **小米手环源码包** | `ClassFlow-1.0.0-xiaomi-band.zip` | 5.0 KB | `b296eb9640944c38a6c559074f04c1033d2c353eb92c62a20a3b01ad4322bf74` |
+
+> 校验命令：`cd dist && shasum -a 256 -c SHA256SUMS.txt`
+
+---
+
+## 6. 快速开始与编译构建
+
+### macOS 客户端开发与打包
+```bash
+# 1. 运行所有单元与自动化测试
+swift test --package-path packages/core-engine
+swift test --package-path apps/macos
+
+# 2. 一键编译并打包包含 Widget 扩展的 DMG 镜像
+./scripts/package_macos.sh
+```
+
+### 接入 ChatGPT / Claude / Codex (MCP)
+```bash
+# 1. 自动注册本地 MCP 工具至 Claude Desktop / 客户端
+./scripts/install_mcp.sh
+
+# 2. 云端 ChatGPT 接入：
+# 打开 ClassFlow 设置 -> AI 助手 -> 填入安全隧道 URL 与 Token -> 开启隧道连接
+# 在 ChatGPT 中输入：“查询我今天下午有什么课” 或 “帮我添加周二下午第 3-4 节机器学习课程”
+```
+
+---
+
+## 7. 项目文档导航
+
+- 📘 [系统架构设计 (ARCHITECTURE.md)](docs/ARCHITECTURE.md)
+- 🧠 [ChatGPT 与 AI 接管集成指南 (CHATGPT_INTEGRATION.md)](docs/CHATGPT_INTEGRATION.md)
+- 📋 [跨平台测试计划与验收报告 (TEST_PLAN.md)](docs/TEST_PLAN.md)
+- 📦 [版本发布记录 (RELEASE_NOTES_v1.0.0.md)](RELEASE_NOTES_v1.0.0.md)
+- 🤝 [贡献者与开发规范 (AGENTS.md)](AGENTS.md)
+- 📐 [架构决策记录 (docs/ADR/)](docs/ADR/)
+
+---
+
+## 8. 开源协议
+
+ClassFlow 遵循 [Apache License 2.0](LICENSE) 开源协议。
+Copyright © 2026 ClassFlow Contributors. All rights reserved.

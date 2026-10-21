@@ -1,0 +1,8 @@
+#!/bin/bash
+set -euo pipefail
+CLASSFLOW_APP_BIN="${CLASSFLOW_APP_BIN:-/Applications/ClassFlow.app/Contents/MacOS/ClassFlow}"
+if [[ ! -x "$CLASSFLOW_APP_BIN" ]]; then
+    echo "ClassFlow is not installed. Install the current macOS app before connecting MCP." >&2
+    exit 1
+fi
+exec "$CLASSFLOW_APP_BIN" --mcp "$@"

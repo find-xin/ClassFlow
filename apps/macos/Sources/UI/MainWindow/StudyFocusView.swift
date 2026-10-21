@@ -143,6 +143,8 @@ public struct StudyFocusView: View {
                 isShowingCreateTaskSheet = false
             }
         }
+        .onAppear { restoreFocusSession() }
+        .onChange(of: appState.focusSession) { _, _ in restoreFocusSession() }
         .onReceive(ticker) { _ in
             if isRunning {
                 handleTick()
@@ -772,16 +774,46 @@ public struct StudyFocusView: View {
 
     // MARK: - Timer Logic
 
-    private func toggleTimer() {
-        isRunning.toggle()
-        if isRunning {
-            if timerState == .idle {
-                timerState = .focusing
-            }
+    private func restoreFocusSession() {
+        guard let session = appState.focusSession else {
+            isRunning = false
+            timerState = .idle
+            return
         }
+        focusMode = session.mode
+        focusDurationMinutes = session.durationMinutes
+        let elapsed = session.elapsedSeconds(at: Date())
+        secondsRemaining = max(0, session.durationMinutes * 60 - elapsed)
+        countUpSeconds = elapsed
+        isRunning = session.pausedAt == nil
+        timerState = .focusing
+        selectedSubTab = .focusTimer
+    }
+
+    private func toggleTimer() {
+        if timerState == .shortBreak || timerState == .longBreak {
+            isRunning.toggle()
+            return
+        }
+        if var session = appState.focusSession {
+            if session.pausedAt == nil { session.pausedAt = Date() }
+            else {
+                session.accumulatedSeconds = session.elapsedSeconds(at: Date())
+                session.startedAt = Date()
+                session.pausedAt = nil
+            }
+            appState.focusSession = session
+        } else {
+            appState.focusSession = FocusSession(taskId: activeTask?.id, title: activeTask?.title ?? "自由心流专注",
+                mode: focusMode, durationMinutes: focusDurationMinutes, startedAt: Date())
+        }
+        appState.save()
+        restoreFocusSession()
     }
 
     private func resetTimerState() {
+        appState.focusSession = nil
+        appState.save()
         isRunning = false
         timerState = .idle
         secondsRemaining = focusDurationMinutes * 60
@@ -795,7 +827,12 @@ public struct StudyFocusView: View {
             quoteIndex = (quoteIndex + 1) % quotes.count
         }
 
-        if focusMode == .countUp {
+        if let session = appState.focusSession {
+            let elapsed = session.elapsedSeconds(at: Date())
+            countUpSeconds = elapsed
+            secondsRemaining = max(0, session.durationMinutes * 60 - elapsed)
+            if session.mode != .countUp && secondsRemaining == 0 { handleTimerCompletion() }
+        } else if focusMode == .countUp {
             countUpSeconds += 1
         } else {
             if secondsRemaining > 0 {
@@ -841,13 +878,17 @@ public struct StudyFocusView: View {
 
         let taskTitle = activeTask?.title ?? "自由心流专注"
         let courseName = activeTask?.courseName
-        appState.recordCompletedPomodoro(
-            taskId: activeTask?.id,
-            taskTitle: taskTitle,
-            courseName: courseName,
-            focusMode: focusMode,
-            durationMinutes: actualMinutes
-        )
+        if appState.focusSession != nil {
+            do {
+                try appState.finishFocusSession()
+            } catch {
+                appState.importErrorMessage = "保存专注记录失败：\(error.localizedDescription)"
+                return
+            }
+        } else {
+            appState.recordCompletedPomodoro(taskId: activeTask?.id, taskTitle: taskTitle,
+                courseName: courseName, focusMode: focusMode, durationMinutes: actualMinutes)
+        }
 
         secondsRemaining = focusDurationMinutes * 60
         countUpSeconds = 0

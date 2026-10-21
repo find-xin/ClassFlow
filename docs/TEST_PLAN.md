@@ -84,3 +84,28 @@ ClassFlow enforces rigorous test coverage across all domain and protocol layers.
 | **Swift Domain Engine** | `swift test --module-cache-path .cache/clang` | Swift 6.1+ (Installed) |
 | **Android Unit Tests** | `./gradlew testDebugUnitTest` | JDK 17+ (Phase 4) |
 | **macOS Native UI Tests** | `xcodebuild test -scheme ClassFlow` | Xcode.app (Phase 3) |
+
+## 4. ChatGPT / MCP Automation
+
+`MCPAutomationTests` covers UUID-based edits, ambiguous names, date/time and schedule
+validation, real focus duration, pause exclusion, duplicate stop rejection, legacy
+payload decoding, corrupt-storage rejection, UI reload and sync operation registration.
+Tests disable native application launch and distributed notifications where handlers
+are exercised with temporary databases.
+
+`python3 scripts/test_mcp_transport.py apps/macos/.build/debug/ClassFlow` tests the real
+stdio executable's handshake, current protocol negotiation, 23 schemas, annotations,
+JSON-RPC errors, and clean EOF. It never invokes write tools.
+
+Local Work and ChatGPT cloud each require a separate real tool call; a unit-test pass
+is not evidence of cloud connectivity. See `docs/CHATGPT_INTEGRATION.md`.
+
+### Native tunnel lifecycle
+
+`swift test --package-path apps/macos --filter TunnelManagerTests` exercises 12 cases:
+opt-in launch and no constructor Keychain access; vault-only credential storage;
+validation and failed-save atomicity; missing key/client; ready/reconnect transitions;
+duplicate starts; persistent auto-start; cancellation during preparation; cross-instance
+locking; malicious health URLs; safe runtime-exit diagnostics; and termination of a real
+owned subprocess. Fake child processes isolate lifecycle logic from external accounts.
+A local ready status does not replace a real cloud-chat tool call with user credentials.

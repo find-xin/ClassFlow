@@ -14,18 +14,21 @@ public struct KeychainService: Sendable {
     public func saveSecret(account: String, secret: String) -> Bool {
         guard let data = secret.data(using: .utf8) else { return false }
 
-        // Try deleting existing first
-        deleteSecret(account: account)
-
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: serviceName,
-            kSecAttrAccount as String: account,
+            kSecAttrAccount as String: account
+        ]
+        let updateStatus = SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
+        if updateStatus == errSecSuccess { return true }
+        guard updateStatus == errSecItemNotFound else { return false }
+        var insertion = query
+        insertion.merge([
             kSecValueData as String: data,
             kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock
-        ]
+        ]) { _, value in value }
 
-        let status = SecItemAdd(query as CFDictionary, nil)
+        let status = SecItemAdd(insertion as CFDictionary, nil)
         return status == errSecSuccess
     }
 

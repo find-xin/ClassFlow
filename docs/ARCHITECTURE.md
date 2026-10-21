@@ -148,3 +148,19 @@ Every item returned is a concrete `TimelineItem`:
    - Revision hashes are computed using SHA-256 over canonical JSON encodings (sorted keys, UTF-8).
 3. **Optional Credential Broker**:
    - For users desiring multi-device sync without distributing root cloud keys to mobile devices, an optional lightweight self-hosted microservice (`services/credential-broker`) can issue scoped, short-lived STS tokens.
+
+## 6. ChatGPT Automation (macOS)
+
+Local Work/Codex plugins and private Secure MCP Tunnel connections share the same
+stdio MCP server. The desktop AppState executes commands through a same-user,
+0700-protected mailbox and acknowledges results. MCP mutations enter the App's sync
+operation stream; cloud credentials remain in Keychain. Focus runtime state is kept
+in a separate local `focusSession`, never in timetable profile IDs or cloud payloads.
+See [ChatGPT integration](CHATGPT_INTEGRATION.md) for setup, tool coverage, and separate
+local/ChatGPT end-to-end verification requirements.
+
+The native AI settings optionally own an official tunnel-client subprocess. TunnelManager
+uses generation-scoped startup/cancellation, an exclusive close-on-exec process lock,
+loopback readiness probes and bounded termination. Startup is opt-in and construction
+never reads Keychain. Runtime keys live only in Keychain and the child environment;
+connection preferences and private profiles are device-local and excluded from sync.

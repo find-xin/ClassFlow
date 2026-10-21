@@ -6,14 +6,14 @@ import ClassFlowCore
 /// schedules, to-do tasks, Pomodoro focus timer, and cloud sync conversationally.
 public final class MCPServer: Sendable {
     public static let shared = MCPServer()
-    public let handlers = MCPToolHandlers()
+    public let handlers: MCPToolHandlers
 
-    public init() {}
+    public init(handlers: MCPToolHandlers = MCPToolHandlers()) { self.handlers = handlers }
 
     // MARK: - Main Entry Point
 
     public static func run() {
-        let args = CommandLine.arguments
+        let args = CommandLine.arguments.filter { $0 != "--mcp" && $0 != "-mcp" }
 
         if args.contains("--help") || args.contains("-h") {
             printHelp()
@@ -25,24 +25,11 @@ public final class MCPServer: Sendable {
             shared.printToolsList()
             exit(0)
         } else if args.count > 1 && args[1] == "status" {
-            let status = shared.handlers.getStatus()
-            if let data = try? JSONSerialization.data(withJSONObject: status, options: [.prettyPrinted]),
-               let str = String(data: data, encoding: .utf8) {
-                print(str)
-            }
+            shared.executeToolCallAndPrint(name: "get_status", arguments: [:])
             exit(0)
         } else if args.count > 1 && args[1] == "sync" {
-            Task {
-                do {
-                    let result = try await shared.handlers.triggerCloudSync()
-                    print(result)
-                    exit(0)
-                } catch {
-                    fputs("Error syncing: \(error.localizedDescription)\n", stderr)
-                    exit(1)
-                }
-            }
-            dispatchMain()
+            shared.executeToolCallAndPrint(name: "trigger_cloud_sync", arguments: [:])
+            exit(0)
         } else if args.count > 1 && args[1] == "call" {
             guard args.count > 2 else {
                 fputs("Usage: classflow-mcp call <tool_name> [json_arguments]\n", stderr)
@@ -52,44 +39,29 @@ public final class MCPServer: Sendable {
             var arguments: [String: Any] = [:]
             if args.count > 3 {
                 let jsonStr = args[3]
-                if let data = jsonStr.data(using: .utf8),
-                   let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                    arguments = parsed
+                guard let data = jsonStr.data(using: .utf8),
+                   let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                    fputs("Arguments must be a JSON object.\n", stderr)
+                    exit(1)
                 }
+                arguments = parsed
             }
             shared.executeToolCallAndPrint(name: toolName, arguments: arguments)
             exit(0)
         } else if args.count > 1 && (args[1] == "query" || args[1] == "query_timetable") {
-            let week = args.count > 2 ? Int(args[2]) : nil
-            let day = args.count > 3 ? Int(args[3]) : nil
-            let res = shared.handlers.queryTimetable(week: week, dayOfWeek: day)
-            if let data = try? JSONSerialization.data(withJSONObject: res, options: [.prettyPrinted]),
-               let str = String(data: data, encoding: .utf8) {
-                print(str)
-            }
+            var arguments: [String: Any] = [:]
+            if args.count > 2, let week = Int(args[2]) { arguments["week"] = week }
+            if args.count > 3, let day = Int(args[3]) { arguments["day_of_week"] = day }
+            shared.executeToolCallAndPrint(name: "query_timetable", arguments: arguments)
             exit(0)
         } else if args.count > 1 && args[1] == "courses" {
-            let res = shared.handlers.listCourses()
-            if let data = try? JSONSerialization.data(withJSONObject: res, options: [.prettyPrinted]),
-               let str = String(data: data, encoding: .utf8) {
-                print(str)
-            }
+            shared.executeToolCallAndPrint(name: "list_courses", arguments: [:])
             exit(0)
         } else if args.count > 1 && args[1] == "tasks" {
-            let filter = args.count > 2 ? args[2] : nil
-            let res = shared.handlers.listTasks(filter: filter)
-            if let data = try? JSONSerialization.data(withJSONObject: res, options: [.prettyPrinted]),
-               let str = String(data: data, encoding: .utf8) {
-                print(str)
-            }
+            shared.executeToolCallAndPrint(name: "list_tasks", arguments: args.count > 2 ? ["filter": args[2]] : [:])
             exit(0)
         } else if args.count > 1 && args[1] == "events" {
-            let date = args.count > 2 ? args[2] : nil
-            let res = shared.handlers.listCalendarEvents(date: date)
-            if let data = try? JSONSerialization.data(withJSONObject: res, options: [.prettyPrinted]),
-               let str = String(data: data, encoding: .utf8) {
-                print(str)
-            }
+            shared.executeToolCallAndPrint(name: "list_calendar_events", arguments: args.count > 2 ? ["date": args[2]] : [:])
             exit(0)
         } else {
             // Default: Standard MCP JSON-RPC Server over stdio
@@ -141,7 +113,7 @@ public final class MCPServer: Sendable {
         switch method {
         case "initialize":
             let result: [String: Any] = [
-                "protocolVersion": "2024-11-05",
+                "protocolVersion": ["2024-11-05", "2025-03-26", "2025-06-18"].contains(params["protocolVersion"] as? String ?? "") ? (params["protocolVersion"] as! String) : "2025-06-18",
                 "capabilities": [
                     "tools": [
                         "listChanged": false
@@ -231,7 +203,11 @@ public final class MCPServer: Sendable {
         }
     }
 
-    private func invokeTool(name: String, arguments: [String: Any]) throws -> String {
+    func invokeTool(name: String, arguments: [String: Any]) throws -> String {
+        if handlers.enablesAppIntegration {
+            return try MCPDesktopBridge.call(tool: name, arguments: arguments)
+        }
+        try handlers.database.validateForAutomation()
         switch name {
         case "get_status":
             let status = handlers.getStatus()
@@ -267,6 +243,14 @@ public final class MCPServer: Sendable {
 
         case "add_calendar_event":
             return try handlers.addCalendarEvent(arguments: arguments)
+        case "update_calendar_event":
+            return try handlers.updateCalendarEvent(arguments: arguments)
+        case "update_task":
+            return try handlers.updateTask(arguments: arguments)
+        case "pause_focus_timer":
+            return try handlers.pauseFocusTimer(resume: false)
+        case "resume_focus_timer":
+            return try handlers.pauseFocusTimer(resume: true)
 
         case "delete_calendar_event":
             return try handlers.deleteCalendarEvent(arguments: arguments)
@@ -368,7 +352,7 @@ public final class MCPServer: Sendable {
     // MARK: - Tool Definitions
 
     public func defineTools() -> [[String: Any]] {
-        return [
+        var tools: [[String: Any]] = [
             [
                 "name": "get_status",
                 "description": "获取 ClassFlow 当前运行状态、激活学期、当前周次、今日日期、进行中待办数量与当前专注状态。",
@@ -754,6 +738,38 @@ public final class MCPServer: Sendable {
                 ]
             ]
         ]
+        tools.append(contentsOf: managementToolDefinitions())
+        let readOnly: Set<String> = ["get_status", "query_timetable", "list_courses", "list_calendar_events", "list_tasks", "get_focus_statistics"]
+        for i in tools.indices {
+            let name = tools[i]["name"] as? String ?? ""
+            tools[i]["annotations"] = [
+                "readOnlyHint": readOnly.contains(name),
+                "destructiveHint": name.hasPrefix("delete_"),
+                "idempotentHint": readOnly.contains(name) || name.hasPrefix("update_") || name == "complete_task",
+                "openWorldHint": name == "trigger_cloud_sync"
+            ]
+            var schema = tools[i]["inputSchema"] as? [String: Any] ?? [:]
+            var properties = schema["properties"] as? [String: Any] ?? [:]
+            if name == "update_course" {
+                properties["schedule_id"] = ["type": "string", "description": "修改星期、节次或周次时，多个课时必须指定此 UUID。"]
+                for field in ["day_of_week", "start_section", "end_section", "start_week", "end_week"] { properties[field] = ["type": "integer"] }
+                properties["week_pattern"] = ["type": "string", "enum": ["all", "odd", "even", "custom"]]
+                properties["custom_weeks"] = ["type": "array", "items": ["type": "integer"]]
+            }
+            if name == "start_focus_timer" { properties["task_id"] = ["type": "string", "description": "待办 UUID；与 task_title 二选一。"] }
+            if name == "stop_focus_timer" {
+                properties = [:]
+                tools[i]["description"] = "结束当前专注会话，按真实计时时长保存记录。没有会话时返回错误；重复停止不会重复记账。"
+            }
+            if name == "add_task" { properties["notes"] = ["type": "string", "description": "任务备注"] }
+            for (tool, field) in [("update_course", "course_id"), ("delete_course", "course_id"), ("delete_calendar_event", "event_id"), ("delete_task", "task_id"), ("complete_task", "task_id")] where name == tool {
+                properties[field] = ["type": "string", "description": "项目 UUID；重名时使用 UUID。"]
+                schema.removeValue(forKey: "required")
+            }
+            schema["properties"] = properties
+            tools[i]["inputSchema"] = schema
+        }
+        return tools
     }
 
     private func printToolsList() {

@@ -66,6 +66,7 @@ public final class AppState {
 
     public var timetableProfiles: [TimetableProfile] = []
     public var activeProfileId: UUID? = nil
+    public var focusSession: FocusSession?
 
     // Timetable Display Mode (Week vs Day View)
     public enum TimetableDisplayMode: String, CaseIterable, Identifiable {
@@ -95,6 +96,7 @@ public final class AppState {
     public var activePomodoroTaskId: UUID? = nil
     public var isShowingNewTaskSheet: Bool = false
 
+    private var automationReceiver: MCPDesktopCommandReceiver?
     private let database: LocalDatabase
     public let timelineEngine: TimelineEngine
     private let mutationCoordinator: ScheduleMutationCoordinator
@@ -133,8 +135,70 @@ public final class AppState {
         let seq = payload.syncSequence ?? 0
         self.syncEngine = SyncEngine(deviceId: devId, deviceName: Host.current().localizedName ?? "Apple Silicon Mac", initialSequence: seq)
 
-        load()
+        load(startup: true)
         setupDistributedObservers()
+        if database.fileURL == LocalDatabase().fileURL { automationReceiver = MCPDesktopCommandReceiver(app: self) }
+    }
+
+    func executeAutomationTool(name: String, arguments: [String: Any]) async throws -> String {
+        try database.validateForAutomation()
+        if name == "trigger_cloud_sync" {
+            guard let provider = createConfiguredStorageProvider() else {
+                throw NSError(domain: "ClassFlowAutomation", code: 1, userInfo: [NSLocalizedDescriptionKey: "请先在 App 设置中配置云同步凭据。"])
+            }
+            let summary = try await executeCloudSync(storage: provider)
+            return "云同步完成：推送 \(summary.uploadedOperationsCount) 项，拉取 \(summary.downloadedPeerOperationsCount) 项。"
+        }
+        let before = database.load()
+        let handlers = MCPToolHandlers(database: database, enablesAppIntegration: false)
+        let server = MCPServer(handlers: handlers)
+        let result = try server.invokeTool(name: name, arguments: arguments)
+        let reads: Set<String> = ["get_status", "query_timetable", "list_courses", "list_calendar_events", "list_tasks", "get_focus_statistics"]
+        if reads.contains(name) { return result }
+        var after = database.load()
+        recordAutomationChanges(before: before, after: after)
+        after.syncDeviceId = syncEngine.deviceId
+        after.syncSequence = syncEngine.latestSequence
+        try database.save(after)
+        load()
+        if name == "switch_semester_or_week", let week = arguments["week"] as? Int { selectedWeek = week }
+        updateWidgetData()
+        if name == "open_app" {
+            // Navigation must run in the main actor, with an acknowledgement to the caller.
+            let tab = arguments["tab"] as? String ?? "courses"
+            if tab == "settings" { isShowingSettings = true }
+            else {
+                settings.selectedTab = ["timetable": "courses", "focus": "study", "calendar": "schedule"][tab] ?? tab
+                if settings.selectedTab == "study" { settings.enableStudyModule = true }
+            }
+            save()
+            NSApplication.shared.activate(ignoringOtherApps: true)
+        }
+        return result
+    }
+
+    private func recordAutomationChanges(before: LocalDatabase.DatabasePayload, after: LocalDatabase.DatabasePayload) {
+        func record<T: Encodable & Identifiable>(_ old: [T], _ new: [T], type: String) where T.ID == UUID {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.sortedKeys]
+            for value in new {
+                guard let data = try? encoder.encode(value) else { continue }
+                let previous = old.first { $0.id == value.id }
+                let previousData = previous.flatMap { try? encoder.encode($0) }
+                if previousData != data {
+                    _ = syncEngine.recordOperation(action: previous == nil ? "INSERT" : "UPDATE", entityType: type, entityId: value.id, payload: data)
+                }
+            }
+            for value in old where !new.contains(where: { $0.id == value.id }) {
+                _ = syncEngine.recordOperation(action: "DELETE", entityType: type, entityId: value.id)
+            }
+        }
+        record(before.courses, after.courses, type: "course")
+        record(before.semesters, after.semesters, type: "semester")
+        record(before.exceptions, after.exceptions, type: "exception")
+        record(before.calendarEvents, after.calendarEvents, type: "calendarEvent")
+        record(before.pomodoroTasks, after.pomodoroTasks, type: "pomodoroTask")
+        record(before.pomodoroRecords, after.pomodoroRecords, type: "pomodoroRecord")
     }
 
     private func setupDistributedObservers() {
@@ -160,7 +224,8 @@ public final class AppState {
         }
     }
 
-    public func load() {
+    public func load(startup: Bool = false) {
+        let previousSemesterId = currentSemesterId
         let payload = database.load()
         self.semesters = payload.semesters
         self.courses = payload.courses
@@ -169,6 +234,8 @@ public final class AppState {
         self.calendarMappings = payload.calendarMappings
         self.timetableProfiles = payload.timetableProfiles
         self.activeProfileId = payload.activeProfileId ?? timetableProfiles.first?.id
+        self.focusSession = payload.focusSession
+        if let session = payload.focusSession { self.activePomodoroTaskId = session.taskId }
         self.pomodoroTasks = payload.pomodoroTasks
         self.pomodoroRecords = payload.pomodoroRecords
         self.calendarEvents = payload.calendarEvents
@@ -185,11 +252,11 @@ public final class AppState {
 
         if let current = semesters.first(where: { $0.isCurrent }) ?? semesters.first {
             self.currentSemesterId = current.id
-            self.selectedWeek = calculateCurrentWeek(for: current)
+            if previousSemesterId != current.id { self.selectedWeek = calculateCurrentWeek(for: current) }
         }
         updateWidgetData()
 
-        if settings.syncOnStartup {
+        if startup && settings.syncOnStartup {
             if let provider = createConfiguredStorageProvider() {
                 Task { [weak self] in
                     guard let self = self else { return }
@@ -197,7 +264,7 @@ public final class AppState {
                 }
             }
         }
-        restartAutoSyncTimer()
+        if startup { restartAutoSyncTimer() }
     }
 
     public func save() {
@@ -222,7 +289,8 @@ public final class AppState {
             calendarEvents: calendarEvents,
             tombstones: tombstones,
             syncDeviceId: syncEngine.deviceId,
-            syncSequence: syncEngine.latestSequence
+            syncSequence: syncEngine.latestSequence,
+            focusSession: focusSession
         )
         do {
             try database.save(payload)
@@ -313,14 +381,14 @@ public final class AppState {
     }
 
     public func createConfiguredStorageProvider() -> (any StorageProvider)? {
-        let providerType = UserDefaults.standard.string(forKey: "sync_provider_type") ?? "webdav"
+        let providerType = CloudSettings.defaults.string(forKey: "sync_provider_type") ?? "webdav"
         if providerType == "webdav" {
-            guard let url = UserDefaults.standard.string(forKey: "webdav_url"), !url.isEmpty,
-                  let user = UserDefaults.standard.string(forKey: "webdav_user"), !user.isEmpty,
-                  let pwd = UserDefaults.standard.string(forKey: "webdav_pwd"), !pwd.isEmpty else {
+            guard let url = CloudSettings.defaults.string(forKey: "webdav_url"), !url.isEmpty,
+                  let user = CloudSettings.defaults.string(forKey: "webdav_user"), !user.isEmpty,
+                  let pwd = CloudSettings.secret("webdav_pwd"), !pwd.isEmpty else {
                 return nil
             }
-            let prefix = UserDefaults.standard.string(forKey: "webdav_path_prefix") ?? "ClassFlow/"
+            let prefix = CloudSettings.defaults.string(forKey: "webdav_path_prefix") ?? "ClassFlow/"
             let config = WebDAVStorageProvider.Configuration(
                 serverURL: url,
                 username: user,
@@ -329,14 +397,14 @@ public final class AppState {
             )
             return WebDAVStorageProvider(config: config)
         } else {
-            guard let ak = UserDefaults.standard.string(forKey: "s3_access_key"), !ak.isEmpty,
-                  let sk = UserDefaults.standard.string(forKey: "s3_secret_key"), !sk.isEmpty,
-                  let bucket = UserDefaults.standard.string(forKey: "s3_bucket"), !bucket.isEmpty else {
+            guard let ak = CloudSettings.secret("s3_access_key"), !ak.isEmpty,
+                  let sk = CloudSettings.secret("s3_secret_key"), !sk.isEmpty,
+                  let bucket = CloudSettings.defaults.string(forKey: "s3_bucket"), !bucket.isEmpty else {
                 return nil
             }
-            let endpoint = UserDefaults.standard.string(forKey: "s3_endpoint") ?? "https://s3.cn-east-1.qiniucs.com"
-            let region = UserDefaults.standard.string(forKey: "s3_region") ?? "cn-east-1"
-            let prefix = UserDefaults.standard.string(forKey: "s3_path_prefix") ?? "classflow-sync/"
+            let endpoint = CloudSettings.defaults.string(forKey: "s3_endpoint") ?? "https://s3.cn-east-1.qiniucs.com"
+            let region = CloudSettings.defaults.string(forKey: "s3_region") ?? "cn-east-1"
+            let prefix = CloudSettings.defaults.string(forKey: "s3_path_prefix") ?? "classflow-sync/"
             let config = S3StorageProvider.Configuration(
                 endpoint: endpoint,
                 region: region,
@@ -422,6 +490,17 @@ public final class AppState {
     public func startFocusForTask(_ task: PomodoroTask) {
         activePomodoroTaskId = task.id
         settings.selectedTab = "study"
+    }
+
+    public func finishFocusSession() throws {
+        let before = database.load()
+        _ = try MCPToolHandlers(database: database).stopFocusTimer(arguments: [:])
+        var after = database.load()
+        recordAutomationChanges(before: before, after: after)
+        after.syncDeviceId = syncEngine.deviceId
+        after.syncSequence = syncEngine.latestSequence
+        try database.save(after)
+        load()
     }
 
     public func updatePomodoroTask(_ task: PomodoroTask) {

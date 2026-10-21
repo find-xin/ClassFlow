@@ -1,0 +1,15 @@
+{
+  "name": "classflow",
+  "version": "1.1.0",
+  "description": "管理本机 ClassFlow 的课程、日程、待办、专注与云同步。",
+  "author": {"name": "ClassFlow"},
+  "license": "Apache-2.0",
+  "mcpServers": "./.mcp.json",
+  "skills": "./skills/",
+  "requires_local_executor": true,
+  "interface": {
+    "displayName": "ClassFlow 课程与日程",
+    "shortDescription": "课程、日程、待办与专注管理",
+    "brandColor": "#FF5A5F"
+  }
+}

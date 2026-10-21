@@ -195,57 +195,59 @@ public struct SyncSettingsTab: View {
     }
 
     private func loadCredentials() {
-        if let savedType = UserDefaults.standard.string(forKey: "sync_provider_type") {
+        if let savedType = CloudSettings.defaults.string(forKey: "sync_provider_type") {
             providerType = (savedType == "qiniu") ? "s3" : savedType
         }
-        if let savedUser = UserDefaults.standard.string(forKey: "webdav_user") {
+        if let savedUser = CloudSettings.defaults.string(forKey: "webdav_user") {
             webdavUsername = savedUser
         }
-        if let savedPwd = UserDefaults.standard.string(forKey: "webdav_pwd") {
+        if let savedPwd = CloudSettings.secret("webdav_pwd") {
             webdavPassword = savedPwd
         }
-        if let savedURL = UserDefaults.standard.string(forKey: "webdav_url") {
+        if let savedURL = CloudSettings.defaults.string(forKey: "webdav_url") {
             webdavServerURL = savedURL
         }
-        if let savedWebdavPrefix = UserDefaults.standard.string(forKey: "webdav_path_prefix"), !savedWebdavPrefix.isEmpty {
+        if let savedWebdavPrefix = CloudSettings.defaults.string(forKey: "webdav_path_prefix"), !savedWebdavPrefix.isEmpty {
             webdavPathPrefix = savedWebdavPrefix
         }
 
-        if let savedAK = UserDefaults.standard.string(forKey: "s3_access_key"), !savedAK.isEmpty {
+        if let savedAK = CloudSettings.secret("s3_access_key"), !savedAK.isEmpty {
             accessKey = savedAK
         }
-        if let savedSK = UserDefaults.standard.string(forKey: "s3_secret_key"), !savedSK.isEmpty {
+        if let savedSK = CloudSettings.secret("s3_secret_key"), !savedSK.isEmpty {
             secretKey = savedSK
         }
-        if let savedEndpoint = UserDefaults.standard.string(forKey: "s3_endpoint"), !savedEndpoint.isEmpty {
+        if let savedEndpoint = CloudSettings.defaults.string(forKey: "s3_endpoint"), !savedEndpoint.isEmpty {
             endpoint = savedEndpoint
         }
-        if let savedRegion = UserDefaults.standard.string(forKey: "s3_region"), !savedRegion.isEmpty {
+        if let savedRegion = CloudSettings.defaults.string(forKey: "s3_region"), !savedRegion.isEmpty {
             region = savedRegion
         }
-        if let savedBucket = UserDefaults.standard.string(forKey: "s3_bucket"), !savedBucket.isEmpty {
+        if let savedBucket = CloudSettings.defaults.string(forKey: "s3_bucket"), !savedBucket.isEmpty {
             bucket = savedBucket
         }
-        if let savedPrefix = UserDefaults.standard.string(forKey: "s3_path_prefix"), !savedPrefix.isEmpty {
+        if let savedPrefix = CloudSettings.defaults.string(forKey: "s3_path_prefix"), !savedPrefix.isEmpty {
             pathPrefix = savedPrefix
         }
     }
 
     private func saveCredentials() {
-        UserDefaults.standard.set(providerType, forKey: "sync_provider_type")
+        do {
+        CloudSettings.defaults.set(providerType, forKey: "sync_provider_type")
         if providerType == "webdav" {
-            UserDefaults.standard.set(webdavUsername, forKey: "webdav_user")
-            UserDefaults.standard.set(webdavPassword, forKey: "webdav_pwd")
-            UserDefaults.standard.set(webdavServerURL, forKey: "webdav_url")
-            UserDefaults.standard.set(webdavPathPrefix, forKey: "webdav_path_prefix")
+            CloudSettings.defaults.set(webdavUsername, forKey: "webdav_user")
+            try CloudSettings.saveSecret(webdavPassword, key: "webdav_pwd")
+            CloudSettings.defaults.set(webdavServerURL, forKey: "webdav_url")
+            CloudSettings.defaults.set(webdavPathPrefix, forKey: "webdav_path_prefix")
         } else {
-            UserDefaults.standard.set(accessKey, forKey: "s3_access_key")
-            UserDefaults.standard.set(secretKey, forKey: "s3_secret_key")
-            UserDefaults.standard.set(endpoint, forKey: "s3_endpoint")
-            UserDefaults.standard.set(region, forKey: "s3_region")
-            UserDefaults.standard.set(bucket, forKey: "s3_bucket")
-            UserDefaults.standard.set(pathPrefix, forKey: "s3_path_prefix")
+            try CloudSettings.saveSecret(accessKey, key: "s3_access_key")
+            try CloudSettings.saveSecret(secretKey, key: "s3_secret_key")
+            CloudSettings.defaults.set(endpoint, forKey: "s3_endpoint")
+            CloudSettings.defaults.set(region, forKey: "s3_region")
+            CloudSettings.defaults.set(bucket, forKey: "s3_bucket")
+            CloudSettings.defaults.set(pathPrefix, forKey: "s3_path_prefix")
         }
+        } catch { syncStatusMessage = error.localizedDescription }
     }
 
     private func makeStorageProvider() -> any StorageProvider {

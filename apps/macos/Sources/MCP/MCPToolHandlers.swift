@@ -7,20 +7,24 @@ public struct MCPToolHandlers: Sendable {
     public let database: LocalDatabase
     public let widgetStore: WidgetDataStore
     public let timelineEngine: TimelineEngine
+    public let enablesAppIntegration: Bool
 
     public init(
         database: LocalDatabase = LocalDatabase(),
-        widgetStore: WidgetDataStore = WidgetDataStore()
+        widgetStore: WidgetDataStore = WidgetDataStore(),
+        enablesAppIntegration: Bool = true
     ) {
         self.database = database
         self.widgetStore = widgetStore
         self.timelineEngine = TimelineEngine()
+        self.enablesAppIntegration = enablesAppIntegration
     }
 
     // MARK: - Notification & Live Reload
 
     /// Broadcasts real-time notification to running ClassFlow macOS app and updates desktop widgets.
     public func notifyAppAndWidgets(payload: LocalDatabase.DatabasePayload) {
+        guard enablesAppIntegration else { return }
         // 1. Update WidgetKit shared data
         updateWidgetPayload(payload)
 
@@ -102,8 +106,7 @@ public struct MCPToolHandlers: Sendable {
         let dayOfWeek = weekday == 1 ? 7 : (weekday - 1)
 
         let pendingTasks = payload.pomodoroTasks.filter { !$0.isCompleted }.count
-        let activeTask = payload.pomodoroTasks.first(where: { $0.id == payload.activeProfileId })
-        let syncProvider = UserDefaults.standard.string(forKey: "sync_provider_type") ?? "未配置"
+        let syncProvider = CloudSettings.defaults.string(forKey: "sync_provider_type") ?? "未配置"
 
         return [
             "current_semester": [
@@ -125,7 +128,9 @@ public struct MCPToolHandlers: Sendable {
                 "tasks_in_progress": pendingTasks,
                 "focus_records": payload.pomodoroRecords.count
             ],
-            "active_focus_task": activeTask?.title as Any,
+            "active_focus_task": payload.focusSession?.title as Any,
+            "focus_running": payload.focusSession != nil && payload.focusSession?.pausedAt == nil,
+            "focus_elapsed_seconds": payload.focusSession?.elapsedSeconds(at: Date()) ?? 0,
             "cloud_sync_provider": syncProvider
         ]
     }
@@ -235,6 +240,11 @@ public struct MCPToolHandlers: Sendable {
         let startWeek = arguments["start_week"] as? Int ?? 1
         let endWeek = arguments["end_week"] as? Int ?? semester.totalWeeks
         let rawPattern = (arguments["week_pattern"] as? String)?.lowercased() ?? "all"
+        guard startWeek >= 1, endWeek >= startWeek, endWeek <= semester.totalWeeks else { throw automationError("起止周次超出学期范围。") }
+        guard endSec >= startSec, semester.sections.contains(where: { $0.section == startSec }), semester.sections.contains(where: { $0.section == endSec }) else { throw automationError("起止节次必须存在于当前学期，且结束节次不得早于开始节次。") }
+        if let weeks = arguments["custom_weeks"] as? [Int] {
+            guard !weeks.isEmpty, weeks.allSatisfy({ (1...semester.totalWeeks).contains($0) }) else { throw automationError("自定义周次超出学期范围。") }
+        }
 
         let weekPattern: WeekPattern
         switch rawPattern {
@@ -245,8 +255,10 @@ public struct MCPToolHandlers: Sendable {
         case "custom", "自定义":
             let customWeeks = arguments["custom_weeks"] as? [Int] ?? Array(startWeek...endWeek)
             weekPattern = .custom(customWeeks)
-        default:
+        case "all", "每周":
             weekPattern = .range(start: startWeek, end: endWeek, type: .all)
+        default:
+            throw automationError("周次模式必须为 all、odd、even 或 custom。")
         }
 
         let schedule = CourseSchedule(
@@ -313,16 +325,7 @@ public struct MCPToolHandlers: Sendable {
         var payload = database.load()
         let trimmedName = name.trimmingCharacters(in: .whitespaces).lowercased()
 
-        guard let idx = payload.courses.firstIndex(where: {
-            $0.id.uuidString.lowercased() == trimmedName ||
-            $0.name.trimmingCharacters(in: .whitespaces).lowercased() == trimmedName ||
-            $0.name.trimmingCharacters(in: .whitespaces).lowercased().contains(trimmedName)
-        }) else {
-            let availableNames = payload.courses.map { "「\($0.name)」" }.joined(separator: ", ")
-            throw NSError(domain: "ClassFlowMCP", code: 404, userInfo: [
-                NSLocalizedDescriptionKey: "未找到匹配「\(name)」的课程。当前学期已有课程包括：\(availableNames)"
-            ])
-        }
+        let idx = try uniqueIndex(payload.courses, query: trimmedName, id: { $0.id }, title: { $0.name })
 
         var course = payload.courses[idx]
         var changes: [String] = []
@@ -356,6 +359,10 @@ public struct MCPToolHandlers: Sendable {
             changes.append("上课教室统一更新为「\(classroom)」")
         }
 
+        try updateCourseSchedules(&course, arguments: arguments, payload: payload)
+        if ["day_of_week", "start_section", "end_section", "start_week", "end_week", "week_pattern", "custom_weeks"].contains(where: { arguments[$0] != nil }) {
+            changes.append("课时安排已更新")
+        }
         payload.courses[idx] = course
         try database.save(payload)
         notifyAppAndWidgets(payload: payload)
@@ -374,15 +381,10 @@ public struct MCPToolHandlers: Sendable {
         var payload = database.load()
         let trimmedName = name.trimmingCharacters(in: .whitespaces).lowercased()
 
-        guard let course = payload.courses.first(where: {
-            $0.id.uuidString.lowercased() == trimmedName ||
-            $0.name.trimmingCharacters(in: .whitespaces).lowercased() == trimmedName ||
-            $0.name.trimmingCharacters(in: .whitespaces).lowercased().contains(trimmedName)
-        }) else {
-            throw NSError(domain: "ClassFlowMCP", code: 404, userInfo: [NSLocalizedDescriptionKey: "未找到课程「\(name)」。"])
-        }
+        let course = payload.courses[try uniqueIndex(payload.courses, query: trimmedName, id: { $0.id }, title: { $0.name })]
 
         let scope = (arguments["scope"] as? String)?.lowercased() ?? "all"
+        guard ["all", "全部", "this_only", "本次", "this_and_future", "本次及以后"].contains(scope) else { throw automationError("删除范围必须为 all、this_only 或 this_and_future。") }
 
         if scope == "all" || scope == "全部" {
             payload.courses.removeAll { $0.id == course.id }
@@ -396,6 +398,9 @@ public struct MCPToolHandlers: Sendable {
         } else if scope == "this_and_future" || scope == "本次及以后" {
             let semester = payload.semesters.first(where: { $0.isCurrent }) ?? payload.semesters.first
             let curWeek = arguments["week"] as? Int ?? (semester != nil ? calculateCurrentWeek(for: semester!) : 1)
+            guard (1...(semester?.totalWeeks ?? 30)).contains(curWeek) else {
+                throw automationError("删除起始周次超出学期范围。")
+            }
             var updatedCourse = course
             var remainingSchedules: [CourseSchedule] = []
 
@@ -431,6 +436,7 @@ public struct MCPToolHandlers: Sendable {
                 df.dateFormat = "yyyy-MM-dd"
                 return df.string(from: Date())
             }()
+            try validateDate(dateStr)
             for s in course.schedules {
                 let ex = ScheduleException(
                     id: UUID(),
@@ -457,6 +463,7 @@ public struct MCPToolHandlers: Sendable {
         return semCourses.map { c -> [String: Any] in
             let schedSummaries = c.schedules.map { s -> [String: Any] in
                 [
+                    "id": s.id.uuidString,
                     "day_of_week": s.dayOfWeek,
                     "sections": "\(s.startSection)-\(s.endSection)",
                     "classroom": s.classroom ?? "",
@@ -513,6 +520,10 @@ public struct MCPToolHandlers: Sendable {
         let startTime = arguments["start_time"] as? String ?? "09:00"
         let endTime = arguments["end_time"] as? String ?? "10:00"
         let isAllDay = arguments["is_all_day"] as? Bool ?? false
+        try validateDate(dateStr)
+        try validateTime(startTime)
+        try validateTime(endTime)
+        guard isAllDay || startTime < endTime else { throw automationError("结束时间必须晚于开始时间。") }
         let location = arguments["location"] as? String
         let freq = arguments["frequency"] as? String ?? "none"
         let color = resolveColorHex(arguments["color"] as? String)
@@ -553,13 +564,7 @@ public struct MCPToolHandlers: Sendable {
         var payload = database.load()
         let trimmedTitle = title.trimmingCharacters(in: .whitespaces).lowercased()
 
-        guard let ev = payload.calendarEvents.first(where: {
-            $0.id.uuidString.lowercased() == trimmedTitle ||
-            $0.title.trimmingCharacters(in: .whitespaces).lowercased() == trimmedTitle ||
-            $0.title.trimmingCharacters(in: .whitespaces).lowercased().contains(trimmedTitle)
-        }) else {
-            throw NSError(domain: "ClassFlowMCP", code: 404, userInfo: [NSLocalizedDescriptionKey: "未找到日程「\(title)」。"])
-        }
+        let ev = payload.calendarEvents[try uniqueIndex(payload.calendarEvents, query: trimmedTitle, id: { $0.id }, title: { $0.title })]
 
         payload.calendarEvents.removeAll { $0.id == ev.id }
         payload.tombstones.append(SyncTombstone(entityId: ev.id.uuidString, entityType: "calendarEvent"))
@@ -577,7 +582,7 @@ public struct MCPToolHandlers: Sendable {
         let normFilter = filter?.lowercased() ?? "in_progress"
         var tasks = payload.pomodoroTasks
 
-        if normFilter == "in_progress" || normFilter == "进行中" {
+        if normFilter == "pending" || normFilter == "in_progress" || normFilter == "进行中" {
             tasks = tasks.filter { !$0.isCompleted }
         } else if normFilter == "completed" || normFilter == "已完成" {
             tasks = tasks.filter { $0.isCompleted }
@@ -599,6 +604,8 @@ public struct MCPToolHandlers: Sendable {
                 "completed_pomodoros": t.completedPomodoros,
                 "priority": t.priority.rawValue,
                 "due_date": t.dueDate ?? "",
+                "notes": t.notes ?? "",
+                "total_focus_minutes": t.totalFocusMinutes,
                 "created_at": ISO8601DateFormatter().string(from: t.createdAt)
             ]
         }
@@ -609,6 +616,8 @@ public struct MCPToolHandlers: Sendable {
             throw NSError(domain: "ClassFlowMCP", code: 400, userInfo: [NSLocalizedDescriptionKey: "缺少任务标题 (title)"])
         }
         let pomos = arguments["estimated_pomodoros"] as? Int ?? 1
+        guard (1...10000).contains(pomos) else { throw automationError("预估番茄数必须为 1–10000。") }
+        if let due = arguments["due_date"] as? String { try validateDate(due) }
         var priority: TaskPriority = .medium
         if let pInt = arguments["priority"] as? Int {
             priority = (pInt >= 2) ? .high : (pInt == 1 ? .medium : .low)
@@ -635,14 +644,12 @@ public struct MCPToolHandlers: Sendable {
             completedPomodoros: 0,
             isCompleted: false,
             priority: priority,
+            notes: arguments["notes"] as? String,
             dueDate: dueDate,
             createdAt: Date()
         )
 
         payload.pomodoroTasks.append(newTask)
-        if payload.activeProfileId == nil {
-            payload.activeProfileId = newTask.id
-        }
         try database.save(payload)
         notifyAppAndWidgets(payload: payload)
 
@@ -658,16 +665,11 @@ public struct MCPToolHandlers: Sendable {
         var payload = database.load()
         let trimmedTitle = title.trimmingCharacters(in: .whitespaces).lowercased()
 
-        guard let idx = payload.pomodoroTasks.firstIndex(where: {
-            $0.id.uuidString.lowercased() == trimmedTitle ||
-            $0.title.trimmingCharacters(in: .whitespaces).lowercased() == trimmedTitle ||
-            $0.title.trimmingCharacters(in: .whitespaces).lowercased().contains(trimmedTitle)
-        }) else {
-            throw NSError(domain: "ClassFlowMCP", code: 404, userInfo: [NSLocalizedDescriptionKey: "未找到待办任务「\(title)」。"])
-        }
+        let idx = try uniqueIndex(payload.pomodoroTasks, query: trimmedTitle, id: { $0.id }, title: { $0.title })
 
         let isCompleted = arguments["is_completed"] as? Bool ?? true
         payload.pomodoroTasks[idx].isCompleted = isCompleted
+        payload.pomodoroTasks[idx].completedAt = isCompleted ? Date() : nil
         try database.save(payload)
         notifyAppAndWidgets(payload: payload)
 
@@ -683,13 +685,7 @@ public struct MCPToolHandlers: Sendable {
         var payload = database.load()
         let trimmedTitle = title.trimmingCharacters(in: .whitespaces).lowercased()
 
-        guard let t = payload.pomodoroTasks.first(where: {
-            $0.id.uuidString.lowercased() == trimmedTitle ||
-            $0.title.trimmingCharacters(in: .whitespaces).lowercased() == trimmedTitle ||
-            $0.title.trimmingCharacters(in: .whitespaces).lowercased().contains(trimmedTitle)
-        }) else {
-            throw NSError(domain: "ClassFlowMCP", code: 404, userInfo: [NSLocalizedDescriptionKey: "未找到任务「\(title)」。"])
-        }
+        let t = payload.pomodoroTasks[try uniqueIndex(payload.pomodoroTasks, query: trimmedTitle, id: { $0.id }, title: { $0.title })]
 
         payload.pomodoroTasks.removeAll { $0.id == t.id }
         payload.tombstones.append(SyncTombstone(entityId: t.id.uuidString, entityType: "pomodoroTask"))
@@ -703,95 +699,65 @@ public struct MCPToolHandlers: Sendable {
     // MARK: - 9. Focus Timer (番茄钟与专注学习)
 
     public func startFocusTimer(arguments: [String: Any]) throws -> String {
-        let taskTitle = (arguments["task_title"] as? String)?.trimmingCharacters(in: .whitespaces)
-        let durationMinutes = arguments["duration_minutes"] as? Int ?? 25
-
         var payload = database.load()
+        guard payload.focusSession == nil else { throw automationError("已有专注会话，请先结束或暂停当前会话。") }
+        let minutes = arguments["duration_minutes"] as? Int ?? 25
+        guard (1...1440).contains(minutes) else { throw automationError("专注时长必须在 1–1440 分钟之间。") }
+        var task: PomodoroTask?
+        if let id = arguments["task_id"] as? String {
+            let index = try uniqueIndex(payload.pomodoroTasks, query: id, id: { $0.id }, title: { $0.title })
+            task = payload.pomodoroTasks[index]
+        } else if let title = arguments["task_title"] as? String, !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let matches = payload.pomodoroTasks.filter { $0.title == title && !$0.isCompleted }
+            guard matches.count <= 1 else { throw automationError("同名任务不唯一，请使用 task_id。") }
+            if let existing = matches.first { task = existing }
+            else {
+                let created = PomodoroTask(semesterId: payload.semesters.first(where: { $0.isCurrent })?.id, title: title)
+                payload.pomodoroTasks.append(created)
+                task = created
+            }
+        }
+        guard task?.isCompleted != true else { throw automationError("已完成的任务不能开始专注。") }
         payload.settings.selectedTab = "study"
         payload.settings.enableStudyModule = true
-
-        var activeTaskId: UUID? = nil
-        var targetTaskName = taskTitle ?? "日常专注"
-
-        if let title = taskTitle, !title.isEmpty {
-            if let existing = payload.pomodoroTasks.first(where: { $0.title.lowercased() == title.lowercased() && !$0.isCompleted }) {
-                activeTaskId = existing.id
-                targetTaskName = existing.title
-            } else {
-                let newTask = PomodoroTask(
-                    id: UUID(),
-                    semesterId: payload.semesters.first(where: { $0.isCurrent })?.id,
-                    title: title,
-                    estimatedPomodoros: max(1, durationMinutes / 25)
-                )
-                payload.pomodoroTasks.append(newTask)
-                activeTaskId = newTask.id
-                targetTaskName = newTask.title
-            }
-        } else {
-            activeTaskId = payload.pomodoroTasks.first(where: { !$0.isCompleted })?.id
-        }
-
-        payload.activeProfileId = activeTaskId
+        payload.focusSession = FocusSession(taskId: task?.id, title: task?.title ?? "日常专注", durationMinutes: minutes, startedAt: Date())
         try database.save(payload)
         notifyAppAndWidgets(payload: payload)
+        if enablesAppIntegration { _ = NSWorkspace.shared.open(URL(string: "classflow://reload")!) }
+        return "已为任务「\(payload.focusSession!.title)」保存并启动 \(minutes) 分钟专注计时。"
+    }
 
-        // Wake up running app & start timer via URL and Distributed Notification
-        let encodedTitle = targetTaskName.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        let deepLinkStr = "classflow://focus?action=start&title=\(encodedTitle)&minutes=\(durationMinutes)"
-        if let url = URL(string: deepLinkStr) {
-            NSWorkspace.shared.open(url)
-        }
-
-        DistributedNotificationCenter.default().postNotificationName(
-            NSNotification.Name("org.classflow.commandTriggered"),
-            object: nil,
-            userInfo: ["url": deepLinkStr],
-            deliverImmediately: true
-        )
-
-        return "已为任务「\(targetTaskName)」启动 \(durationMinutes) 分钟专注计时，ClassFlow 已切换到专注时钟界面！"
+    public func pauseFocusTimer(resume: Bool) throws -> String {
+        var payload = database.load()
+        guard var session = payload.focusSession else { throw automationError("当前没有专注会话。") }
+        if resume, session.pausedAt != nil {
+            session.accumulatedSeconds = session.elapsedSeconds(at: Date())
+            session.startedAt = Date()
+            session.pausedAt = nil
+        } else if !resume, session.pausedAt == nil { session.pausedAt = Date() }
+        payload.focusSession = session
+        try database.save(payload)
+        notifyAppAndWidgets(payload: payload)
+        return resume ? "专注计时已继续。" : "专注计时已暂停。"
     }
 
     public func stopFocusTimer(arguments: [String: Any]) throws -> String {
-        let actualMinutes = arguments["actual_minutes"] as? Int ?? 25
-        let taskTitle = arguments["task_title"] as? String
-
         var payload = database.load()
-        let activeTask = payload.pomodoroTasks.first(where: { $0.id == payload.activeProfileId })
-        let title = taskTitle ?? activeTask?.title ?? "专注学习"
-
-        let record = PomodoroRecord(
-            id: UUID(),
-            taskId: activeTask?.id,
-            taskTitle: title,
-            courseName: nil,
-            focusMode: .pomodoro,
-            durationMinutes: actualMinutes,
-            completedAt: Date(),
-            tag: "日常自习"
-        )
-        payload.pomodoroRecords.append(record)
-
-        if let at = activeTask, let idx = payload.pomodoroTasks.firstIndex(where: { $0.id == at.id }) {
-            payload.pomodoroTasks[idx].completedPomodoros += max(1, actualMinutes / 25)
+        guard let session = payload.focusSession else { throw automationError("当前没有专注会话，不会生成虚假记录。") }
+        let minutes = session.elapsedSeconds(at: Date()) / 60
+        // The recorded duration comes from the clock; legacy actual_minutes is deliberately ignored.
+        if minutes > 0 {
+            payload.pomodoroRecords.append(PomodoroRecord(id: session.id, taskId: session.taskId, taskTitle: session.title,
+                courseName: nil, focusMode: session.mode, durationMinutes: minutes, completedAt: Date(), tag: "日常自习"))
+            if let index = payload.pomodoroTasks.firstIndex(where: { $0.id == session.taskId }) {
+                payload.pomodoroTasks[index].totalFocusMinutes += minutes
+                payload.pomodoroTasks[index].completedPomodoros += minutes / 25
+            }
         }
-
+        payload.focusSession = nil
         try database.save(payload)
         notifyAppAndWidgets(payload: payload)
-
-        let deepLinkStr = "classflow://focus?action=stop"
-        if let url = URL(string: deepLinkStr) {
-            NSWorkspace.shared.open(url)
-        }
-        DistributedNotificationCenter.default().postNotificationName(
-            NSNotification.Name("org.classflow.commandTriggered"),
-            object: nil,
-            userInfo: ["url": deepLinkStr],
-            deliverImmediately: true
-        )
-
-        return "已结束专注计时并沉淀记录：专注时长 \(actualMinutes) 分钟（任务：「\(title)」），已更新至今日统计与专注热力图。"
+        return "已结束专注计时，实际专注 \(minutes) 分钟。"
     }
 
     public func getFocusStatistics() -> [String: Any] {
@@ -825,28 +791,28 @@ public struct MCPToolHandlers: Sendable {
 
     public func triggerCloudSync() async throws -> String {
         var payload = database.load()
-        let providerType = UserDefaults.standard.string(forKey: "sync_provider_type") ?? "webdav"
+        let providerType = CloudSettings.defaults.string(forKey: "sync_provider_type") ?? "webdav"
 
         let provider: any StorageProvider
         if providerType == "webdav" {
-            let serverURL = UserDefaults.standard.string(forKey: "webdav_url") ?? "https://dav.jianguoyun.com/dav/"
-            let user = UserDefaults.standard.string(forKey: "webdav_user") ?? ""
-            let pwd = UserDefaults.standard.string(forKey: "webdav_pwd") ?? ""
-            let prefix = UserDefaults.standard.string(forKey: "webdav_path_prefix") ?? "ClassFlow/"
-            guard !user.isEmpty else {
-                return "未配置 WebDAV 用户名或密码。请在 ClassFlow 设置 -> 云同步 中先配置存储凭据。"
+            let serverURL = CloudSettings.defaults.string(forKey: "webdav_url") ?? "https://dav.jianguoyun.com/dav/"
+            let user = CloudSettings.defaults.string(forKey: "webdav_user") ?? ""
+            let pwd = CloudSettings.secret("webdav_pwd") ?? ""
+            let prefix = CloudSettings.defaults.string(forKey: "webdav_path_prefix") ?? "ClassFlow/"
+            guard !user.isEmpty, !pwd.isEmpty else {
+                throw automationError("未配置 WebDAV 凭据，请先在设置中完成配置。")
             }
             let config = WebDAVStorageProvider.Configuration(serverURL: serverURL, username: user, password: pwd, pathPrefix: prefix)
             provider = WebDAVStorageProvider(config: config)
         } else {
-            let endpoint = UserDefaults.standard.string(forKey: "s3_endpoint") ?? ""
-            let region = UserDefaults.standard.string(forKey: "s3_region") ?? "cn-east-1"
-            let bucket = UserDefaults.standard.string(forKey: "s3_bucket") ?? ""
-            let ak = UserDefaults.standard.string(forKey: "s3_access_key") ?? ""
-            let sk = UserDefaults.standard.string(forKey: "s3_secret_key") ?? ""
-            let prefix = UserDefaults.standard.string(forKey: "s3_path_prefix") ?? "classflow-sync/"
-            guard !ak.isEmpty else {
-                return "未配置 S3 Access Key。请在 ClassFlow 设置 -> 云同步 中先配置存储凭据。"
+            let endpoint = CloudSettings.defaults.string(forKey: "s3_endpoint") ?? ""
+            let region = CloudSettings.defaults.string(forKey: "s3_region") ?? "cn-east-1"
+            let bucket = CloudSettings.defaults.string(forKey: "s3_bucket") ?? ""
+            let ak = CloudSettings.secret("s3_access_key") ?? ""
+            let sk = CloudSettings.secret("s3_secret_key") ?? ""
+            let prefix = CloudSettings.defaults.string(forKey: "s3_path_prefix") ?? "classflow-sync/"
+            guard !ak.isEmpty, !sk.isEmpty, !bucket.isEmpty else {
+                throw automationError("未配置 S3 凭据，请先在设置中完成配置。")
             }
             let config = S3StorageProvider.Configuration(endpoint: endpoint, region: region, bucket: bucket, accessKey: ak, secretKey: sk, pathPrefix: prefix)
             provider = S3StorageProvider(config: config)
@@ -886,6 +852,7 @@ public struct MCPToolHandlers: Sendable {
         payload.timetableProfiles = localProfiles
         payload.tombstones = localTombstones
         payload.syncDeviceId = syncEngine.deviceId
+        payload.syncSequence = syncEngine.latestSequence
 
         try database.save(payload)
         notifyAppAndWidgets(payload: payload)
@@ -896,6 +863,7 @@ public struct MCPToolHandlers: Sendable {
     // MARK: - 11. Navigation & App Control
 
     public func openApp(tab: String?) -> String {
+        guard enablesAppIntegration else { return "已打开 ClassFlow。" }
         var deepLink = "classflow://"
         if let t = tab?.lowercased() {
             switch t {
@@ -928,7 +896,8 @@ public struct MCPToolHandlers: Sendable {
         var changes: [String] = []
 
         if let semName = arguments["semester_name"] as? String, !semName.isEmpty {
-            if let target = payload.semesters.first(where: { $0.name.lowercased().contains(semName.lowercased()) }) {
+            let target = payload.semesters[try uniqueIndex(payload.semesters, query: semName, id: { $0.id }, title: { $0.name })]
+            do {
                 for i in payload.semesters.indices {
                     payload.semesters[i].isCurrent = (payload.semesters[i].id == target.id)
                 }
@@ -937,6 +906,8 @@ public struct MCPToolHandlers: Sendable {
         }
 
         if let week = arguments["week"] as? Int {
+            let maxWeek = payload.semesters.first(where: { $0.isCurrent })?.totalWeeks ?? 30
+            guard (1...maxWeek).contains(week) else { throw automationError("周次超出学期范围。") }
             changes.append("查看第 \(week) 周课表")
         }
 
@@ -944,7 +915,7 @@ public struct MCPToolHandlers: Sendable {
         notifyAppAndWidgets(payload: payload)
 
         let deepLink = "classflow://week?number=\(arguments["week"] as? Int ?? 1)"
-        if let url = URL(string: deepLink) {
+        if enablesAppIntegration, let url = URL(string: deepLink) {
             NSWorkspace.shared.open(url)
         }
         return "已更新学期/周次设置：" + changes.joined(separator: "，") + "。"
@@ -964,7 +935,7 @@ public struct MCPToolHandlers: Sendable {
         return min(max(1, w), semester.totalWeeks)
     }
 
-    private func resolveColorHex(_ color: String?) -> String {
+    func resolveColorHex(_ color: String?) -> String {
         guard let c = color?.trimmingCharacters(in: .whitespaces).lowercased(), !c.isEmpty else {
             return "#4F46E5" // default indigo
         }

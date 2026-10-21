@@ -9,15 +9,15 @@ struct MCPServerTests {
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         let dbURL = tempDir.appendingPathComponent("mcp_test_db.json")
         let db = LocalDatabase(customURL: dbURL)
-        let handlers = MCPToolHandlers(database: db)
+        let handlers = MCPToolHandlers(database: db, enablesAppIntegration: false)
         return (handlers, db)
     }
 
-    @Test("Verify all 19 MCP tools are defined and registered")
+    @Test("Verify all 23 MCP tools are defined and registered")
     func testToolsListCompleteness() {
         let server = MCPServer()
         let tools = server.defineTools()
-        #expect(tools.count == 19)
+        #expect(tools.count == 23)
 
         let toolNames = Set(tools.compactMap { $0["name"] as? String })
         let expectedNames: Set<String> = [
@@ -39,7 +39,7 @@ struct MCPServerTests {
             "get_focus_statistics",
             "trigger_cloud_sync",
             "switch_semester_or_week",
-            "open_app"
+            "open_app", "update_calendar_event", "update_task", "pause_focus_timer", "resume_focus_timer"
         ]
         #expect(toolNames == expectedNames)
     }
@@ -192,6 +192,11 @@ struct MCPServerTests {
         ])
         #expect(startResult.contains("已为任务"))
         #expect(startResult.contains("25 分钟"))
+
+        // Advance the persisted clock instead of trusting a caller-supplied duration.
+        var timedPayload = db.load()
+        timedPayload.focusSession?.startedAt = Date().addingTimeInterval(-25 * 60)
+        try db.save(timedPayload)
 
         // 3. Stop Focus Timer
         let stopResult = try handlers.stopFocusTimer(arguments: [
