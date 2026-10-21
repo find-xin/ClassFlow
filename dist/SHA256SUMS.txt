@@ -1,6 +1,6 @@
 a07137a280094137b487640c04bf3dccf0702f6107decc7c3ab7261b27912b8a  ClassFlow-1.0.0-android.apk
-5840cbfde696cb37f3c72b74a07d7e309703fd99d3ca00d65e7a3f59c6034f83  ClassFlow-1.0.0-macOS-arm64.dmg
-4fabfa03448f8821a6d6f4c28aaa77517b77cdbc229858ea936cd0e69dc596c0  ClassFlow-1.0.0-macOS-arm64.zip
+8c14098d354086017bfe65b93994c9b0bbe866c73e296787763f28c335973429  ClassFlow-1.0.0-macOS-arm64.dmg
+06f0866c6a5b991d9fa7f0beccc05dd724987b4770b97faf711effc54ef9e359  ClassFlow-1.0.0-macOS-arm64.zip
 8a3b4c6cbcfd3d6ec4e4a7580b13ea6dc98c6b543bca3735de98aae926938602  ClassFlow-1.0.0-xiaomi-band.rpk
 8a3b4c6cbcfd3d6ec4e4a7580b13ea6dc98c6b543bca3735de98aae926938602  ClassFlow-1.0.0-xiaomi-band.zip
 4820a4864226ff9b9fbe1a356464071bb5ea49e325fdb51f77dd9b3fe747375c  ClassFlow-ChatGPT-Setup.md
