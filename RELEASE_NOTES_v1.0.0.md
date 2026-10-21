@@ -45,8 +45,8 @@ ClassFlow 是一款专为 macOS 与 Android 打造的高颜值、本地离线优
 
 | 平台 | 架构 / 类型 | 文件名 | 大小 | SHA-256 校验和 |
 | :--- | :--- | :--- | :--- | :--- |
-| **macOS 安装镜像** | Apple Silicon (arm64) | `ClassFlow-1.0.0-macOS-arm64.dmg` | 4.4 MB | `2e3092d356a7ac2ef50703d980bb429fd50383d92ac0d15ca039beb3bfdd3d7a` |
-| **macOS 绿色免安装** | Apple Silicon (arm64) | `ClassFlow-1.0.0-macOS-arm64.zip` | 6.8 MB | `3096621d7ac6bc60fc2d7847c2a2015311b186d5f2bb752d455abe7719c40db7` |
+| **macOS 安装镜像** | Apple Silicon (arm64) | `ClassFlow-1.0.0-macOS-arm64.dmg` | 4.4 MB | `7c82921cc068995392af2d73a5cef145b50899536891e90db970a252422926ba` |
+| **macOS 绿色免安装** | Apple Silicon (arm64) | `ClassFlow-1.0.0-macOS-arm64.zip` | 6.8 MB | `466dfed10e4aa8c2829ffd7a48198b664273f4150433b9b796844bd1c6f6fe43` |
 | **Android 客户端** | Universal (ARM/x86) | `ClassFlow-1.0.0-android.apk` | 13.4 MB | `57e5e21a66b6523d2302f5a80cdff655fc1e8dc7a0105cb5092f4636fca349a3` |
 | **小米手环快应用** | 手环快应用安装包 | `ClassFlow-1.0.0-xiaomi-band.rpk` | 4.7 KB | `8a3b4c6cbcfd3d6ec4e4a7580b13ea6dc98c6b543bca3735de98aae926938602` |
 | **小米手环离线包** | 开发者安装源码包 | `ClassFlow-1.0.0-xiaomi-band.zip` | 4.7 KB | `8a3b4c6cbcfd3d6ec4e4a7580b13ea6dc98c6b543bca3735de98aae926938602` |
