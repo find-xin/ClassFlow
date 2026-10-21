@@ -173,6 +173,18 @@ public final class MCPServer: Sendable {
             let arguments = params["arguments"] as? [String: Any] ?? [:]
             executeToolCall(id: id, name: toolName, arguments: arguments)
 
+        case "resources/list":
+            sendResult(id: id, result: ["resources": []])
+
+        case "resources/templates/list":
+            sendResult(id: id, result: ["resourceTemplates": []])
+
+        case "prompts/list":
+            sendResult(id: id, result: ["prompts": []])
+
+        case "logging/setLevel":
+            sendResult(id: id, result: [:])
+
         default:
             if id != nil {
                 sendError(id: id, code: -32601, message: "Method not found: \(method)")

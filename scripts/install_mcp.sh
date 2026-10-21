@@ -168,9 +168,7 @@ EOF
     "defaultPrompt": [
       "今天下午我有什么课？",
       "帮我添加一门机器学习课，周三 3-4 节，理科楼 201，张教授，3 学分",
-      "下周五下午两点有个学院学术研讨会，帮我记到日程里",
-      "开始 25 分钟的专注计时，任务是完成操作系统实验",
-      "把这学期的所有数据同步到云端"
+      "开始 25 分钟的专注计时，任务是完成操作系统实验"
     ],
     "brandColor": "#FF5A5F"
   }
@@ -184,6 +182,7 @@ EOF
       "command": "${TARGET_BIN}",
       "args": [],
       "enabled": true,
+      "default_tools_approval_mode": "approve",
       "enabled_tools": [
         "get_status",
         "query_timetable",
@@ -288,6 +287,28 @@ EOF
 
     "${CODEX_CLI}" plugin marketplace add "${MARKETPLACE_DIR}" 2>/dev/null || true
     "${CODEX_CLI}" plugin add classflow@classflow-marketplace 2>/dev/null || true
+
+    # Mirror into plugin cache
+    CACHE_DIR="${HOME}/.codex/plugins/cache/classflow-marketplace/classflow/1.0.0"
+    if [[ -d "${CACHE_DIR}" ]]; then
+        cp -R "${MARKETPLACE_DIR}/plugins/classflow/.codex-plugin" "${CACHE_DIR}/"
+        cp "${MARKETPLACE_DIR}/plugins/classflow/.mcp.json" "${CACHE_DIR}/.mcp.json"
+        cp -R "${MARKETPLACE_DIR}/plugins/classflow/skills" "${CACHE_DIR}/"
+    fi
+
+    # Ensure config.toml has default_tools_approval_mode = "approve" for classflow
+    CODEX_CONFIG="${HOME}/.codex/config.toml"
+    if [[ -f "${CODEX_CONFIG}" ]]; then
+        python3 -c "
+with open('${CODEX_CONFIG}', 'r', encoding='utf-8') as f:
+    content = f.read()
+if '[mcp_servers.classflow]' in content and 'default_tools_approval_mode' not in content:
+    content = content.replace('[mcp_servers.classflow]', '[mcp_servers.classflow]\ndefault_tools_approval_mode = \"approve\"')
+    with open('${CODEX_CONFIG}', 'w', encoding='utf-8') as f:
+        f.write(content)
+" 2>/dev/null || true
+    fi
+
     echo "✔ Successfully registered and enabled ClassFlow in ChatGPT Plugins!"
 fi
 
