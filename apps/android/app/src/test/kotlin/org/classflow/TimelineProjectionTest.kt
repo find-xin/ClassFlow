@@ -757,6 +757,128 @@ class TimelineProjectionTest {
         assertNotNull("Non-current course in free slot must be displayed", freeCluster)
         assertEquals(1, freeCluster!!.items.size)
     }
+
+    @Test
+    fun testContinuousCoordinateClusteringAndSuppressionParity() {
+        // Sections corresponding to 14-section semester
+        val sections = listOf(
+            SectionTime(1, "08:30", "09:15"),
+            SectionTime(2, "09:20", "10:05"),
+            SectionTime(3, "10:15", "11:00"),
+            SectionTime(4, "11:05", "11:50"),
+            SectionTime(5, "14:30", "15:15"),
+            SectionTime(6, "15:20", "16:05"),
+            SectionTime(7, "16:15", "17:00"),
+            SectionTime(8, "17:05", "17:50"),
+            SectionTime(9, "18:30", "19:15"),
+            SectionTime(10, "19:20", "20:05"),
+            SectionTime(11, "20:15", "21:00"),
+            SectionTime(12, "21:05", "21:50"),
+            SectionTime(13, "21:35", "22:20"),
+            SectionTime(14, "22:30", "23:30")
+        )
+
+        val ev1 = TimelineItem(
+            id = "ev_breakfast",
+            title = "起床与早餐",
+            date = "2026-10-21",
+            dayOfWeek = 3,
+            startSection = 1,
+            endSection = 1,
+            startTime = "08:30",
+            endTime = "09:00",
+            isCurrentWeek = true
+        )
+        val ev2 = TimelineItem(
+            id = "ev_research_a",
+            title = "科研深度工作 A",
+            date = "2026-10-21",
+            dayOfWeek = 3,
+            startSection = 2,
+            endSection = 4,
+            startTime = "09:00",
+            endTime = "11:30",
+            isCurrentWeek = true
+        )
+        val ev3 = TimelineItem(
+            id = "ev_lunch",
+            title = "午餐与午休",
+            date = "2026-10-21",
+            dayOfWeek = 3,
+            startSection = 4,
+            endSection = 5,
+            startTime = "11:30",
+            endTime = "13:00",
+            isCurrentWeek = true
+        )
+        val ev4_sport1 = TimelineItem(
+            id = "ev_sport1",
+            title = "运动",
+            date = "2026-10-21",
+            dayOfWeek = 3,
+            startSection = 11,
+            endSection = 12,
+            startTime = "20:30",
+            endTime = "21:30",
+            isCurrentWeek = true
+        )
+        val ev4_sport2 = TimelineItem(
+            id = "ev_sport2",
+            title = "俯卧撑",
+            date = "2026-10-21",
+            dayOfWeek = 3,
+            startSection = 11,
+            endSection = 12,
+            startTime = "20:30",
+            endTime = "21:30",
+            isCurrentWeek = true
+        )
+
+        // Non-current week course on Wednesday during Section 3-4 (10:15~11:50)
+        // Must be suppressed because 科研深度工作 A spans 09:00~11:30
+        val nonCurrCourse = TimelineItem(
+            id = "c_non_curr_thurs",
+            title = "程序分析与安全",
+            date = "2026-10-21",
+            dayOfWeek = 3,
+            startSection = 3,
+            endSection = 4,
+            isCurrentWeek = false
+        )
+
+        val clusters = org.classflow.ui.timetable.clusterDayCourses(
+            listOf(ev1, ev2, ev3, ev4_sport1, ev4_sport2, nonCurrCourse),
+            dayOfWeek = 3,
+            sectionTimes = sections,
+            gridHeight = 56f
+        )
+
+        // 1. ev1, ev2, ev3 should NOT be collapsed together; they must form distinct clusters
+        val c1 = clusters.find { c -> c.items.any { it.id == "ev_breakfast" } }
+        val c2 = clusters.find { c -> c.items.any { it.id == "ev_research_a" } }
+        val c3 = clusters.find { c -> c.items.any { it.id == "ev_lunch" } }
+
+        assertNotNull(c1)
+        assertNotNull(c2)
+        assertNotNull(c3)
+        assertEquals(1, c1!!.items.size)
+        assertEquals(1, c2!!.items.size)
+        assertEquals(1, c3!!.items.size)
+
+        // Verify continuous ordering: c1.topOffset < c2.topOffset < c3.topOffset
+        assertTrue("c1 top must be < c2 top", c1.topOffset < c2.topOffset)
+        assertTrue("c2 top must be < c3 top", c2.topOffset < c3.topOffset)
+
+        // 2. Truly concurrent events sport1 and sport2 must form a 2-item cluster
+        val sportCluster = clusters.find { c -> c.items.any { it.id == "ev_sport1" } }
+        assertNotNull(sportCluster)
+        assertEquals(2, sportCluster!!.items.size)
+        assertTrue(sportCluster.items.any { it.id == "ev_sport2" })
+
+        // 3. Non-current course must be suppressed by the active schedule
+        val suppressed = clusters.find { c -> c.items.any { it.id == "c_non_curr_thurs" } }
+        assertNull("Non-current course overlapping active schedule must be suppressed", suppressed)
+    }
 }
 
 

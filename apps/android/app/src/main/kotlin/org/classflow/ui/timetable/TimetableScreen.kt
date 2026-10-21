@@ -25,6 +25,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import org.classflow.data.local.CourseDataManager
 import org.classflow.data.model.CalendarEvent
 import org.classflow.data.model.SectionTime
 import org.classflow.data.model.Semester
@@ -333,52 +334,197 @@ fun WakeUpDayHeaderRow(
 }
 
 /**
- * Represents an overlapping cluster of courses occupying overlapping sections in a single day.
+ * Represents an overlapping cluster of courses occupying overlapping sections or time in a single day.
  */
 data class OverlapCluster(
     val key: String,
     val items: List<TimelineItem>,
     val minStartSection: Int,
-    val maxEndSection: Int
+    val maxEndSection: Int,
+    val topOffset: Float = 0f,
+    val cardHeight: Float = 0f
 )
 
 /**
- * Determines whether two timeline items overlap in time interval or section range.
+ * Parses time string formatted as "HH:mm", "HH:mm:ss", "yyyy-MM-ddTHH:mm:ss", or "yyyy-MM-dd HH:mm"
+ * into minutes from midnight (0..1439).
  */
-fun itemsOverlap(a: TimelineItem, b: TimelineItem): Boolean {
-    fun parseMinutes(t: String?): Int? {
-        if (t.isNullOrBlank()) return null
-        val parts = t.split(":")
-        if (parts.size >= 2) {
-            val h = parts[0].toIntOrNull() ?: return null
-            val m = parts[1].toIntOrNull() ?: return null
-            return h * 60 + m
-        }
-        return null
+fun parseTimeToMinutes(timeStr: String?): Int? {
+    if (timeStr.isNullOrBlank()) return null
+    val t = if (timeStr.contains("T")) {
+        timeStr.substringAfter("T").take(5)
+    } else if (timeStr.contains(" ")) {
+        timeStr.substringAfter(" ").take(5)
+    } else {
+        timeStr.take(5)
     }
+    val parts = t.split(":")
+    if (parts.size >= 2) {
+        val h = parts[0].toIntOrNull() ?: return null
+        val m = parts[1].toIntOrNull() ?: return null
+        return h * 60 + m
+    }
+    return null
+}
 
-    val aStart = parseMinutes(a.startTime)
-    val aEnd = parseMinutes(a.endTime)
-    val bStart = parseMinutes(b.startTime)
-    val bEnd = parseMinutes(b.endTime)
+/**
+ * Extracts or infers the minute interval (startMin, endMin) for a timeline item.
+ * If explicit start/end times exist, parses them. If not, projects from matching sections.
+ */
+fun itemMinutesRange(item: TimelineItem, sections: List<SectionTime>): Pair<Int, Int>? {
+    val sM = parseTimeToMinutes(item.startTime)
+    val eM = parseTimeToMinutes(item.endTime)
+    if (sM != null && eM != null && eM > sM) {
+        return sM to eM
+    }
+    val matching = sections.filter { it.section in item.startSection..item.endSection }
+    if (matching.isNotEmpty()) {
+        val firstSm = parseTimeToMinutes(matching.first().startTime)
+        val lastEm = parseTimeToMinutes(matching.last().endTime)
+        if (firstSm != null && lastEm != null && lastEm > firstSm) {
+            return firstSm to lastEm
+        }
+    }
+    if (sM != null) {
+        return sM to (sM + 45)
+    }
+    return null
+}
 
-    val aRange = if (aStart != null && aEnd != null && aEnd > aStart) {
-        aStart to aEnd
-    } else if (aStart != null) {
-        aStart to (aStart + 45)
-    } else null
-
-    val bRange = if (bStart != null && bEnd != null && bEnd > bStart) {
-        bStart to bEnd
-    } else if (bStart != null) {
-        bStart to (bStart + 45)
-    } else null
+/**
+ * Determines whether two timeline items overlap in time interval or section range.
+ * Aligns with macOS TimetableGridView.itemsOverlap.
+ */
+fun itemsOverlap(a: TimelineItem, b: TimelineItem, sections: List<SectionTime> = emptyList()): Boolean {
+    val aRange = itemMinutesRange(a, sections)
+    val bRange = itemMinutesRange(b, sections)
 
     if (aRange != null && bRange != null) {
         return aRange.first < bRange.second && bRange.first < aRange.second
     }
 
-    return maxOf(a.startSection, b.startSection) <= minOf(a.endSection, b.endSection)
+    val aMin = minOf(a.startSection, a.endSection)
+    val aMax = maxOf(a.startSection, a.endSection)
+    val bMin = minOf(b.startSection, b.endSection)
+    val bMax = maxOf(b.startSection, b.endSection)
+    return maxOf(aMin, bMin) <= minOf(aMax, bMax)
+}
+
+/**
+ * Computes continuous Y pixel offset for a given minute of day, matching macOS yOffset.
+ */
+fun yOffsetForMinutes(
+    minutes: Int,
+    sections: List<SectionTime>,
+    periodHeight: Float
+): Float {
+    val secTimes = sections.mapNotNull { s ->
+        val sm = parseTimeToMinutes(s.startTime)
+        val em = parseTimeToMinutes(s.endTime)
+        if (sm != null && em != null) Triple(s.section, sm, em) else null
+    }
+
+    if (secTimes.isEmpty()) return 0f
+
+    val firstStart = secTimes.first().second
+    val lastEnd = secTimes.last().third
+    val totalSections = secTimes.size
+
+    if (minutes <= firstStart) {
+        return 0f
+    }
+    if (minutes >= lastEnd) {
+        return totalSections * periodHeight
+    }
+
+    for (idx in secTimes.indices) {
+        val yTop = idx * periodHeight
+        val yBottom = (idx + 1) * periodHeight
+        val st = secTimes[idx]
+
+        if (minutes in st.second..st.third) {
+            val span = maxOf(1, st.third - st.second)
+            val frac = (minutes - st.second).toFloat() / span
+            return yTop + frac * periodHeight
+        }
+
+        if (idx + 1 < secTimes.size) {
+            val nextSt = secTimes[idx + 1]
+            if (minutes > st.third && minutes < nextSt.second) {
+                return yBottom
+            }
+        }
+    }
+
+    return totalSections * periodHeight
+}
+
+/**
+ * Dynamically expands section list to accommodate early morning, late night events,
+ * and custom section counts, aligning with macOS effectiveSections.
+ */
+fun buildEffectiveSectionTimes(
+    sections: List<SectionTime>,
+    occurrences: List<TimelineItem>
+): List<SectionTime> {
+    val base = if (sections.isNotEmpty()) {
+        sections.sortedBy { it.section }
+    } else {
+        CourseDataManager.defaultSectionTimes()
+    }
+    val result = base.toMutableList()
+
+    val baseFirstStart = parseTimeToMinutes(result.firstOrNull()?.startTime) ?: 480
+    val baseLastEnd = parseTimeToMinutes(result.lastOrNull()?.endTime) ?: 1290
+    var earliestStart = baseFirstStart
+    var latestEnd = baseLastEnd
+
+    for (item in occurrences) {
+        if (item.isAllDay) continue
+        val sm = parseTimeToMinutes(item.startTime)
+        if (sm != null && sm < earliestStart) earliestStart = sm
+        val em = parseTimeToMinutes(item.endTime)
+        if (em != null && em > latestEnd) latestEnd = em
+    }
+
+    // Early morning section (section 0, "早")
+    if (earliestStart < baseFirstStart) {
+        val h = earliestStart / 60
+        val m = earliestStart % 60
+        val earlyStartStr = String.format(Locale.getDefault(), "%02d:%02d", h, m)
+        result.add(0, SectionTime(0, earlyStartStr, result.first().startTime))
+    }
+
+    // Accommodate any course whose endSection is beyond the base section count
+    val maxOccurrenceSection = occurrences.filter { !it.isAllDay }.maxOfOrNull { it.endSection } ?: 0
+    val lastRegularSec = result.filter { it.section in 1..89 }.lastOrNull()
+    if (lastRegularSec != null && maxOccurrenceSection > lastRegularSec.section) {
+        var currentSec = lastRegularSec.section
+        var currentEnd = parseTimeToMinutes(lastRegularSec.endTime) ?: 1290
+        while (currentSec < maxOccurrenceSection) {
+            currentSec += 1
+            val nextStart = currentEnd + 10
+            val nextEnd = nextStart + 45
+            val sH = (nextStart / 60) % 24
+            val sM = nextStart % 60
+            val eH = (nextEnd / 60) % 24
+            val eM = nextEnd % 60
+            val sStr = String.format(Locale.getDefault(), "%02d:%02d", sH, sM)
+            val eStr = String.format(Locale.getDefault(), "%02d:%02d", eH, eM)
+            result.add(SectionTime(currentSec, sStr, eStr))
+            currentEnd = nextEnd
+        }
+    }
+
+    // Late night section (section 99, "晚")
+    val updatedLastEnd = parseTimeToMinutes(result.lastOrNull()?.endTime) ?: 1290
+    if (latestEnd > updatedLastEnd) {
+        val h = minOf(23, (latestEnd + 59) / 60)
+        val lateEndStr = String.format(Locale.getDefault(), "%02d:00", h)
+        result.add(SectionTime(99, result.last().endTime, lateEndStr))
+    }
+
+    return result
 }
 
 /**
@@ -387,8 +533,19 @@ fun itemsOverlap(a: TimelineItem, b: TimelineItem): Boolean {
  * Active current-week courses always take precedence. Non-current week courses are only
  * displayed if they do not overlap with any active course or schedule for the current week.
  */
-fun clusterDayCourses(courses: List<TimelineItem>, dayOfWeek: Int): List<OverlapCluster> {
+fun clusterDayCourses(
+    courses: List<TimelineItem>,
+    dayOfWeek: Int,
+    sectionTimes: List<SectionTime> = emptyList(),
+    gridHeight: Float = 56f
+): List<OverlapCluster> {
     if (courses.isEmpty()) return emptyList()
+
+    val effectiveSections = if (sectionTimes.isNotEmpty()) {
+        sectionTimes.sortedBy { it.section }
+    } else {
+        CourseDataManager.defaultSectionTimes()
+    }
 
     // 1. Separate current-week active items from non-current-week items
     val activeItems = courses.filter { it.isCurrentWeek }
@@ -398,23 +555,28 @@ fun clusterDayCourses(courses: List<TimelineItem>, dayOfWeek: Int): List<Overlap
     // A non-current-week item is only displayed if it does NOT overlap with any active item this week.
     val displayableNonCurrent = mutableListOf<TimelineItem>()
     for (nonItem in nonCurrentItems) {
-        val overlapsActive = activeItems.any { active -> itemsOverlap(nonItem, active) }
+        val overlapsActive = activeItems.any { active -> itemsOverlap(nonItem, active, effectiveSections) }
         if (!overlapsActive) {
-            val overlapsExisting = displayableNonCurrent.any { existing -> itemsOverlap(nonItem, existing) }
+            val overlapsExisting = displayableNonCurrent.any { existing -> itemsOverlap(nonItem, existing, effectiveSections) }
             if (!overlapsExisting) {
                 displayableNonCurrent.add(nonItem)
             }
         }
     }
 
-    val displayCourses = (activeItems + displayableNonCurrent).sortedWith(compareBy({ it.startSection }, { it.endSection }))
+    val displayCourses = (activeItems + displayableNonCurrent).sortedWith(
+        compareBy(
+            { itemMinutesRange(it, effectiveSections)?.first ?: (it.startSection * 60) },
+            { itemMinutesRange(it, effectiveSections)?.second ?: (it.endSection * 60) }
+        )
+    )
     val clusters = mutableListOf<MutableList<TimelineItem>>()
 
     for (item in displayCourses) {
         var placed = false
         for (cluster in clusters) {
             val overlaps = cluster.any { other ->
-                itemsOverlap(item, other)
+                itemsOverlap(item, other, effectiveSections)
             }
             if (overlaps) {
                 cluster.add(item)
@@ -428,15 +590,45 @@ fun clusterDayCourses(courses: List<TimelineItem>, dayOfWeek: Int): List<Overlap
     }
 
     return clusters.map { list ->
-        val sortedList = list.sortedWith(compareBy({ it.startSection }, { it.endSection }))
+        val sortedList = list.sortedWith(
+            compareBy(
+                { itemMinutesRange(it, effectiveSections)?.first ?: (it.startSection * 60) },
+                { itemMinutesRange(it, effectiveSections)?.second ?: (it.endSection * 60) }
+            )
+        )
         val minStart = sortedList.minOf { it.startSection }
         val maxEnd = sortedList.maxOf { it.endSection }
+
+        // Compute continuous vertical layout coordinates
+        val clusterStartMin = sortedList.mapNotNull { itemMinutesRange(it, effectiveSections)?.first }.minOrNull()
+        val clusterEndMin = sortedList.mapNotNull { itemMinutesRange(it, effectiveSections)?.second }.maxOrNull()
+
+        val topOffset: Float
+        val cardHeight: Float
+
+        if (clusterStartMin != null && clusterEndMin != null && clusterEndMin > clusterStartMin) {
+            val yTop = yOffsetForMinutes(clusterStartMin, effectiveSections, gridHeight)
+            val yBottom = yOffsetForMinutes(clusterEndMin, effectiveSections, gridHeight)
+            topOffset = yTop
+            cardHeight = maxOf(24f, (yBottom - yTop) - 2f)
+        } else {
+            val sIdx = effectiveSections.indexOfFirst { it.section == minStart }.takeIf { it >= 0 }
+                ?: maxOf(0, minOf(effectiveSections.size - 1, minStart - 1))
+            val eIdx = effectiveSections.indexOfFirst { it.section == maxEnd }.takeIf { it >= 0 }
+                ?: maxOf(sIdx, minOf(effectiveSections.size - 1, maxEnd - 1))
+            topOffset = sIdx * gridHeight
+            val span = maxOf(1, eIdx - sIdx + 1)
+            cardHeight = maxOf(24f, span * gridHeight - 3f)
+        }
+
         val stableKey = "day_${dayOfWeek}_sec_${minStart}_" + sortedList.map { it.courseId ?: it.id }.sorted().joinToString("_")
         OverlapCluster(
             key = stableKey,
             items = sortedList,
             minStartSection = minStart,
-            maxEndSection = maxEnd
+            maxEndSection = maxEnd,
+            topOffset = topOffset,
+            cardHeight = cardHeight
         )
     }
 }
@@ -466,25 +658,11 @@ fun TimetableCanvas(
     topCourseSelections: Map<String, String> = emptyMap(),
     onSelectTopCourse: (clusterKey: String, courseId: String) -> Unit = { _, _ -> }
 ) {
-    val totalSections = remember(sectionTimes, occurrences) {
-        val maxConfigSection = if (sectionTimes.isNotEmpty()) {
-            maxOf(sectionTimes.size, sectionTimes.maxOf { it.section })
-        } else {
-            12
-        }
-        val maxCourseSection = occurrences.maxOfOrNull { it.endSection } ?: 0
-        maxOf(1, maxOf(maxConfigSection, maxCourseSection))
+    val effectiveSectionTimes = remember(sectionTimes, occurrences) {
+        buildEffectiveSectionTimes(sectionTimes, occurrences)
     }
+    val totalSections = effectiveSectionTimes.size
     val sectionHeight = appSettings.gridHeight.dp
-
-    // Fallback section times if not provided
-    val defaultTimes = remember {
-        listOf(
-            "08:00\n08:45", "08:50\n09:35", "10:00\n10:45", "10:50\n11:35",
-            "13:30\n14:15", "14:20\n15:05", "15:25\n16:10", "16:15\n17:00",
-            "18:30\n19:15", "19:20\n20:05", "20:15\n21:00", "21:05\n21:50"
-        )
-    }
 
     val visibleDays = remember(appSettings.showWeekends, appSettings.showSaturday, appSettings.showSunday) {
         buildList {
@@ -505,30 +683,7 @@ fun TimetableCanvas(
     ) {
         // 1. Left Section Axis with section numbers and start/end times (width 44dp matching SectionAxisView.swift)
         Column(modifier = Modifier.width(44.dp)) {
-            for (sec in 1..totalSections) {
-                val secTime = sectionTimes.find { it.section == sec }
-                val (fallbackStart, fallbackEnd) = run {
-                    val dt = defaultTimes.getOrNull(sec - 1)
-                    if (dt != null) {
-                        Pair(dt.substringBefore("\n"), dt.substringAfter("\n"))
-                    } else {
-                        val prevEnd = sectionTimes.find { it.section == sec - 1 }?.endTime
-                            ?: defaultTimes.lastOrNull()?.substringAfter("\n")
-                            ?: "21:50"
-                        val parts = prevEnd.split(":")
-                        val ph = parts.getOrNull(0)?.toIntOrNull() ?: 21
-                        val pm = parts.getOrNull(1)?.toIntOrNull() ?: 50
-                        val startMin = (ph * 60 + pm + 10) % (24 * 60)
-                        val endMin = (startMin + 45) % (24 * 60)
-                        Pair(
-                            String.format(java.util.Locale.getDefault(), "%02d:%02d", startMin / 60, startMin % 60),
-                            String.format(java.util.Locale.getDefault(), "%02d:%02d", endMin / 60, endMin % 60)
-                        )
-                    }
-                }
-                val startT = secTime?.startTime ?: fallbackStart
-                val endT = secTime?.endTime ?: fallbackEnd
-
+            for (secTime in effectiveSectionTimes) {
                 Column(
                     modifier = Modifier
                         .height(sectionHeight)
@@ -537,7 +692,7 @@ fun TimetableCanvas(
                     verticalArrangement = Arrangement.Center
                 ) {
                     Text(
-                        text = if (sec <= 0) "早" else if (sec >= 90) "晚" else sec.toString(),
+                        text = if (secTime.section <= 0) "早" else if (secTime.section >= 90) "晚" else secTime.section.toString(),
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
                         color = if (isWallpaperDark) Color.White.copy(alpha = 0.85f) else Color(0xFF1F2937).copy(alpha = 0.85f)
@@ -545,7 +700,7 @@ fun TimetableCanvas(
                     if (appSettings.showSectionTimeInAxis) {
                         Spacer(modifier = Modifier.height(1.dp))
                         Text(
-                            text = startT,
+                            text = secTime.startTime,
                             fontSize = 8.5.sp,
                             lineHeight = 9.sp,
                             fontFamily = FontFamily.Monospace,
@@ -553,7 +708,7 @@ fun TimetableCanvas(
                             color = if (isWallpaperDark) Color.White.copy(alpha = 0.70f) else Color(0xFF6B7280)
                         )
                         Text(
-                            text = endT,
+                            text = secTime.endTime,
                             fontSize = 8.sp,
                             lineHeight = 8.5.sp,
                             fontFamily = FontFamily.Monospace,
@@ -583,7 +738,8 @@ fun TimetableCanvas(
                 ) {
                     // Empty grid slot click targets & guidelines
                     Column(modifier = Modifier.fillMaxSize()) {
-                        for (sec in 1..totalSections) {
+                        for (secTime in effectiveSectionTimes) {
+                            val sec = secTime.section
                             val isSlotActive = (activeSlotForAction == (dayIdx to sec))
                             Box(
                                 modifier = Modifier
@@ -591,7 +747,7 @@ fun TimetableCanvas(
                                     .height(sectionHeight)
                                     .clickable { onAddAtSlot(dayIdx, sec) }
                             ) {
-                                if (appSettings.showGridGuideLines && sec < totalSections) {
+                                if (appSettings.showGridGuideLines && secTime != effectiveSectionTimes.last()) {
                                     Box(
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -621,14 +777,16 @@ fun TimetableCanvas(
                     }
 
                     // Render Course Clusters (handling non-overlapping single courses and user-selectable overlapping courses)
-                    val clusters = remember(dayCourses, dayIdx) { clusterDayCourses(dayCourses, dayIdx) }
+                    val clusters = remember(dayCourses, dayIdx, effectiveSectionTimes, appSettings.gridHeight) {
+                        clusterDayCourses(dayCourses, dayIdx, effectiveSectionTimes, appSettings.gridHeight)
+                    }
                     for (cluster in clusters) {
+                        val topOffset = cluster.topOffset
+                        val cardHeight = cluster.cardHeight
+
                         if (cluster.items.size == 1) {
                             val item = cluster.items.first()
                             val isActiveThisWeek = item.isCurrentWeek
-                            val topOffset = (item.startSection - 1) * appSettings.gridHeight
-                            val duration = maxOf(1, item.endSection - item.startSection + 1)
-                            val cardHeight = duration * appSettings.gridHeight - 3
 
                             CourseCard(
                                 item = item,
@@ -636,7 +794,7 @@ fun TimetableCanvas(
                                 appSettings = appSettings,
                                 isDark = isDark,
                                 modifier = Modifier
-                                    .padding(top = topOffset.dp)
+                                    .offset(y = topOffset.dp)
                                     .height(cardHeight.dp)
                                     .fillMaxWidth()
                                     .clickable { onCourseClick(item) }
@@ -648,13 +806,10 @@ fun TimetableCanvas(
                             val topItem = cluster.items.find { (it.courseId ?: it.id) == selectedId || it.id == selectedId }
                                 ?: cluster.items.first()
                             val isActiveThisWeek = topItem.isCurrentWeek
-                            val topOffset = (topItem.startSection - 1) * appSettings.gridHeight
-                            val duration = maxOf(1, topItem.endSection - topItem.startSection + 1)
-                            val cardHeight = duration * appSettings.gridHeight - 3
 
                             Box(
                                 modifier = Modifier
-                                    .padding(top = topOffset.dp)
+                                    .offset(y = topOffset.dp)
                                     .height(cardHeight.dp)
                                     .fillMaxWidth()
                             ) {
@@ -994,82 +1149,88 @@ fun CourseCard(
         )
 
         // Card Content: exact WakeUp centered stack without distracting [非本周] text
-        Column(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 3.dp, vertical = 4.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+                .padding(horizontal = 3.dp, vertical = 2.dp),
+            contentAlignment = Alignment.Center
         ) {
-
-            // Course Title
-            Text(
-                text = item.title,
-                fontSize = fontSize,
-                lineHeight = 14.5.sp,
-                fontWeight = FontWeight.Bold,
-                color = effectiveTextColor,
-                textAlign = TextAlign.Center,
-                maxLines = 4,
-                overflow = TextOverflow.Ellipsis
-            )
-
-            // Location
-            if (appSettings.showLocationInCard && !item.location.isNullOrBlank()) {
-                Spacer(modifier = Modifier.height(2.dp))
-                val locText = if (appSettings.showAtPrefixForRoom) "@${item.location}" else item.location ?: ""
+            val isCompact = maxHeight < 42.dp
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                // Course Title
                 Text(
-                    text = locText,
-                    fontSize = 10.sp,
-                    lineHeight = 12.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = effectiveSecondaryTextColor,
+                    text = item.title,
+                    fontSize = if (isCompact) 10.5.sp else fontSize,
+                    lineHeight = if (isCompact) 12.sp else 14.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = effectiveTextColor,
                     textAlign = TextAlign.Center,
-                    maxLines = 2,
+                    maxLines = if (isCompact) 1 else 4,
                     overflow = TextOverflow.Ellipsis
                 )
-            }
 
-            // Teacher
-            if (appSettings.showTeacherInCard && !item.teacher.isNullOrBlank()) {
-                Spacer(modifier = Modifier.height(1.5.dp))
-                Text(
-                    text = item.teacher ?: "",
-                    fontSize = 9.5.sp,
-                    lineHeight = 11.sp,
-                    fontWeight = FontWeight.Normal,
-                    color = effectiveSecondaryTextColor.copy(alpha = 0.90f),
-                    textAlign = TextAlign.Center,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
+                if (!isCompact) {
+                    // Location
+                    if (appSettings.showLocationInCard && !item.location.isNullOrBlank()) {
+                        Spacer(modifier = Modifier.height(2.dp))
+                        val locText = if (appSettings.showAtPrefixForRoom) "@${item.location}" else item.location ?: ""
+                        Text(
+                            text = locText,
+                            fontSize = 10.sp,
+                            lineHeight = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = effectiveSecondaryTextColor,
+                            textAlign = TextAlign.Center,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
 
-            // Time
-            if (appSettings.showTimeInCard && !item.startTime.isNullOrBlank() && !item.endTime.isNullOrBlank()) {
-                Spacer(modifier = Modifier.height(1.5.dp))
-                Text(
-                    text = "${item.startTime}-${item.endTime}",
-                    fontSize = 8.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = effectiveSecondaryTextColor.copy(alpha = 0.85f),
-                    textAlign = TextAlign.Center,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
+                    // Teacher
+                    if (appSettings.showTeacherInCard && !item.teacher.isNullOrBlank()) {
+                        Spacer(modifier = Modifier.height(1.5.dp))
+                        Text(
+                            text = item.teacher ?: "",
+                            fontSize = 9.5.sp,
+                            lineHeight = 11.sp,
+                            fontWeight = FontWeight.Normal,
+                            color = effectiveSecondaryTextColor.copy(alpha = 0.90f),
+                            textAlign = TextAlign.Center,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
 
-            // Notes
-            if (appSettings.showNotesInCard && !item.notes.isNullOrBlank()) {
-                Spacer(modifier = Modifier.height(1.5.dp))
-                Text(
-                    text = item.notes ?: "",
-                    fontSize = 8.sp,
-                    color = effectiveSecondaryTextColor.copy(alpha = 0.75f),
-                    textAlign = TextAlign.Center,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                    // Time
+                    if (appSettings.showTimeInCard && !item.startTime.isNullOrBlank() && !item.endTime.isNullOrBlank()) {
+                        Spacer(modifier = Modifier.height(1.5.dp))
+                        Text(
+                            text = "${item.startTime}-${item.endTime}",
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = effectiveSecondaryTextColor.copy(alpha = 0.85f),
+                            textAlign = TextAlign.Center,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    // Notes
+                    if (appSettings.showNotesInCard && !item.notes.isNullOrBlank()) {
+                        Spacer(modifier = Modifier.height(1.5.dp))
+                        Text(
+                            text = item.notes ?: "",
+                            fontSize = 8.sp,
+                            color = effectiveSecondaryTextColor.copy(alpha = 0.75f),
+                            textAlign = TextAlign.Center,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
             }
         }
     }

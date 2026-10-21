@@ -47,7 +47,7 @@ ClassFlow 是一款专为 macOS 与 Android 打造的高颜值、本地离线优
 | :--- | :--- | :--- | :--- | :--- |
 | **macOS 安装镜像** | Apple Silicon (arm64) | `ClassFlow-1.0.0-macOS-arm64.dmg` | 4.4 MB | `2e3092d356a7ac2ef50703d980bb429fd50383d92ac0d15ca039beb3bfdd3d7a` |
 | **macOS 绿色免安装** | Apple Silicon (arm64) | `ClassFlow-1.0.0-macOS-arm64.zip` | 6.8 MB | `3096621d7ac6bc60fc2d7847c2a2015311b186d5f2bb752d455abe7719c40db7` |
-| **Android 客户端** | Universal (ARM/x86) | `ClassFlow-1.0.0-android.apk` | 13.4 MB | `a07137a280094137b487640c04bf3dccf0702f6107decc7c3ab7261b27912b8a` |
+| **Android 客户端** | Universal (ARM/x86) | `ClassFlow-1.0.0-android.apk` | 13.4 MB | `57e5e21a66b6523d2302f5a80cdff655fc1e8dc7a0105cb5092f4636fca349a3` |
 | **小米手环快应用** | 手环快应用安装包 | `ClassFlow-1.0.0-xiaomi-band.rpk` | 4.7 KB | `8a3b4c6cbcfd3d6ec4e4a7580b13ea6dc98c6b543bca3735de98aae926938602` |
 | **小米手环离线包** | 开发者安装源码包 | `ClassFlow-1.0.0-xiaomi-band.zip` | 4.7 KB | `8a3b4c6cbcfd3d6ec4e4a7580b13ea6dc98c6b543bca3735de98aae926938602` |
 | **ChatGPT 本地插件** | Codex / Work 插件包 | `ClassFlow-Local-Plugin-1.1.0.zip` | 15.0 KB | `dd7a7de60a2c57dd28d10f918849acffe56616f64bf75f706647a919a3962ddc` |
