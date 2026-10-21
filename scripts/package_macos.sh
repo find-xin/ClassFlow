@@ -35,6 +35,7 @@ mkdir -p "${BUNDLE_DIR}/Contents/PlugIns"
 
 cp "${RELEASE_BIN}" "${BUNDLE_DIR}/Contents/MacOS/${APP_NAME}"
 chmod +x "${BUNDLE_DIR}/Contents/MacOS/${APP_NAME}"
+ln -sf "${APP_NAME}" "${BUNDLE_DIR}/Contents/MacOS/classflow-mcp"
 if [ -f "${MACOS_DIR}/Resources/AppIcon.icns" ]; then
     cp "${MACOS_DIR}/Resources/AppIcon.icns" "${BUNDLE_DIR}/Contents/Resources/AppIcon.icns"
 fi

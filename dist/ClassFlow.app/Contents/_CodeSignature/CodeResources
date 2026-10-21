@@ -11,6 +11,11 @@
 	</dict>
 	<key>files2</key>
 	<dict>
+		<key>MacOS/classflow-mcp</key>
+		<dict>
+			<key>symlink</key>
+			<string>ClassFlow</string>
+		</dict>
 		<key>PlugIns/ClassFlowWidgets.appex</key>
 		<dict>
 			<key>cdhash</key>

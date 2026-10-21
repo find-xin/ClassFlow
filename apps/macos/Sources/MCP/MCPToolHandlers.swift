@@ -1,0 +1,1085 @@
+import Foundation
+import ClassFlowCore
+import AppKit
+
+/// Executes high-level operations on ClassFlow data on behalf of MCP tools and ChatGPT.
+public struct MCPToolHandlers: Sendable {
+    public let database: LocalDatabase
+    public let widgetStore: WidgetDataStore
+    public let timelineEngine: TimelineEngine
+
+    public init(
+        database: LocalDatabase = LocalDatabase(),
+        widgetStore: WidgetDataStore = WidgetDataStore()
+    ) {
+        self.database = database
+        self.widgetStore = widgetStore
+        self.timelineEngine = TimelineEngine()
+    }
+
+    // MARK: - Notification & Live Reload
+
+    /// Broadcasts real-time notification to running ClassFlow macOS app and updates desktop widgets.
+    public func notifyAppAndWidgets(payload: LocalDatabase.DatabasePayload) {
+        // 1. Update WidgetKit shared data
+        updateWidgetPayload(payload)
+
+        // 2. Post distributed notification to running ClassFlow AppKit process
+        DistributedNotificationCenter.default().postNotificationName(
+            NSNotification.Name("org.classflow.databaseDidChange"),
+            object: nil,
+            userInfo: nil,
+            deliverImmediately: true
+        )
+    }
+
+    private func updateWidgetPayload(_ payload: LocalDatabase.DatabasePayload) {
+        guard let current = payload.semesters.first(where: { $0.isCurrent }) ?? payload.semesters.first else { return }
+        let currentWeek = calculateCurrentWeek(for: current)
+        let df = DateFormatter()
+        df.dateFormat = "yyyy-MM-dd"
+        let todayStr = df.string(from: Date())
+
+        let currentCourses = payload.courses.filter { $0.semesterId == current.id }
+        let currentEvents = payload.calendarEvents.filter {
+            $0.semesterId == current.id || ($0.semesterId == nil && current.id == payload.semesters.first?.id)
+        }
+
+        var weekItems = timelineEngine.generateOccurrences(
+            semester: current,
+            courses: currentCourses,
+            exceptions: payload.exceptions,
+            forWeek: currentWeek,
+            activeWeek: currentWeek,
+            showNonCurrentWeekCourses: payload.settings.showNonCurrentWeekCourses
+        )
+
+        let wDates = timelineEngine.weekCalculator.dateStringsInWeek(weekNumber: currentWeek, semesterStartDate: current.startDate)
+        for event in currentEvents {
+            weekItems.append(contentsOf: projectCalendarEventOccurrences(event, weekDates: wDates, semester: current, selectedWeek: currentWeek))
+        }
+
+        let todayItems = weekItems.filter { $0.date == todayStr && $0.status != .cancelled && $0.isCurrentWeek }
+            .sorted { $0.startSection < $1.startSection }
+
+        let widgetToday = todayItems.map { occ in
+            WidgetCourseItem(
+                id: occ.id,
+                title: occ.title,
+                location: occ.location,
+                teacher: occ.teacher,
+                startTime: occ.startTime ?? "08:00",
+                endTime: occ.endTime ?? "09:35",
+                startSection: occ.startSection,
+                endSection: occ.endSection,
+                colorHex: occ.color,
+                isOngoing: false
+            )
+        }
+
+        let widgetPayload = WidgetTimelinePayload(
+            semesterName: current.name,
+            currentWeek: currentWeek,
+            todayDateString: todayStr,
+            nextClass: widgetToday.first,
+            todayClasses: widgetToday,
+            weekSchedule: [],
+            lastUpdated: ISO8601DateFormatter().string(from: Date())
+        )
+        try? widgetStore.save(widgetPayload)
+    }
+
+    // MARK: - 1. Status & App Info
+
+    public func getStatus() -> [String: Any] {
+        let payload = database.load()
+        let currentSem = payload.semesters.first(where: { $0.isCurrent }) ?? payload.semesters.first
+        let currentWeek = currentSem != nil ? calculateCurrentWeek(for: currentSem!) : 1
+        let df = DateFormatter()
+        df.dateFormat = "yyyy-MM-dd"
+        let todayStr = df.string(from: Date())
+        let weekday = Calendar.current.component(.weekday, from: Date())
+        let dayOfWeek = weekday == 1 ? 7 : (weekday - 1)
+
+        let pendingTasks = payload.pomodoroTasks.filter { !$0.isCompleted }.count
+        let activeTask = payload.pomodoroTasks.first(where: { $0.id == payload.activeProfileId })
+        let syncProvider = UserDefaults.standard.string(forKey: "sync_provider_type") ?? "未配置"
+
+        return [
+            "current_semester": [
+                "id": currentSem?.id.uuidString ?? "",
+                "name": currentSem?.name ?? "未配置学期",
+                "start_date": currentSem?.startDate ?? "",
+                "total_weeks": currentSem?.totalWeeks ?? 16,
+                "current_week": currentWeek
+            ],
+            "today": [
+                "date": todayStr,
+                "day_of_week": dayOfWeek,
+                "day_name": ["周一", "周二", "周三", "周四", "周五", "周六", "周日"][dayOfWeek - 1]
+            ],
+            "counts": [
+                "courses": payload.courses.count,
+                "calendar_events": payload.calendarEvents.count,
+                "tasks_total": payload.pomodoroTasks.count,
+                "tasks_in_progress": pendingTasks,
+                "focus_records": payload.pomodoroRecords.count
+            ],
+            "active_focus_task": activeTask?.title as Any,
+            "cloud_sync_provider": syncProvider
+        ]
+    }
+
+    // MARK: - 2. Timetable Query
+
+    public func queryTimetable(week: Int?, dayOfWeek: Int?) -> [String: Any] {
+        let payload = database.load()
+        guard let semester = payload.semesters.first(where: { $0.isCurrent }) ?? payload.semesters.first else {
+            return ["error": "当前没有找到激活的学期课表。"]
+        }
+
+        let currentWeek = calculateCurrentWeek(for: semester)
+        let targetWeek = week ?? currentWeek
+        guard targetWeek >= 1 && targetWeek <= semester.totalWeeks else {
+            return ["error": "查询周次超出学期范围（1..\(semester.totalWeeks) 周）。"]
+        }
+
+        let semCourses = payload.courses.filter { $0.semesterId == semester.id }
+        let semEvents = payload.calendarEvents.filter {
+            $0.semesterId == semester.id || ($0.semesterId == nil && semester.id == payload.semesters.first?.id)
+        }
+
+        var items = timelineEngine.generateOccurrences(
+            semester: semester,
+            courses: semCourses,
+            exceptions: payload.exceptions,
+            forWeek: targetWeek,
+            activeWeek: currentWeek,
+            showNonCurrentWeekCourses: true
+        )
+
+        let weekDates = timelineEngine.weekCalculator.dateStringsInWeek(weekNumber: targetWeek, semesterStartDate: semester.startDate)
+        for event in semEvents {
+            items.append(contentsOf: projectCalendarEventOccurrences(event, weekDates: weekDates, semester: semester, selectedWeek: targetWeek))
+        }
+
+        if let day = dayOfWeek {
+            items = items.filter { $0.dayOfWeek == day }
+        }
+
+        items.sort {
+            if $0.dayOfWeek != $1.dayOfWeek {
+                return $0.dayOfWeek < $1.dayOfWeek
+            }
+            return $0.startSection < $1.startSection
+        }
+
+        let dayNames = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+        let formatted = items.map { occ -> [String: Any] in
+            var dict: [String: Any] = [
+                "id": occ.id,
+                "title": occ.title,
+                "day_of_week": occ.dayOfWeek,
+                "day_name": (occ.dayOfWeek >= 1 && occ.dayOfWeek <= 7) ? dayNames[occ.dayOfWeek - 1] : "周\(occ.dayOfWeek)",
+                "date": occ.date,
+                "start_section": occ.startSection,
+                "end_section": occ.endSection,
+                "start_time": (occ.startTime ?? "08:00") as Any,
+                "end_time": (occ.endTime ?? "09:35") as Any,
+                "is_current_week": occ.isCurrentWeek,
+                "color": occ.color,
+                "has_conflict": occ.hasConflict,
+                "type": occ.calendarEventId != nil ? "calendar_event" : "course"
+            ]
+            if let loc = occ.location, !loc.isEmpty { dict["location"] = loc }
+            if let t = occ.teacher, !t.isEmpty { dict["teacher"] = t }
+            if let n = occ.notes, !n.isEmpty { dict["notes"] = n }
+            if let cr = occ.credit { dict["credit"] = cr }
+            return dict
+        }
+
+        return [
+            "semester_name": semester.name,
+            "week": targetWeek,
+            "is_current_week": (targetWeek == currentWeek),
+            "total_items": formatted.count,
+            "items": formatted
+        ]
+    }
+
+    // MARK: - 3. Add Course
+
+    public func addCourse(arguments: [String: Any]) throws -> String {
+        guard let name = arguments["name"] as? String, !name.trimmingCharacters(in: .whitespaces).isEmpty else {
+            throw NSError(domain: "ClassFlowMCP", code: 400, userInfo: [NSLocalizedDescriptionKey: "缺少必填参数：课程名称 (name)"])
+        }
+        guard let dayOfWeek = arguments["day_of_week"] as? Int, (1...7).contains(dayOfWeek) else {
+            throw NSError(domain: "ClassFlowMCP", code: 400, userInfo: [NSLocalizedDescriptionKey: "缺少有效参数：星期几 (day_of_week: 1..7)"])
+        }
+        guard let startSec = arguments["start_section"] as? Int, startSec >= 1 else {
+            throw NSError(domain: "ClassFlowMCP", code: 400, userInfo: [NSLocalizedDescriptionKey: "缺少有效参数：开始节次 (start_section >= 1)"])
+        }
+        let endSec = arguments["end_section"] as? Int ?? startSec
+        let classroom = arguments["classroom"] as? String ?? ""
+        let teacher = arguments["teacher"] as? String
+        let creditVal = arguments["credit"] as? Double ?? (arguments["credit"] as? NSNumber)?.doubleValue
+        let notes = arguments["notes"] as? String
+        let colorInput = arguments["color"] as? String
+        let resolvedColor = resolveColorHex(colorInput)
+
+        var payload = database.load()
+        guard let semester = payload.semesters.first(where: { $0.isCurrent }) ?? payload.semesters.first else {
+            throw NSError(domain: "ClassFlowMCP", code: 404, userInfo: [NSLocalizedDescriptionKey: "未找到当前学期，无法添加课程。"])
+        }
+
+        let startWeek = arguments["start_week"] as? Int ?? 1
+        let endWeek = arguments["end_week"] as? Int ?? semester.totalWeeks
+        let rawPattern = (arguments["week_pattern"] as? String)?.lowercased() ?? "all"
+
+        let weekPattern: WeekPattern
+        switch rawPattern {
+        case "odd", "单周":
+            weekPattern = .range(start: startWeek, end: endWeek, type: .odd)
+        case "even", "双周":
+            weekPattern = .range(start: startWeek, end: endWeek, type: .even)
+        case "custom", "自定义":
+            let customWeeks = arguments["custom_weeks"] as? [Int] ?? Array(startWeek...endWeek)
+            weekPattern = .custom(customWeeks)
+        default:
+            weekPattern = .range(start: startWeek, end: endWeek, type: .all)
+        }
+
+        let schedule = CourseSchedule(
+            id: UUID(),
+            courseId: UUID(),
+            dayOfWeek: dayOfWeek,
+            startSection: startSec,
+            endSection: max(startSec, endSec),
+            classroom: classroom,
+            teacher: teacher,
+            weekPattern: weekPattern
+        )
+
+        let trimmedName = name.trimmingCharacters(in: .whitespaces)
+        var courseDesc = ""
+
+        if let existingIdx = payload.courses.firstIndex(where: {
+            $0.semesterId == semester.id && $0.name.trimmingCharacters(in: .whitespaces).lowercased() == trimmedName.lowercased()
+        }) {
+            // Append schedule to existing course
+            var existing = payload.courses[existingIdx]
+            var sCopy = schedule
+            sCopy.courseId = existing.id
+            existing.schedules.append(sCopy)
+            if let t = teacher, !t.isEmpty { existing.teacher = t }
+            if let cr = creditVal { existing.credit = cr }
+            if let col = colorInput, !col.isEmpty { existing.color = resolvedColor }
+            if let n = notes, !n.isEmpty { existing.notes = n }
+            payload.courses[existingIdx] = existing
+            courseDesc = "已为已有课程「\(existing.name)」追加上课时段（周\(dayOfWeek) 第\(startSec)-\(endSec)节 @ \(classroom.isEmpty ? "未指定教室" : classroom)）。"
+        } else {
+            // Create brand new course
+            let courseId = UUID()
+            var sCopy = schedule
+            sCopy.courseId = courseId
+            let newCourse = Course(
+                id: courseId,
+                semesterId: semester.id,
+                name: trimmedName,
+                teacher: teacher,
+                credit: creditVal,
+                color: resolvedColor,
+                notes: notes,
+                schedules: [sCopy]
+            )
+            payload.courses.append(newCourse)
+            courseDesc = "已成功创建并添加新课程「\(trimmedName)」：周\(dayOfWeek) 第\(startSec)-\(endSec)节，地点：\(classroom.isEmpty ? "未指定教室" : classroom)，教师：\(teacher ?? "未指定")，学分：\(creditVal != nil ? "\(creditVal!)分" : "未指定")，周次：\(startWeek)-\(endWeek)周。"
+        }
+
+        try database.save(payload)
+        notifyAppAndWidgets(payload: payload)
+
+        return courseDesc + " ClassFlow 课表已实时刷新更新。"
+    }
+
+    // MARK: - 4. Update Course
+
+    public func updateCourse(arguments: [String: Any]) throws -> String {
+        let nameQuery = (arguments["name"] ?? arguments["course_id"] ?? arguments["id"]) as? String
+        guard let name = nameQuery, !name.trimmingCharacters(in: .whitespaces).isEmpty else {
+            throw NSError(domain: "ClassFlowMCP", code: 400, userInfo: [NSLocalizedDescriptionKey: "缺少必填参数：要修改的课程名称 (name)"])
+        }
+
+        var payload = database.load()
+        let trimmedName = name.trimmingCharacters(in: .whitespaces).lowercased()
+
+        guard let idx = payload.courses.firstIndex(where: {
+            $0.id.uuidString.lowercased() == trimmedName ||
+            $0.name.trimmingCharacters(in: .whitespaces).lowercased() == trimmedName ||
+            $0.name.trimmingCharacters(in: .whitespaces).lowercased().contains(trimmedName)
+        }) else {
+            let availableNames = payload.courses.map { "「\($0.name)」" }.joined(separator: ", ")
+            throw NSError(domain: "ClassFlowMCP", code: 404, userInfo: [
+                NSLocalizedDescriptionKey: "未找到匹配「\(name)」的课程。当前学期已有课程包括：\(availableNames)"
+            ])
+        }
+
+        var course = payload.courses[idx]
+        var changes: [String] = []
+
+        if let newName = arguments["new_name"] as? String, !newName.trimmingCharacters(in: .whitespaces).isEmpty {
+            course.name = newName.trimmingCharacters(in: .whitespaces)
+            changes.append("名称改为「\(course.name)」")
+        }
+        if let teacher = arguments["teacher"] as? String {
+            course.teacher = teacher
+            for i in course.schedules.indices { course.schedules[i].teacher = teacher }
+            changes.append("教师更新为「\(teacher)」")
+        }
+        if let credit = arguments["credit"] as? Double ?? (arguments["credit"] as? NSNumber)?.doubleValue {
+            course.credit = credit
+            changes.append("学分更新为 \(credit) 分")
+        }
+        if let colorInput = arguments["color"] as? String {
+            let hex = resolveColorHex(colorInput)
+            course.color = hex
+            changes.append("卡片颜色更新为 \(hex)")
+        }
+        if let notes = arguments["notes"] as? String {
+            course.notes = notes
+            changes.append("备注更新为「\(notes)」")
+        }
+        if let classroom = arguments["classroom"] as? String {
+            for i in course.schedules.indices {
+                course.schedules[i].classroom = classroom
+            }
+            changes.append("上课教室统一更新为「\(classroom)」")
+        }
+
+        payload.courses[idx] = course
+        try database.save(payload)
+        notifyAppAndWidgets(payload: payload)
+
+        return "已成功更新课程「\(course.name)」：" + changes.joined(separator: "，") + "。ClassFlow 已同步变动。"
+    }
+
+    // MARK: - 5. Delete Course
+
+    public func deleteCourse(arguments: [String: Any]) throws -> String {
+        let nameQuery = (arguments["name"] ?? arguments["course_id"] ?? arguments["id"]) as? String
+        guard let name = nameQuery, !name.trimmingCharacters(in: .whitespaces).isEmpty else {
+            throw NSError(domain: "ClassFlowMCP", code: 400, userInfo: [NSLocalizedDescriptionKey: "缺少必填参数：课程名称 (name)"])
+        }
+
+        var payload = database.load()
+        let trimmedName = name.trimmingCharacters(in: .whitespaces).lowercased()
+
+        guard let course = payload.courses.first(where: {
+            $0.id.uuidString.lowercased() == trimmedName ||
+            $0.name.trimmingCharacters(in: .whitespaces).lowercased() == trimmedName ||
+            $0.name.trimmingCharacters(in: .whitespaces).lowercased().contains(trimmedName)
+        }) else {
+            throw NSError(domain: "ClassFlowMCP", code: 404, userInfo: [NSLocalizedDescriptionKey: "未找到课程「\(name)」。"])
+        }
+
+        let scope = (arguments["scope"] as? String)?.lowercased() ?? "all"
+
+        if scope == "all" || scope == "全部" {
+            payload.courses.removeAll { $0.id == course.id }
+            payload.tombstones.append(SyncTombstone(entityId: course.id.uuidString, entityType: "course"))
+            for s in course.schedules {
+                payload.tombstones.append(SyncTombstone(entityId: s.id.uuidString, entityType: "schedule"))
+            }
+            try database.save(payload)
+            notifyAppAndWidgets(payload: payload)
+            return "已彻底删除课程「\(course.name)」及其全部课时安排。"
+        } else if scope == "this_and_future" || scope == "本次及以后" {
+            let semester = payload.semesters.first(where: { $0.isCurrent }) ?? payload.semesters.first
+            let curWeek = arguments["week"] as? Int ?? (semester != nil ? calculateCurrentWeek(for: semester!) : 1)
+            var updatedCourse = course
+            var remainingSchedules: [CourseSchedule] = []
+
+            for s in course.schedules {
+                let existingWeeks = s.weekPattern.customWeeks ?? Array(s.weekPattern.startWeek...s.weekPattern.endWeek)
+                let newWeeks = existingWeeks.filter { $0 < curWeek }
+                if !newWeeks.isEmpty {
+                    var copy = s
+                    copy.weekPattern = .custom(newWeeks)
+                    remainingSchedules.append(copy)
+                } else {
+                    payload.tombstones.append(SyncTombstone(entityId: s.id.uuidString, entityType: "schedule"))
+                }
+            }
+
+            if remainingSchedules.isEmpty {
+                payload.courses.removeAll { $0.id == course.id }
+                payload.tombstones.append(SyncTombstone(entityId: course.id.uuidString, entityType: "course"))
+            } else {
+                updatedCourse.schedules = remainingSchedules
+                if let idx = payload.courses.firstIndex(where: { $0.id == course.id }) {
+                    payload.courses[idx] = updatedCourse
+                }
+            }
+
+            try database.save(payload)
+            notifyAppAndWidgets(payload: payload)
+            return "已删除课程「\(course.name)」自第 \(curWeek) 周及以后的所有课时。"
+        } else {
+            // single cancellation
+            let dateStr = arguments["date"] as? String ?? {
+                let df = DateFormatter()
+                df.dateFormat = "yyyy-MM-dd"
+                return df.string(from: Date())
+            }()
+            for s in course.schedules {
+                let ex = ScheduleException(
+                    id: UUID(),
+                    scheduleId: s.id,
+                    originalDate: dateStr,
+                    exceptionType: .cancel,
+                    reason: "单次删除"
+                )
+                payload.exceptions.append(ex)
+            }
+            try database.save(payload)
+            notifyAppAndWidgets(payload: payload)
+            return "已取消课程「\(course.name)」在 \(dateStr) 的单次课时。"
+        }
+    }
+
+    // MARK: - 6. List Courses
+
+    public func listCourses() -> [[String: Any]] {
+        let payload = database.load()
+        let semester = payload.semesters.first(where: { $0.isCurrent }) ?? payload.semesters.first
+        let semCourses = payload.courses.filter { semester == nil || $0.semesterId == semester?.id }
+
+        return semCourses.map { c -> [String: Any] in
+            let schedSummaries = c.schedules.map { s -> [String: Any] in
+                [
+                    "day_of_week": s.dayOfWeek,
+                    "sections": "\(s.startSection)-\(s.endSection)",
+                    "classroom": s.classroom ?? "",
+                    "weeks": "\(s.weekPattern.startWeek)-\(s.weekPattern.endWeek)周"
+                ]
+            }
+            return [
+                "id": c.id.uuidString,
+                "name": c.name,
+                "teacher": c.teacher ?? "",
+                "credit": c.credit as Any,
+                "color": c.color,
+                "notes": c.notes ?? "",
+                "schedules_count": c.schedules.count,
+                "schedules": schedSummaries
+            ]
+        }
+    }
+
+    // MARK: - 7. Calendar Events
+
+    public func listCalendarEvents(date: String?) -> [[String: Any]] {
+        let payload = database.load()
+        var events = payload.calendarEvents
+        if let d = date, !d.isEmpty {
+            events = events.filter { $0.startDate?.hasPrefix(d) == true || $0.startTime.hasPrefix(d) }
+        }
+
+        return events.map { ev in
+            [
+                "id": ev.id.uuidString,
+                "title": ev.title,
+                "date": ev.startDate ?? String(ev.startTime.prefix(10)),
+                "start_time": ev.startTime,
+                "end_time": ev.endTime,
+                "is_all_day": ev.isAllDay,
+                "location": ev.location ?? "",
+                "frequency": ev.frequency ?? "none",
+                "color": ev.color,
+                "notes": ev.description ?? ""
+            ]
+        }
+    }
+
+    public func addCalendarEvent(arguments: [String: Any]) throws -> String {
+        guard let title = arguments["title"] as? String, !title.trimmingCharacters(in: .whitespaces).isEmpty else {
+            throw NSError(domain: "ClassFlowMCP", code: 400, userInfo: [NSLocalizedDescriptionKey: "缺少必填参数：日程标题 (title)"])
+        }
+        let dateStr = arguments["date"] as? String ?? {
+            let df = DateFormatter()
+            df.dateFormat = "yyyy-MM-dd"
+            return df.string(from: Date())
+        }()
+        let startTime = arguments["start_time"] as? String ?? "09:00"
+        let endTime = arguments["end_time"] as? String ?? "10:00"
+        let isAllDay = arguments["is_all_day"] as? Bool ?? false
+        let location = arguments["location"] as? String
+        let freq = arguments["frequency"] as? String ?? "none"
+        let color = resolveColorHex(arguments["color"] as? String)
+        let notes = arguments["notes"] as? String
+
+        var payload = database.load()
+        let currentSem = payload.semesters.first(where: { $0.isCurrent }) ?? payload.semesters.first
+
+        let newEvent = CalendarEvent(
+            id: UUID(),
+            calendarId: UUID(),
+            semesterId: currentSem?.id,
+            title: title.trimmingCharacters(in: .whitespaces),
+            startTime: "\(dateStr)T\(startTime):00",
+            endTime: "\(dateStr)T\(endTime):00",
+            isAllDay: isAllDay,
+            location: location,
+            description: notes,
+            color: color,
+            frequency: freq,
+            startDate: dateStr,
+            endDate: dateStr
+        )
+
+        payload.calendarEvents.append(newEvent)
+        try database.save(payload)
+        notifyAppAndWidgets(payload: payload)
+
+        return "已成功创建日程「\(newEvent.title)」：\(dateStr) \(isAllDay ? "全天" : "\(startTime) - \(endTime)")，地点：\(location ?? "无")。ClassFlow 已同步更新。"
+    }
+
+    public func deleteCalendarEvent(arguments: [String: Any]) throws -> String {
+        let titleQuery = (arguments["title"] ?? arguments["event_id"] ?? arguments["id"]) as? String
+        guard let title = titleQuery, !title.trimmingCharacters(in: .whitespaces).isEmpty else {
+            throw NSError(domain: "ClassFlowMCP", code: 400, userInfo: [NSLocalizedDescriptionKey: "缺少日程标题或ID (title / event_id)"])
+        }
+
+        var payload = database.load()
+        let trimmedTitle = title.trimmingCharacters(in: .whitespaces).lowercased()
+
+        guard let ev = payload.calendarEvents.first(where: {
+            $0.id.uuidString.lowercased() == trimmedTitle ||
+            $0.title.trimmingCharacters(in: .whitespaces).lowercased() == trimmedTitle ||
+            $0.title.trimmingCharacters(in: .whitespaces).lowercased().contains(trimmedTitle)
+        }) else {
+            throw NSError(domain: "ClassFlowMCP", code: 404, userInfo: [NSLocalizedDescriptionKey: "未找到日程「\(title)」。"])
+        }
+
+        payload.calendarEvents.removeAll { $0.id == ev.id }
+        payload.tombstones.append(SyncTombstone(entityId: ev.id.uuidString, entityType: "calendarEvent"))
+
+        try database.save(payload)
+        notifyAppAndWidgets(payload: payload)
+
+        return "已成功删除日程「\(ev.title)」。"
+    }
+
+    // MARK: - 8. Tasks (Pomodoro ToDo)
+
+    public func listTasks(filter: String?) -> [[String: Any]] {
+        let payload = database.load()
+        let normFilter = filter?.lowercased() ?? "in_progress"
+        var tasks = payload.pomodoroTasks
+
+        if normFilter == "in_progress" || normFilter == "进行中" {
+            tasks = tasks.filter { !$0.isCompleted }
+        } else if normFilter == "completed" || normFilter == "已完成" {
+            tasks = tasks.filter { $0.isCompleted }
+        }
+
+        tasks.sort {
+            if $0.isCompleted != $1.isCompleted {
+                return !$0.isCompleted
+            }
+            return $0.priority.rawValue < $1.priority.rawValue
+        }
+
+        return tasks.map { t in
+            [
+                "id": t.id.uuidString,
+                "title": t.title,
+                "is_completed": t.isCompleted,
+                "estimated_pomodoros": t.estimatedPomodoros,
+                "completed_pomodoros": t.completedPomodoros,
+                "priority": t.priority.rawValue,
+                "due_date": t.dueDate ?? "",
+                "created_at": ISO8601DateFormatter().string(from: t.createdAt)
+            ]
+        }
+    }
+
+    public func addTask(arguments: [String: Any]) throws -> String {
+        guard let title = arguments["title"] as? String, !title.trimmingCharacters(in: .whitespaces).isEmpty else {
+            throw NSError(domain: "ClassFlowMCP", code: 400, userInfo: [NSLocalizedDescriptionKey: "缺少任务标题 (title)"])
+        }
+        let pomos = arguments["estimated_pomodoros"] as? Int ?? 1
+        var priority: TaskPriority = .medium
+        if let pInt = arguments["priority"] as? Int {
+            priority = (pInt >= 2) ? .high : (pInt == 1 ? .medium : .low)
+        } else if let pStr = (arguments["priority"] as? String)?.lowercased() {
+            if pStr.contains("high") || pStr.contains("高") || pStr.contains("急") {
+                priority = .high
+            } else if pStr.contains("low") || pStr.contains("低") {
+                priority = .low
+            } else {
+                priority = .medium
+            }
+        }
+        let dueDate = arguments["due_date"] as? String
+
+        var payload = database.load()
+        let currentSem = payload.semesters.first(where: { $0.isCurrent }) ?? payload.semesters.first
+
+        let newTask = PomodoroTask(
+            id: UUID(),
+            semesterId: currentSem?.id,
+            title: title.trimmingCharacters(in: .whitespaces),
+            courseId: nil,
+            estimatedPomodoros: pomos,
+            completedPomodoros: 0,
+            isCompleted: false,
+            priority: priority,
+            dueDate: dueDate,
+            createdAt: Date()
+        )
+
+        payload.pomodoroTasks.append(newTask)
+        if payload.activeProfileId == nil {
+            payload.activeProfileId = newTask.id
+        }
+        try database.save(payload)
+        notifyAppAndWidgets(payload: payload)
+
+        return "已成功添加待办任务「\(newTask.title)」：预计 \(pomos) 个番茄钟，优先级 \(priority.rawValue)，截止日期：\(dueDate ?? "无")。"
+    }
+
+    public func completeTask(arguments: [String: Any]) throws -> String {
+        let titleQuery = (arguments["title"] ?? arguments["task_title"] ?? arguments["task_id"] ?? arguments["id"]) as? String
+        guard let title = titleQuery, !title.trimmingCharacters(in: .whitespaces).isEmpty else {
+            throw NSError(domain: "ClassFlowMCP", code: 400, userInfo: [NSLocalizedDescriptionKey: "缺少任务标题或ID (title / task_id)"])
+        }
+
+        var payload = database.load()
+        let trimmedTitle = title.trimmingCharacters(in: .whitespaces).lowercased()
+
+        guard let idx = payload.pomodoroTasks.firstIndex(where: {
+            $0.id.uuidString.lowercased() == trimmedTitle ||
+            $0.title.trimmingCharacters(in: .whitespaces).lowercased() == trimmedTitle ||
+            $0.title.trimmingCharacters(in: .whitespaces).lowercased().contains(trimmedTitle)
+        }) else {
+            throw NSError(domain: "ClassFlowMCP", code: 404, userInfo: [NSLocalizedDescriptionKey: "未找到待办任务「\(title)」。"])
+        }
+
+        let isCompleted = arguments["is_completed"] as? Bool ?? true
+        payload.pomodoroTasks[idx].isCompleted = isCompleted
+        try database.save(payload)
+        notifyAppAndWidgets(payload: payload)
+
+        return isCompleted ? "已将待办任务「\(payload.pomodoroTasks[idx].title)」标记为已完成 🎉。" : "已将待办任务「\(payload.pomodoroTasks[idx].title)」重新标记为进行中。"
+    }
+
+    public func deleteTask(arguments: [String: Any]) throws -> String {
+        let titleQuery = (arguments["title"] ?? arguments["task_title"] ?? arguments["task_id"] ?? arguments["id"]) as? String
+        guard let title = titleQuery, !title.trimmingCharacters(in: .whitespaces).isEmpty else {
+            throw NSError(domain: "ClassFlowMCP", code: 400, userInfo: [NSLocalizedDescriptionKey: "缺少任务标题或ID (title / task_id)"])
+        }
+
+        var payload = database.load()
+        let trimmedTitle = title.trimmingCharacters(in: .whitespaces).lowercased()
+
+        guard let t = payload.pomodoroTasks.first(where: {
+            $0.id.uuidString.lowercased() == trimmedTitle ||
+            $0.title.trimmingCharacters(in: .whitespaces).lowercased() == trimmedTitle ||
+            $0.title.trimmingCharacters(in: .whitespaces).lowercased().contains(trimmedTitle)
+        }) else {
+            throw NSError(domain: "ClassFlowMCP", code: 404, userInfo: [NSLocalizedDescriptionKey: "未找到任务「\(title)」。"])
+        }
+
+        payload.pomodoroTasks.removeAll { $0.id == t.id }
+        payload.tombstones.append(SyncTombstone(entityId: t.id.uuidString, entityType: "pomodoroTask"))
+
+        try database.save(payload)
+        notifyAppAndWidgets(payload: payload)
+
+        return "已成功删除待办任务「\(t.title)」。"
+    }
+
+    // MARK: - 9. Focus Timer (番茄钟与专注学习)
+
+    public func startFocusTimer(arguments: [String: Any]) throws -> String {
+        let taskTitle = (arguments["task_title"] as? String)?.trimmingCharacters(in: .whitespaces)
+        let durationMinutes = arguments["duration_minutes"] as? Int ?? 25
+
+        var payload = database.load()
+        payload.settings.selectedTab = "study"
+        payload.settings.enableStudyModule = true
+
+        var activeTaskId: UUID? = nil
+        var targetTaskName = taskTitle ?? "日常专注"
+
+        if let title = taskTitle, !title.isEmpty {
+            if let existing = payload.pomodoroTasks.first(where: { $0.title.lowercased() == title.lowercased() && !$0.isCompleted }) {
+                activeTaskId = existing.id
+                targetTaskName = existing.title
+            } else {
+                let newTask = PomodoroTask(
+                    id: UUID(),
+                    semesterId: payload.semesters.first(where: { $0.isCurrent })?.id,
+                    title: title,
+                    estimatedPomodoros: max(1, durationMinutes / 25)
+                )
+                payload.pomodoroTasks.append(newTask)
+                activeTaskId = newTask.id
+                targetTaskName = newTask.title
+            }
+        } else {
+            activeTaskId = payload.pomodoroTasks.first(where: { !$0.isCompleted })?.id
+        }
+
+        payload.activeProfileId = activeTaskId
+        try database.save(payload)
+        notifyAppAndWidgets(payload: payload)
+
+        // Wake up running app & start timer via URL and Distributed Notification
+        let encodedTitle = targetTaskName.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        let deepLinkStr = "classflow://focus?action=start&title=\(encodedTitle)&minutes=\(durationMinutes)"
+        if let url = URL(string: deepLinkStr) {
+            NSWorkspace.shared.open(url)
+        }
+
+        DistributedNotificationCenter.default().postNotificationName(
+            NSNotification.Name("org.classflow.commandTriggered"),
+            object: nil,
+            userInfo: ["url": deepLinkStr],
+            deliverImmediately: true
+        )
+
+        return "已为任务「\(targetTaskName)」启动 \(durationMinutes) 分钟专注计时，ClassFlow 已切换到专注时钟界面！"
+    }
+
+    public func stopFocusTimer(arguments: [String: Any]) throws -> String {
+        let actualMinutes = arguments["actual_minutes"] as? Int ?? 25
+        let taskTitle = arguments["task_title"] as? String
+
+        var payload = database.load()
+        let activeTask = payload.pomodoroTasks.first(where: { $0.id == payload.activeProfileId })
+        let title = taskTitle ?? activeTask?.title ?? "专注学习"
+
+        let record = PomodoroRecord(
+            id: UUID(),
+            taskId: activeTask?.id,
+            taskTitle: title,
+            courseName: nil,
+            focusMode: .pomodoro,
+            durationMinutes: actualMinutes,
+            completedAt: Date(),
+            tag: "日常自习"
+        )
+        payload.pomodoroRecords.append(record)
+
+        if let at = activeTask, let idx = payload.pomodoroTasks.firstIndex(where: { $0.id == at.id }) {
+            payload.pomodoroTasks[idx].completedPomodoros += max(1, actualMinutes / 25)
+        }
+
+        try database.save(payload)
+        notifyAppAndWidgets(payload: payload)
+
+        let deepLinkStr = "classflow://focus?action=stop"
+        if let url = URL(string: deepLinkStr) {
+            NSWorkspace.shared.open(url)
+        }
+        DistributedNotificationCenter.default().postNotificationName(
+            NSNotification.Name("org.classflow.commandTriggered"),
+            object: nil,
+            userInfo: ["url": deepLinkStr],
+            deliverImmediately: true
+        )
+
+        return "已结束专注计时并沉淀记录：专注时长 \(actualMinutes) 分钟（任务：「\(title)」），已更新至今日统计与专注热力图。"
+    }
+
+    public func getFocusStatistics() -> [String: Any] {
+        let payload = database.load()
+        let cal = Calendar.current
+        let today = Date()
+
+        let todayRecords = payload.pomodoroRecords.filter { cal.isDate($0.completedAt, inSameDayAs: today) }
+        let todayMinutes = todayRecords.reduce(0) { $0 + $1.durationMinutes }
+        let totalPomos = todayMinutes / 25
+
+        let weekRecords = payload.pomodoroRecords.filter {
+            cal.isDate($0.completedAt, equalTo: today, toGranularity: .weekOfYear)
+        }
+        let weekMinutes = weekRecords.reduce(0) { $0 + $1.durationMinutes }
+
+        return [
+            "today_focus_minutes": todayMinutes,
+            "today_completed_pomodoros": totalPomos,
+            "week_focus_minutes": weekMinutes,
+            "total_records_count": payload.pomodoroRecords.count,
+            "today_records": todayRecords.map { [
+                "duration": $0.durationMinutes,
+                "notes": $0.taskTitle,
+                "time": DateFormatter.localizedString(from: $0.completedAt, dateStyle: .none, timeStyle: .short)
+            ]}
+        ]
+    }
+
+    // MARK: - 10. Cloud Sync
+
+    public func triggerCloudSync() async throws -> String {
+        var payload = database.load()
+        let providerType = UserDefaults.standard.string(forKey: "sync_provider_type") ?? "webdav"
+
+        let provider: any StorageProvider
+        if providerType == "webdav" {
+            let serverURL = UserDefaults.standard.string(forKey: "webdav_url") ?? "https://dav.jianguoyun.com/dav/"
+            let user = UserDefaults.standard.string(forKey: "webdav_user") ?? ""
+            let pwd = UserDefaults.standard.string(forKey: "webdav_pwd") ?? ""
+            let prefix = UserDefaults.standard.string(forKey: "webdav_path_prefix") ?? "ClassFlow/"
+            guard !user.isEmpty else {
+                return "未配置 WebDAV 用户名或密码。请在 ClassFlow 设置 -> 云同步 中先配置存储凭据。"
+            }
+            let config = WebDAVStorageProvider.Configuration(serverURL: serverURL, username: user, password: pwd, pathPrefix: prefix)
+            provider = WebDAVStorageProvider(config: config)
+        } else {
+            let endpoint = UserDefaults.standard.string(forKey: "s3_endpoint") ?? ""
+            let region = UserDefaults.standard.string(forKey: "s3_region") ?? "cn-east-1"
+            let bucket = UserDefaults.standard.string(forKey: "s3_bucket") ?? ""
+            let ak = UserDefaults.standard.string(forKey: "s3_access_key") ?? ""
+            let sk = UserDefaults.standard.string(forKey: "s3_secret_key") ?? ""
+            let prefix = UserDefaults.standard.string(forKey: "s3_path_prefix") ?? "classflow-sync/"
+            guard !ak.isEmpty else {
+                return "未配置 S3 Access Key。请在 ClassFlow 设置 -> 云同步 中先配置存储凭据。"
+            }
+            let config = S3StorageProvider.Configuration(endpoint: endpoint, region: region, bucket: bucket, accessKey: ak, secretKey: sk, pathPrefix: prefix)
+            provider = S3StorageProvider(config: config)
+        }
+
+        let devId = payload.syncDeviceId ?? ("dev_mac_" + UUID().uuidString.prefix(8).lowercased())
+        let seq = payload.syncSequence ?? 0
+        let syncEngine = SyncEngine(deviceId: devId, deviceName: Host.current().localizedName ?? "Apple Silicon Mac", initialSequence: seq)
+
+        var localCourses = payload.courses
+        var localExceptions = payload.exceptions
+        var localSemesters = payload.semesters
+        var localCalendarEvents = payload.calendarEvents
+        var localPomodoroTasks = payload.pomodoroTasks
+        var localPomodoroRecords = payload.pomodoroRecords
+        var localProfiles = payload.timetableProfiles
+        var localTombstones = payload.tombstones
+
+        let summary = try await syncEngine.executeSync(
+            storage: provider,
+            courses: &localCourses,
+            exceptions: &localExceptions,
+            semesters: &localSemesters,
+            calendarEvents: &localCalendarEvents,
+            pomodoroTasks: &localPomodoroTasks,
+            pomodoroRecords: &localPomodoroRecords,
+            timetableProfiles: &localProfiles,
+            tombstones: &localTombstones
+        )
+
+        payload.courses = SyncEngine.consolidateCourses(localCourses)
+        payload.exceptions = localExceptions
+        payload.semesters = localSemesters
+        payload.calendarEvents = localCalendarEvents
+        payload.pomodoroTasks = localPomodoroTasks
+        payload.pomodoroRecords = localPomodoroRecords
+        payload.timetableProfiles = localProfiles
+        payload.tombstones = localTombstones
+        payload.syncDeviceId = syncEngine.deviceId
+
+        try database.save(payload)
+        notifyAppAndWidgets(payload: payload)
+
+        return "云端同步成功完成！同步摘要：本地课程 \(localCourses.count) 门，日程 \(localCalendarEvents.count) 项，待办 \(localPomodoroTasks.count) 条，推送 \(summary.uploadedOperationsCount) 项，合并拉取 \(summary.downloadedPeerOperationsCount) 项。"
+    }
+
+    // MARK: - 11. Navigation & App Control
+
+    public func openApp(tab: String?) -> String {
+        var deepLink = "classflow://"
+        if let t = tab?.lowercased() {
+            switch t {
+            case "study", "focus", "学习", "专注":
+                deepLink = "classflow://tab?name=study"
+            case "schedule", "日程":
+                deepLink = "classflow://tab?name=schedule"
+            case "timetable", "课程", "课表":
+                deepLink = "classflow://tab?name=timetable"
+            case "settings", "设置":
+                deepLink = "classflow://tab?name=settings"
+            default:
+                deepLink = "classflow://tab?name=\(t)"
+            }
+        }
+        if let url = URL(string: deepLink) {
+            NSWorkspace.shared.open(url)
+        }
+        DistributedNotificationCenter.default().postNotificationName(
+            NSNotification.Name("org.classflow.commandTriggered"),
+            object: nil,
+            userInfo: ["url": deepLink],
+            deliverImmediately: true
+        )
+        return "已唤醒 ClassFlow macOS 客户端并切换至指定视图。"
+    }
+
+    public func switchSemesterOrWeek(arguments: [String: Any]) throws -> String {
+        var payload = database.load()
+        var changes: [String] = []
+
+        if let semName = arguments["semester_name"] as? String, !semName.isEmpty {
+            if let target = payload.semesters.first(where: { $0.name.lowercased().contains(semName.lowercased()) }) {
+                for i in payload.semesters.indices {
+                    payload.semesters[i].isCurrent = (payload.semesters[i].id == target.id)
+                }
+                changes.append("切换当前学期为「\(target.name)」")
+            }
+        }
+
+        if let week = arguments["week"] as? Int {
+            changes.append("查看第 \(week) 周课表")
+        }
+
+        try database.save(payload)
+        notifyAppAndWidgets(payload: payload)
+
+        let deepLink = "classflow://week?number=\(arguments["week"] as? Int ?? 1)"
+        if let url = URL(string: deepLink) {
+            NSWorkspace.shared.open(url)
+        }
+        return "已更新学期/周次设置：" + changes.joined(separator: "，") + "。"
+    }
+
+    // MARK: - Helpers
+
+    private func calculateCurrentWeek(for semester: Semester) -> Int {
+        let cal = Calendar.current
+        let df = DateFormatter()
+        df.dateFormat = "yyyy-MM-dd"
+        guard let sDate = df.date(from: String(semester.startDate.prefix(10))) else { return 1 }
+        let now = Date()
+        if now < sDate { return 1 }
+        let diff = cal.dateComponents([.day], from: sDate, to: now).day ?? 0
+        let w = (diff / 7) + 1
+        return min(max(1, w), semester.totalWeeks)
+    }
+
+    private func resolveColorHex(_ color: String?) -> String {
+        guard let c = color?.trimmingCharacters(in: .whitespaces).lowercased(), !c.isEmpty else {
+            return "#4F46E5" // default indigo
+        }
+        if c.hasPrefix("#") && (c.count == 7 || c.count == 9) {
+            return c
+        }
+        let presets: [String: String] = [
+            "blue": "#3B82F6", "蓝": "#3B82F6", "蓝色": "#3B82F6",
+            "purple": "#8B5CF6", "紫": "#8B5CF6", "紫色": "#8B5CF6",
+            "green": "#10B981", "绿": "#10B981", "绿色": "#10B981",
+            "emerald": "#059669", "翡翠绿": "#059669",
+            "amber": "#D97706", "黄": "#D97706", "黄色": "#D97706", "琥珀色": "#D97706",
+            "orange": "#F97316", "橙": "#F97316", "橙色": "#F97316",
+            "red": "#EF4444", "红": "#EF4444", "红色": "#EF4444",
+            "rose": "#F43F5E", "玫瑰红": "#F43F5E",
+            "pink": "#EC4899", "粉": "#EC4899", "粉色": "#EC4899",
+            "cyan": "#06B6D4", "青": "#06B6D4", "青色": "#06B6D4",
+            "indigo": "#4F46E5", "靛蓝": "#4F46E5",
+            "gray": "#6B7280", "灰": "#6B7280", "灰色": "#6B7280"
+        ]
+        return presets[c] ?? "#4F46E5"
+    }
+
+    private func projectCalendarEventOccurrences(
+        _ event: CalendarEvent,
+        weekDates: [String],
+        semester: Semester,
+        selectedWeek: Int
+    ) -> [TimelineItem] {
+        var results: [TimelineItem] = []
+        let df = DateFormatter()
+        df.dateFormat = "yyyy-MM-dd"
+        let normFreq = (event.frequency ?? "none").lowercased()
+
+        if let weeks = event.customWeeks, !weeks.isEmpty, !weeks.contains(selectedWeek) {
+            return []
+        }
+
+        for (dayIdx, dateStr) in weekDates.enumerated() {
+            let dayOfWeek = dayIdx + 1
+            if let sDate = event.startDate, !sDate.isEmpty, dateStr < String(sDate.prefix(10)) {
+                continue
+            }
+            if normFreq == "none" {
+                if let eDate = event.endDate, !eDate.isEmpty, dateStr > String(eDate.prefix(10)) {
+                    continue
+                }
+            } else {
+                if event.endRepeatType == "untilDate", let until = event.endRepeatUntil, !until.isEmpty, dateStr > String(until.prefix(10)) {
+                    continue
+                }
+            }
+
+            var shouldInclude = false
+            switch normFreq {
+            case "daily", "每天":
+                shouldInclude = true
+            case "workdays", "工作日":
+                shouldInclude = (dayOfWeek <= 5)
+            case "weekends", "周末":
+                shouldInclude = (dayOfWeek == 6 || dayOfWeek == 7)
+            case "weekly", "每周":
+                if let days = event.customDaysOfWeek, !days.isEmpty {
+                    shouldInclude = days.contains(dayOfWeek)
+                } else {
+                    let baseDateStr = event.startDate ?? String(event.startTime.prefix(10))
+                    if let evDate = df.date(from: baseDateStr) {
+                        let evW = Calendar.current.component(.weekday, from: evDate)
+                        shouldInclude = ((evW == 1 ? 7 : evW - 1) == dayOfWeek)
+                    } else {
+                        shouldInclude = (dayOfWeek == 1)
+                    }
+                }
+            default:
+                if let sDate = event.startDate {
+                    shouldInclude = (sDate == dateStr)
+                } else {
+                    shouldInclude = event.startTime.hasPrefix(dateStr)
+                }
+            }
+
+            if !shouldInclude { continue }
+
+            let rawStart = event.startTime.contains("T") ? String(event.startTime.split(separator: "T").last?.prefix(5) ?? "09:00") : "09:00"
+            let rawEnd = event.endTime.contains("T") ? String(event.endTime.split(separator: "T").last?.prefix(5) ?? "10:00") : "10:00"
+
+            results.append(
+                TimelineItem(
+                    id: "\(event.id.uuidString)_\(dateStr)",
+                    sourceType: .calendarEvent,
+                    courseId: nil,
+                    scheduleId: nil,
+                    calendarEventId: event.id,
+                    title: event.title,
+                    location: event.location,
+                    date: dateStr,
+                    dayOfWeek: dayOfWeek,
+                    startSection: 1,
+                    endSection: 2,
+                    startTime: rawStart,
+                    endTime: rawEnd,
+                    weekNumber: selectedWeek,
+                    isCurrentWeek: true,
+                    status: .normal,
+                    color: event.color,
+                    teacher: nil,
+                    notes: event.description,
+                    credit: nil,
+                    isAllDay: event.isAllDay,
+                    hasConflict: false,
+                    conflictingItemIds: [],
+                    isRecurring: normFreq != "none"
+                )
+            )
+        }
+        return results
+    }
+}

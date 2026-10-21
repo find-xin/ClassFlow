@@ -2,7 +2,6 @@ import SwiftUI
 import AppKit
 import ClassFlowCore
 
-@main
 struct ClassFlowApp: App {
     @State private var appState = AppState()
 

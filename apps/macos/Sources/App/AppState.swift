@@ -134,6 +134,30 @@ public final class AppState {
         self.syncEngine = SyncEngine(deviceId: devId, deviceName: Host.current().localizedName ?? "Apple Silicon Mac", initialSequence: seq)
 
         load()
+        setupDistributedObservers()
+    }
+
+    private func setupDistributedObservers() {
+        DistributedNotificationCenter.default().addObserver(
+            forName: NSNotification.Name("org.classflow.databaseDidChange"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.load()
+            }
+        }
+
+        DistributedNotificationCenter.default().addObserver(
+            forName: NSNotification.Name("org.classflow.commandTriggered"),
+            object: nil,
+            queue: .main
+        ) { [weak self] notif in
+            guard let urlStr = notif.userInfo?["url"] as? String, let url = URL(string: urlStr) else { return }
+            Task { @MainActor [weak self] in
+                self?.handleDeepLink(url)
+            }
+        }
     }
 
     public func load() {
@@ -1459,8 +1483,13 @@ public final class AppState {
     public func handleDeepLink(_ url: URL) {
         guard url.scheme == "classflow" else { return }
         let host = url.host ?? ""
+        let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        var queryParams: [String: String] = [:]
+        for item in components?.queryItems ?? [] {
+            queryParams[item.name] = item.value
+        }
         let path = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        let targetId = path.isEmpty ? (url.query?.components(separatedBy: "id=").last ?? "") : path
+        let targetId = queryParams["id"] ?? (!path.isEmpty ? path : "")
 
         if host == "occurrence", !targetId.isEmpty {
             // 1. Search in current week's occurrences
@@ -1498,7 +1527,67 @@ public final class AppState {
         } else if host == "add" {
             startAddingCourse()
         } else if host == "today" || host == "schedule" {
+            settings.selectedTab = "schedule"
             jumpToCurrentWeek()
+        } else if host == "tab" {
+            let tabName = queryParams["name"] ?? queryParams["tab"] ?? "courses"
+            switch tabName {
+            case "study":
+                settings.enableStudyModule = true
+                settings.selectedTab = "study"
+            case "schedule":
+                settings.selectedTab = "schedule"
+            case "timetable", "courses":
+                settings.selectedTab = "courses"
+            case "settings":
+                isShowingSettings = true
+            default:
+                settings.selectedTab = tabName
+            }
+        } else if host == "week" {
+            if let weekStr = queryParams["number"] ?? queryParams["week"], let w = Int(weekStr) {
+                selectedWeek = max(1, min(w, currentSemester?.totalWeeks ?? 30))
+            }
+        } else if host == "focus" {
+            let action = queryParams["action"] ?? "start"
+            if action == "start" {
+                settings.enableStudyModule = true
+                settings.selectedTab = "study"
+                let minutes = Int(queryParams["minutes"] ?? "25") ?? 25
+                NotificationCenter.default.post(
+                    name: NSNotification.Name("org.classflow.startFocusTimer"),
+                    object: nil,
+                    userInfo: ["minutes": minutes]
+                )
+            } else if action == "stop" {
+                NotificationCenter.default.post(
+                    name: NSNotification.Name("org.classflow.stopFocusTimer"),
+                    object: nil
+                )
+            }
+        } else if host == "sync" {
+            if let provider = createConfiguredStorageProvider() {
+                Task {
+                    _ = try? await self.executeCloudSync(storage: provider)
+                }
+            }
+        } else if host == "reload" {
+            load()
+        }
+
+        // Generic query parameter fallbacks (e.g. ?tab=study or ?week=3)
+        if let tab = queryParams["tab"], host != "tab" {
+            if tab == "study" {
+                settings.enableStudyModule = true
+                settings.selectedTab = "study"
+            } else if tab == "schedule" {
+                settings.selectedTab = "schedule"
+            } else if tab == "courses" || tab == "timetable" {
+                settings.selectedTab = "courses"
+            }
+        }
+        if let weekStr = queryParams["week"], host != "week", let w = Int(weekStr) {
+            selectedWeek = max(1, min(w, currentSemester?.totalWeeks ?? 30))
         }
     }
 

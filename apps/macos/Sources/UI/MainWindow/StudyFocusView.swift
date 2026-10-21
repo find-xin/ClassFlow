@@ -148,6 +148,18 @@ public struct StudyFocusView: View {
                 handleTick()
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("org.classflow.startFocusTimer"))) { notif in
+            let mins = notif.userInfo?["minutes"] as? Int ?? 25
+            focusDurationMinutes = mins
+            secondsRemaining = mins * 60
+            timerState = .focusing
+            isRunning = true
+            selectedSubTab = .focusTimer
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("org.classflow.stopFocusTimer"))) { _ in
+            isRunning = false
+            timerState = .idle
+        }
     }
 
     // MARK: - Focus Arena Card

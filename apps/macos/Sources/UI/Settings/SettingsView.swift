@@ -16,6 +16,7 @@ public struct SettingsView: View {
 
     private let categories: [(id: String, name: String, icon: String)] = [
         ("general", "通用", "gearshape"),
+        ("ai", "AI / ChatGPT", "sparkles"),
         ("calendar", "日历", "calendar.badge.clock"),
         ("notifications", "通知", "bell.badge"),
         ("sync", "云同步", "icloud.and.arrow.up"),
@@ -90,6 +91,8 @@ public struct SettingsView: View {
                     switch selectedCategory {
                     case "general":
                         generalCategoryView
+                    case "ai":
+                        AISettingsTab(appState: appState)
                     case "calendar":
                         CalendarSettingsTab(appState: appState)
                     case "notifications":
@@ -103,7 +106,7 @@ public struct SettingsView: View {
                 .padding(20)
             }
         }
-        .frame(width: 580, height: 520)
+        .frame(width: 620, height: 550)
     }
 
     // MARK: - General Tab
