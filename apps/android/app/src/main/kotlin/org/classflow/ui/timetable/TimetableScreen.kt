@@ -1,12 +1,15 @@
 package org.classflow.ui.timetable
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -832,24 +835,38 @@ fun TimetableCanvas(
                                         .clickable { onCourseClick(topItem) }
                                 )
 
-                                // Overlap indicator badge
-                                Surface(
-                                    shape = RoundedCornerShape(bottomStart = 8.dp, topEnd = appSettings.cardCornerRadius.dp),
-                                    color = Color(0xDD1E202B),
+                                // Compact Overlap Indicator (Red Dot Badge)
+                                // Replaces the large "2重叠▾" badge with a compact red dot badge
+                                // and an expanded touch target (26x26 dp) for easy tapping to switch top arrangement.
+                                Box(
                                     modifier = Modifier
                                         .align(Alignment.TopEnd)
-                                        .clickable { activePickerCluster = cluster }
+                                        .size(26.dp)
+                                        .clickable(
+                                            interactionSource = remember { MutableInteractionSource() },
+                                            indication = null
+                                        ) { activePickerCluster = cluster },
+                                    contentAlignment = Alignment.TopEnd
                                 ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = Color(0xFFFF3B30),
+                                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.95f)),
+                                        shadowElevation = 2.dp,
+                                        modifier = Modifier
+                                            .padding(top = 2.5.dp, end = 2.5.dp)
+                                            .size(15.dp)
                                     ) {
-                                        Text(
-                                            text = "${cluster.items.size}重叠▾",
-                                            fontSize = 9.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color.White
-                                        )
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Text(
+                                                text = "${cluster.items.size}",
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = Color.White,
+                                                lineHeight = 10.sp,
+                                                textAlign = TextAlign.Center
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -906,13 +923,13 @@ fun OverlapCoursePickerDialog(
         title = {
             Column {
                 Text(
-                    text = "重叠课程选择 (${cluster.items.size} 门重叠)",
+                    text = "重叠安排选择 (${cluster.items.size} 项重叠)",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = textPrimary
                 )
                 Text(
-                    text = "第 ${cluster.minStartSection} - ${cluster.maxEndSection} 节存在时间重叠，请选择置顶展示的课程：",
+                    text = "第 ${cluster.minStartSection} - ${cluster.maxEndSection} 节存在时间重叠，点击选择置顶展示的安排：",
                     fontSize = 11.5.sp,
                     color = textSecondary
                 )
@@ -933,6 +950,8 @@ fun OverlapCoursePickerDialog(
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { onSelectTopCourse(itemId) }
                             .border(
                                 width = if (isTop) 1.5.dp else 0.5.dp,
                                 color = if (isTop) Color(0xFF4F46E5) else Color.Transparent,
@@ -1048,7 +1067,7 @@ fun OverlapCoursePickerDialog(
                                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4F46E5)),
                                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
                                     ) {
-                                        Text("置顶此课", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                        Text("置顶此项", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = Color.White)
                                     }
                                 }
                             }
