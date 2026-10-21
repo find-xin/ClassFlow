@@ -4,4 +4,4 @@
 f950ff0a82512f431ccab852e278a30dd39f56ca33d76c1359e6b5c5c93ad527  ClassFlow-1.2.0-macOS-arm64.dmg
 23ae708475f84578ff8b04b694543353f5b6b148ae3ac2bda7203546e2e19fc5  ClassFlow-1.2.0-macOS-arm64.zip
 b014ee81529c7b4db4d04e2d359d48dd008ebc233a1f14c7ad7fdf806b8a4a20  ClassFlow-ChatGPT-Setup.md
-a4cba369c23afe0fdff13138a5e5b04b535327ac05e5e7681555af61b5f0b2f3  ClassFlow-Local-Plugin-1.2.0.zip
+7140b87a1d6502dc9ff4e1de255368e41ae4ecd06a7b9275f6d77fa6a40037f7  ClassFlow-Local-Plugin-1.2.0.zip

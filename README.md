@@ -143,7 +143,7 @@ ClassFlow 提供本地 stdio MCP 与云端 Secure MCP Tunnel 两种连接方式�
 | **Android 客户端** | `ClassFlow-1.2.0-android.apk` | 13.4 MB | `3837bcd7ce6c0ea3bdf4d6e023fd51defeef587e6ffe7e7bc953f6362b2adf3a` |
 | **小米手环（未变更）** | `ClassFlow-1.0.0-xiaomi-band.rpk` | 4.7 KB | `8a3b4c6cbcfd3d6ec4e4a7580b13ea6dc98c6b543bca3735de98aae926938602` |
 | **小米手环源码包（未变更）** | `ClassFlow-1.0.0-xiaomi-band.zip` | 4.7 KB | `8a3b4c6cbcfd3d6ec4e4a7580b13ea6dc98c6b543bca3735de98aae926938602` |
-| **本地 Work / Codex 插件** | `ClassFlow-Local-Plugin-1.2.0.zip` | 18.0 KB | `a4cba369c23afe0fdff13138a5e5b04b535327ac05e5e7681555af61b5f0b2f3` |
+| **本地 Work / Codex 插件** | `ClassFlow-Local-Plugin-1.2.0.zip` | 18.4 KB | `7140b87a1d6502dc9ff4e1de255368e41ae4ecd06a7b9275f6d77fa6a40037f7` |
 
 > 校验命令：`cd dist && shasum -a 256 -c SHA256SUMS.txt`
 
