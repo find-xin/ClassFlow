@@ -1,0 +1,54 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release'
+        required: true
+        default: 'v1.0.0'
+
+permissions:
+  contents: write
+
+jobs:
+  publish-release:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Create GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          NOTES="RELEASE_NOTES_${TAG}.md"
+          if [ ! -f "$NOTES" ]; then
+            NOTES="RELEASE_NOTES_v1.0.0.md"
+          fi
+
+          echo "Publishing GitHub release for tag ${TAG}..."
+          
+          # Delete existing release for this tag if it exists (allows clean re-release)
+          gh release delete "${TAG}" --yes --repo "${{ github.repository }}" || true
+
+          gh release create "${TAG}" \
+            dist/ClassFlow-1.0.0-macOS-arm64.dmg \
+            dist/ClassFlow-1.0.0-macOS-arm64.dmg.sha256 \
+            dist/ClassFlow-1.0.0-macOS-arm64.zip \
+            dist/ClassFlow-1.0.0-macOS-arm64.zip.sha256 \
+            dist/ClassFlow-1.0.0-android.apk \
+            dist/ClassFlow-1.0.0-android.apk.sha256 \
+            dist/ClassFlow-1.0.0-xiaomi-band.rpk \
+            dist/ClassFlow-1.0.0-xiaomi-band.rpk.sha256 \
+            dist/ClassFlow-1.0.0-xiaomi-band.zip \
+            dist/ClassFlow-1.0.0-xiaomi-band.zip.sha256 \
+            dist/SHA256SUMS.txt \
+            --title "ClassFlow ${TAG} - Native Cross-Platform Timetable & AI Suite" \
+            --notes-file "${NOTES}" \
+            --repo "${{ github.repository }}"
