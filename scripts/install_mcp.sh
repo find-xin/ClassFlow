@@ -107,7 +107,90 @@ data['mcpServers']['classflow'] = {
 with open(config_path, 'w', encoding='utf-8') as f:
     json.dump(data, f, indent=2, ensure_ascii=False)
 "
-echo "✔ Successfully updated ChatGPT Desktop configuration: ${CHATGPT_CONFIG}"
+echo "✔ Successfully updated ChatGPT Desktop JSON configuration: ${CHATGPT_CONFIG}"
+
+# 4. Configure ChatGPT Desktop Codex Plugin Engine
+CODEX_CLI="/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex"
+if [[ -x "${CODEX_CLI}" ]]; then
+    echo "✔ Found ChatGPT Codex Engine CLI at ${CODEX_CLI}"
+    "${CODEX_CLI}" mcp add classflow -- "${TARGET_BIN}" 2>/dev/null || true
+
+    MARKETPLACE_DIR="${HOME}/.codex/marketplaces/classflow-marketplace"
+    mkdir -p "${MARKETPLACE_DIR}/.agents/plugins"
+    mkdir -p "${MARKETPLACE_DIR}/plugins/classflow/.codex-plugin"
+
+    cat << 'EOF' > "${MARKETPLACE_DIR}/.agents/plugins/marketplace.json"
+{
+  "name": "classflow-marketplace",
+  "interface": {
+    "displayName": "ClassFlow 本地插件库"
+  },
+  "plugins": [
+    {
+      "name": "classflow",
+      "source": {
+        "source": "local",
+        "path": "./plugins/classflow"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}
+EOF
+
+    cat << 'EOF' > "${MARKETPLACE_DIR}/plugins/classflow/.codex-plugin/plugin.json"
+{
+  "name": "classflow",
+  "version": "1.0.0",
+  "description": "ClassFlow 课程表与日程专注管理：全权接管课表、日程、番茄待办、专注时钟与云端同步",
+  "author": {
+    "name": "ClassFlow"
+  },
+  "license": "Apache-2.0",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "ClassFlow 课程与日程",
+    "shortDescription": "课程、日程、待办与专注全权接管",
+    "longDescription": "ClassFlow 原生智能助手插件，让 ChatGPT 在对话中直接查询与管理课表、安排日程、添加待办任务、开启番茄钟专注计时并执行云端同步。",
+    "developerName": "ClassFlow",
+    "category": "Productivity",
+    "capabilities": [
+      "Read",
+      "Write",
+      "Interactive"
+    ],
+    "defaultPrompt": [
+      "今天下午我有什么课？",
+      "帮我添加一门机器学习课，周三 3-4 节，理科楼 201，张教授，3 学分",
+      "下周五下午两点有个学院学术研讨会，帮我记到日程里",
+      "开始 25 分钟的专注计时，任务是完成操作系统实验",
+      "把这学期的所有数据同步到云端"
+    ],
+    "brandColor": "#FF5A5F"
+  }
+}
+EOF
+
+    cat << EOF > "${MARKETPLACE_DIR}/plugins/classflow/.mcp.json"
+{
+  "mcpServers": {
+    "classflow": {
+      "command": "${TARGET_BIN}",
+      "args": [],
+      "enabled": true
+    }
+  }
+}
+EOF
+
+    "${CODEX_CLI}" plugin marketplace add "${MARKETPLACE_DIR}" 2>/dev/null || true
+    "${CODEX_CLI}" plugin add classflow@classflow-marketplace 2>/dev/null || true
+    echo "✔ Successfully registered and enabled ClassFlow in ChatGPT Plugins!"
+fi
 
 echo ""
 echo "============================================================"
