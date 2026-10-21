@@ -208,7 +208,9 @@ final class TunnelManager {
             if ready { state = .ready; message = "客户端已通过就绪检查，可以在 ChatGPT 中调用 ClassFlow。" }
             else {
                 state = .connecting
-                if message.isEmpty { message = "正在等待客户端就绪；请确认网络及隧道权限。" }
+                if message.isEmpty || message == "客户端已通过就绪检查，可以在 ChatGPT 中调用 ClassFlow。" {
+                    message = "隧道尚未连通 OpenAI；请检查网络、系统代理及隧道权限。"
+                }
             }
             try? await Task.sleep(for: pollInterval)
         }
@@ -264,11 +266,22 @@ final class TunnelManager {
         guard TunnelLaunchPlan.healthBaseURL(baseURL.absoluteString) != nil else { return false }
         let session = URLSession(configuration: .ephemeral)
         defer { session.invalidateAndCancel() }
-        var request = URLRequest(url: baseURL.appendingPathComponent("readyz"))
+        var components = URLComponents(url: baseURL.appendingPathComponent("health"), resolvingAgainstBaseURL: false)
+        components?.queryItems = [URLQueryItem(name: "details", value: "true")]
+        guard let url = components?.url else { return false }
+        var request = URLRequest(url: url)
         request.timeoutInterval = 2
         do {
             let (data, response) = try await session.data(for: request)
-            return (response as? HTTPURLResponse)?.statusCode == 200 && String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) == "ready"
+            return (response as? HTTPURLResponse)?.statusCode == 200 && healthIsConnected(data)
         } catch { return false }
     }
+    /// Local readiness alone stays true even when all control-plane polling attempts time out.
+    nonisolated static func healthIsConnected(_ data: Data) -> Bool {
+        struct Component: Decodable { let status: String }
+        struct Health: Decodable { let ready: Bool; let components: [String: Component] }
+        guard let health = try? JSONDecoder().decode(Health.self, from: data) else { return false }
+        return health.ready && health.components["control-plane"]?.status == "ok"
+    }
+
 }

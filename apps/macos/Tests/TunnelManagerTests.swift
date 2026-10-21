@@ -297,4 +297,32 @@ struct TunnelManagerTests {
         child.terminate()
         try await waitFor { !child.isRunning }
     }
+    @Test("GUI tunnel inherits the macOS HTTPS proxy without exposing proxy secrets in arguments")
+    func systemProxyInheritance() throws {
+        let settings: [String: Any] = ["HTTPSEnable": 1, "HTTPSProxy": "127.0.0.1", "HTTPSPort": 7897]
+        #expect(TunnelProxy.controlPlaneProxy(environment: [:], settings: settings) == "http://127.0.0.1:7897")
+        #expect(TunnelProxy.controlPlaneProxy(environment: [:], settings: [:]) == nil)
+        #expect(TunnelProxy.controlPlaneProxy(environment: [:], settings: ["HTTPSEnable": 0, "HTTPSProxy": "localhost", "HTTPSPort": 7897]) == nil)
+        #expect(TunnelProxy.controlPlaneProxy(environment: [:], settings: ["HTTPSEnable": 1, "HTTPSProxy": "localhost", "HTTPSPort": 0]) == nil)
+        let (root, _, executable) = try fixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let proxy = "http://user:private-proxy-password@localhost:7897"
+        let plan = try TunnelLaunchPlan(configuration: TunnelConfiguration(tunnelID: "tunnel_00000000000000000000000000000000", clientPath: executable.path), root: root, mcpExecutable: executable, key: "test-key", inheritedEnvironment: ["HTTPS_PROXY": proxy], systemProxySettings: settings)
+        #expect(plan.runtime.environment["CLASSFLOW_TUNNEL_PROXY"] == proxy)
+        #expect(plan.runtime.arguments.contains("env:CLASSFLOW_TUNNEL_PROXY"))
+        #expect(!plan.runtime.arguments.joined().contains("private-proxy-password"))
+        #expect(plan.preparation.environment["CLASSFLOW_TUNNEL_PROXY"] == nil)
+    }
+
+    @Test("Ready local process with timed-out cloud polling is not a connected tunnel")
+    func cloudHealthValidation() {
+        for status in ["degraded", "unknown", "error"] {
+            #expect(!TunnelManager.healthIsConnected(Data("{\"ready\":true,\"components\":{\"control-plane\":{\"status\":\"\(status)\"}}}".utf8)))
+        }
+        #expect(TunnelManager.healthIsConnected(Data(#"{"ready":true,"components":{"control-plane":{"status":"ok"}}}"#.utf8)))
+        #expect(!TunnelManager.healthIsConnected(Data(#"{"ready":false,"components":{"control-plane":{"status":"ok"}}}"#.utf8)))
+        #expect(!TunnelManager.healthIsConnected(Data(#"{"ready":true,"components":{}}"#.utf8)))
+        #expect(!TunnelManager.healthIsConnected(Data("invalid".utf8)))
+    }
+
 }

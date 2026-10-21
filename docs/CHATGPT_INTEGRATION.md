@@ -36,7 +36,7 @@
 2. 在 [Platform 隧道设置](https://platform.openai.com/settings/organization/tunnels) 创建私有隧道，关联实际使用的 Platform 组织和 ChatGPT 工作区。
 3. 为隧道客户端准备专用运行凭据，赋予 Tunnels Read + Use；创建或编辑隧道另需 Tunnels Read + Manage。不要把管理员密钥提供给常驻运行进程。
 4. 打开 ClassFlow → 设置 → AI / ChatGPT →「ChatGPT 聊天接管」，填写 Tunnel ID 和专用运行密钥，点击「保存连接配置」。已安装客户端路径会自动检测，也可在高级选项中选择。旧终端 profile 中的 Tunnel ID 会自动填入；密钥需要在 App 内保存一次，不读取其他进程的环境。
-5. 如果旧终端仍在运行同一隧道，先在该终端按 Ctrl+C 停止一次，再点击 App 内「连接 ChatGPT」。显示「隧道已就绪」后，客户端已通过本机 `/readyz` 检查。可开启「打开 ClassFlow 时自动启用」，默认关闭。
+5. 如果旧终端仍在运行同一隧道，先在该终端按 Ctrl+C 停止一次，再点击 App 内「连接 ChatGPT」。显示「隧道已就绪」后，客户端已通过本机健康检查且控制平面轮询状态正常。可开启「打开 ClassFlow 时自动启用」，默认关闭。
 6. 在 ChatGPT 插件中添加自定义 MCP，Connection 选择 Tunnel，再选择同一个隧道；已有插件通常可继续使用。网页设置由用户完成。在**普通聊天会话**中调用 `get_status` 和 `query_timetable`，拿到真实工具结果才算该入口通过。
 
 ### App 后台连接的生命周期
@@ -135,3 +135,10 @@ python3 scripts/test_mcp_transport.py apps/macos/.build/debug/ClassFlow
 Historical batch-import milestone (24 tools; superseded by the 28-tool editing interface above). import_calendar_events accepts a stable batch_id, 1-500 expanded occurrences and optional dry_run=true (no writes). Convert times to the Mac local timezone first; end_date supports cross-day events and is inclusive for all-day events. Recurrences must be expanded. Identity deduplication uses title, start/end, all-day, location and recurrence; it preserves existing notes/colors. The same batch ID/content replays its original receipt, even after later edits or deletions; changed content with the same ID is rejected. Receipts are device-local, excluded from BYOC and backups. Cloud chat must refresh tool discovery after updating the App; old 23-tool connections do not acquire a new tool automatically. Platform call/context limits still apply.
 
 [VERIFIED] Installed App batch import: preview and acknowledged commit completed; an independent MCP read verified 258 unique occurrences, 223 newly inserted, all 35 prior records preserved, and exact identity coverage against the source manifest. This verifies App/stdio execution; cloud-chat discovery of the new tool still needs a connection refresh. Private migration data is stored outside the repository.
+
+
+### macOS 系统代理与连接状态（2026-10-22）
+
+GUI 启动的 `tunnel-client` 不会自动读取 macOS 系统代理。ClassFlow 在每次连接时读取系统静态 HTTPS / SOCKS 代理，将控制平面代理通过环境变量引用传给官方客户端；显式 HTTPS_PROXY / ALL_PROXY / HTTP_PROXY 优先。代理地址及认证信息不写入配置文件、日志或命令行。仅控制平面使用该代理，本机 stdio MCP 与健康探针不经代理。修改系统代理后在 App 内停止并重新连接。PAC 自动配置暂不支持解析。
+
+连接指示同时检查本地 `/health?details=true` 的 ready 与 control-plane.status=ok，避免 `/readyz` 返回成功而云端轮询持续超时的假就绪。`Session terminated` 本身也可能来自旧的云端会话；先恢复隧道连通，再刷新 ChatGPT 连接并在新对话中测试只读工具，不能仅凭本地进程存活判定云端验收成功。

@@ -1,4 +1,5 @@
 import Foundation
+import CFNetwork
 
 /// Device-local connection preferences; deliberately excluded from DatabasePayload and backups.
 struct TunnelConfiguration: Equatable, Sendable {
@@ -80,7 +81,8 @@ struct TunnelLaunchPlan: Sendable {
     let healthFile: URL
 
     init(configuration: TunnelConfiguration, root: URL, mcpExecutable: URL, key: String,
-         inheritedEnvironment: [String: String] = ProcessInfo.processInfo.environment, runID: UUID = UUID()) throws {
+         inheritedEnvironment: [String: String] = ProcessInfo.processInfo.environment,
+         systemProxySettings: [String: Any] = TunnelProxy.systemSettings(), runID: UUID = UUID()) throws {
         try configuration.validate(requireConnection: true)
         guard FileManager.default.isExecutableFile(atPath: configuration.clientPath),
               FileManager.default.isExecutableFile(atPath: mcpExecutable.path) else { throw TunnelError.missingClient }
@@ -100,10 +102,16 @@ struct TunnelLaunchPlan: Sendable {
             "--mcp-command", quote(mcpExecutable.path) + " --mcp", "--health-listen-addr", "127.0.0.1:0", "--force"
         ], environment: environment)
         environment["CONTROL_PLANE_API_KEY"] = key
-        runtime = TunnelCommand(executable: executable, arguments: [
+        var runtimeArguments = [
             "run", "--profile", "classflow-app", "--profile-dir", profiles.path,
             "--health.url-file", healthFile.path
-        ], environment: environment)
+        ]
+        if let proxy = TunnelProxy.controlPlaneProxy(environment: inheritedEnvironment, settings: systemProxySettings) {
+            // Proxy credentials, when supplied by the user environment, never enter process arguments.
+            environment["CLASSFLOW_TUNNEL_PROXY"] = proxy
+            runtimeArguments += ["--control-plane.http-proxy", "env:CLASSFLOW_TUNNEL_PROXY"]
+        }
+        runtime = TunnelCommand(executable: executable, arguments: runtimeArguments, environment: environment)
     }
 
     static func healthBaseURL(_ value: String) -> URL? {
@@ -114,5 +122,33 @@ struct TunnelLaunchPlan: Sendable {
               components.user == nil, components.password == nil, components.query == nil,
               components.fragment == nil, ["", "/"].contains(components.path) else { return nil }
         return url
+    }
+}
+
+/// Go subprocesses do not inherit macOS System Settings proxies through the GUI launch environment.
+/// Resolve only the HTTPS control-plane route; local MCP and health traffic stay on loopback.
+enum TunnelProxy {
+    static func systemSettings() -> [String: Any] {
+        CFNetworkCopySystemProxySettings()?.takeRetainedValue() as? [String: Any] ?? [:]
+    }
+
+    static func controlPlaneProxy(environment: [String: String], settings: [String: Any]) -> String? {
+        for key in ["HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy", "HTTP_PROXY", "http_proxy"] {
+            if let value = environment[key], !value.isEmpty { return value }
+        }
+        for (enabled, hostKey, portKey, scheme) in [
+            ("HTTPSEnable", "HTTPSProxy", "HTTPSPort", "http"),
+            ("SOCKSEnable", "SOCKSProxy", "SOCKSPort", "socks5")
+        ] {
+            guard (settings[enabled] as? NSNumber)?.boolValue == true,
+                  let host = settings[hostKey] as? String, !host.isEmpty,
+                  let port = settings[portKey] as? Int, (1...65535).contains(port) else { continue }
+            var url = URLComponents()
+            url.scheme = scheme
+            url.host = host
+            url.port = port
+            if let value = url.string { return value }
+        }
+        return nil
     }
 }

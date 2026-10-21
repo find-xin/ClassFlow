@@ -138,8 +138,8 @@ ClassFlow 提供本地 stdio MCP 与云端 Secure MCP Tunnel 两种连接方式�
 
 | 平台 | 安装包名称 | 文件大小 | SHA-256 校验和 |
 | :--- | :--- | :--- | :--- |
-| **macOS (Apple Silicon)** | `ClassFlow-1.2.0-macOS-arm64.dmg` | 4.5 MB | `38f3dc5c0913953850013eea940b25b8b9acebaa8a66f25e0cf14f178ff6c849` |
-| **macOS ZIP** | `ClassFlow-1.2.0-macOS-arm64.zip` | 3.9 MB | `b425800f5b8598334961d6693c0f1c100d7122075d981bf113eb1d02495fc685` |
+| **macOS (Apple Silicon)** | `ClassFlow-1.2.0-macOS-arm64.dmg` | 4.5 MB | `f950ff0a82512f431ccab852e278a30dd39f56ca33d76c1359e6b5c5c93ad527` |
+| **macOS ZIP** | `ClassFlow-1.2.0-macOS-arm64.zip` | 3.9 MB | `23ae708475f84578ff8b04b694543353f5b6b148ae3ac2bda7203546e2e19fc5` |
 | **Android 客户端** | `ClassFlow-1.2.0-android.apk` | 13.4 MB | `3837bcd7ce6c0ea3bdf4d6e023fd51defeef587e6ffe7e7bc953f6362b2adf3a` |
 | **小米手环（未变更）** | `ClassFlow-1.0.0-xiaomi-band.rpk` | 4.7 KB | `8a3b4c6cbcfd3d6ec4e4a7580b13ea6dc98c6b543bca3735de98aae926938602` |
 | **小米手环源码包（未变更）** | `ClassFlow-1.0.0-xiaomi-band.zip` | 4.7 KB | `8a3b4c6cbcfd3d6ec4e4a7580b13ea6dc98c6b543bca3735de98aae926938602` |

@@ -252,3 +252,10 @@ Added import_calendar_events, tool 24: 1-500 rows, full validation, atomic save,
 Core/App and local plugin versions are 1.2.0; Android versionCode and macOS bundle build number are 2. The macOS packager derives filenames and bundle versions from ClassFlowVersion, preserves symlinks in ZIPs, targets macOS 15.8, and supports CLASSFLOW_SKIP_INSTALL=1 for packaging without replacing a running installation. The release workflow reads the unchanged band's own 1.0.0 version instead of relabeling old band artifacts as a new build. Android release APK was rebuilt and its signing certificate matches the previous release. See RELEASE_NOTES_v1.2.0.md for verified behavior and runtime limitations.
 
 [VERIFIED] v1.2.0 release artifacts rebuilt: macOS App/Widget bundles report 1.2.0 (2), ZIP preserves the MCP symlink, both the bundle and ZIP-extracted executable pass strict signing and the 28-tool protocol check, and the DMG verifies successfully. Re-ran 62 core and 75 macOS tests, 46 Android unit tests with assembleRelease, 5 foundation suites and 3 portable plugin-package tests. README download hashes and the release checksum manifest are generated from these artifacts. Publishing uses the repository's existing GitHub Actions release workflow.
+
+
+### 隧道代理与真实连通性修复（2026-10-22）
+
+[VERIFIED] 77 项 macOS 测试通过。GUI 启动的隧道继承 macOS 静态 HTTPS / SOCKS 代理（显式代理环境变量优先），通过 env 引用传给 control-plane.http-proxy，不在命令行或配置文件中保存代理凭据。就绪探针改为同时检查本地 ready 与控制平面 status=ok，覆盖本地 ready=true、云端连续 timeout 的假就绪场景。PAC 解析未实现。
+
+[UNVERIFIED] 本次修复的安装版云端调用验收尚在进行；本地 stdio 协议 28 项工具已通过检查。
