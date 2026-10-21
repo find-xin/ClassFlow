@@ -214,4 +214,7 @@ ls -1 ClassFlow-*.{apk,dmg,zip,rpk} | xargs shasum -a 256 > SHA256SUMS.txt
 
 新增明确文件清单的可复现插件打包脚本、独立用户接入说明及安装包测试；Release 工作流自动附带插件 ZIP、说明和 SHA-256，重跑保留已有 Release。修正文档中 URL/Actions 与本地插件适用入口的混淆。发布版 macOS ZIP 的 SHA-256 与在线附件一致，并实际通过 23 项 MCP 工具协议检查。
 
-Release 补发状态：本地插件 ZIP、接入说明、各自 SHA-256 与合并校验清单均已生成；当前 gh 凭据对上传/覆盖附件和修改正文返回 HTTP 403（Resource not accessible by personal access token），线上 Release 未更新。用户偏好自行操作网页，应在 v1.0.0 Release 上传附件并更新 AI 接入段落；源码/工作流修改也尚未推送。
+### 纯净版 Release 与线上发布（2026-10-21）
+
+`[VERIFIED]` 彻底清空所有平台首启预置课程、日程、待办、专注历史及虚构图谱，默认仅保留标准 12 节作息网格骨架；彻底置空 S3/WebDAV 默认云端地址与区域代号（转为浅灰 Placeholder 提示），确保用户下载获得绝对纯净的应用。
+`[VERIFIED]` 源码及 Release v1.0.0 标签已成功推送到远程仓库，通过 GitHub Actions 自动化工作流已在线发布最新的干净版本 DMG、ZIP、APK、RPK、本地插件包及 SHA256SUMS.txt 校验清单。全部 15 项 Release 线上附件哈希经 API 实测核验一致。
