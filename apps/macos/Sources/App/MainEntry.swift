@@ -9,7 +9,7 @@ struct MainEntry {
                     args.contains("-mcp") ||
                     args.contains("--openapi") ||
                     args.first?.hasSuffix("classflow-mcp") == true ||
-                    (args.count > 1 && ["tools", "status", "sync", "--help", "-h"].contains(args[1]))
+                    (args.count > 1 && ["tools", "status", "sync", "call", "query", "query_timetable", "courses", "tasks", "events", "--help", "-h"].contains(args[1]))
 
         if isMCP {
             MCPServer.run()

@@ -43,6 +43,54 @@ public final class MCPServer: Sendable {
                 }
             }
             dispatchMain()
+        } else if args.count > 1 && args[1] == "call" {
+            guard args.count > 2 else {
+                fputs("Usage: classflow-mcp call <tool_name> [json_arguments]\n", stderr)
+                exit(1)
+            }
+            let toolName = args[2]
+            var arguments: [String: Any] = [:]
+            if args.count > 3 {
+                let jsonStr = args[3]
+                if let data = jsonStr.data(using: .utf8),
+                   let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    arguments = parsed
+                }
+            }
+            shared.executeToolCallAndPrint(name: toolName, arguments: arguments)
+            exit(0)
+        } else if args.count > 1 && (args[1] == "query" || args[1] == "query_timetable") {
+            let week = args.count > 2 ? Int(args[2]) : nil
+            let day = args.count > 3 ? Int(args[3]) : nil
+            let res = shared.handlers.queryTimetable(week: week, dayOfWeek: day)
+            if let data = try? JSONSerialization.data(withJSONObject: res, options: [.prettyPrinted]),
+               let str = String(data: data, encoding: .utf8) {
+                print(str)
+            }
+            exit(0)
+        } else if args.count > 1 && args[1] == "courses" {
+            let res = shared.handlers.listCourses()
+            if let data = try? JSONSerialization.data(withJSONObject: res, options: [.prettyPrinted]),
+               let str = String(data: data, encoding: .utf8) {
+                print(str)
+            }
+            exit(0)
+        } else if args.count > 1 && args[1] == "tasks" {
+            let filter = args.count > 2 ? args[2] : nil
+            let res = shared.handlers.listTasks(filter: filter)
+            if let data = try? JSONSerialization.data(withJSONObject: res, options: [.prettyPrinted]),
+               let str = String(data: data, encoding: .utf8) {
+                print(str)
+            }
+            exit(0)
+        } else if args.count > 1 && args[1] == "events" {
+            let date = args.count > 2 ? args[2] : nil
+            let res = shared.handlers.listCalendarEvents(date: date)
+            if let data = try? JSONSerialization.data(withJSONObject: res, options: [.prettyPrinted]),
+               let str = String(data: data, encoding: .utf8) {
+                print(str)
+            }
+            exit(0)
         } else {
             // Default: Standard MCP JSON-RPC Server over stdio
             shared.runStdioLoop()
@@ -134,106 +182,19 @@ public final class MCPServer: Sendable {
 
     // MARK: - Tool Execution
 
+    public func executeToolCallAndPrint(name: String, arguments: [String: Any]) {
+        do {
+            let outputText = try invokeTool(name: name, arguments: arguments)
+            print(outputText)
+        } catch {
+            fputs("Error executing \(name): \(error.localizedDescription)\n", stderr)
+            exit(1)
+        }
+    }
+
     private func executeToolCall(id: Any?, name: String, arguments: [String: Any]) {
         do {
-            var outputText = ""
-
-            switch name {
-            case "get_status":
-                let status = handlers.getStatus()
-                let data = try JSONSerialization.data(withJSONObject: status, options: [.prettyPrinted])
-                outputText = String(data: data, encoding: .utf8) ?? "{}"
-
-            case "query_timetable":
-                let week = arguments["week"] as? Int
-                let dayOfWeek = arguments["day_of_week"] as? Int
-                let result = handlers.queryTimetable(week: week, dayOfWeek: dayOfWeek)
-                let data = try JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted])
-                outputText = String(data: data, encoding: .utf8) ?? "{}"
-
-            case "add_course":
-                outputText = try handlers.addCourse(arguments: arguments)
-
-            case "update_course":
-                outputText = try handlers.updateCourse(arguments: arguments)
-
-            case "delete_course":
-                outputText = try handlers.deleteCourse(arguments: arguments)
-
-            case "list_courses":
-                let list = handlers.listCourses()
-                let data = try JSONSerialization.data(withJSONObject: list, options: [.prettyPrinted])
-                outputText = String(data: data, encoding: .utf8) ?? "[]"
-
-            case "list_calendar_events":
-                let date = arguments["date"] as? String
-                let list = handlers.listCalendarEvents(date: date)
-                let data = try JSONSerialization.data(withJSONObject: list, options: [.prettyPrinted])
-                outputText = String(data: data, encoding: .utf8) ?? "[]"
-
-            case "add_calendar_event":
-                outputText = try handlers.addCalendarEvent(arguments: arguments)
-
-            case "delete_calendar_event":
-                outputText = try handlers.deleteCalendarEvent(arguments: arguments)
-
-            case "list_tasks":
-                let filter = arguments["filter"] as? String
-                let list = handlers.listTasks(filter: filter)
-                let data = try JSONSerialization.data(withJSONObject: list, options: [.prettyPrinted])
-                outputText = String(data: data, encoding: .utf8) ?? "[]"
-
-            case "add_task":
-                outputText = try handlers.addTask(arguments: arguments)
-
-            case "complete_task":
-                outputText = try handlers.completeTask(arguments: arguments)
-
-            case "delete_task":
-                outputText = try handlers.deleteTask(arguments: arguments)
-
-            case "start_focus_timer":
-                outputText = try handlers.startFocusTimer(arguments: arguments)
-
-            case "stop_focus_timer":
-                outputText = try handlers.stopFocusTimer(arguments: arguments)
-
-            case "get_focus_statistics":
-                let stats = handlers.getFocusStatistics()
-                let data = try JSONSerialization.data(withJSONObject: stats, options: [.prettyPrinted])
-                outputText = String(data: data, encoding: .utf8) ?? "{}"
-
-            case "trigger_cloud_sync":
-                // Execute asynchronous cloud sync in background task
-                let sem = DispatchSemaphore(value: 0)
-                var syncOutput = ""
-                var syncErr: Error?
-                Task {
-                    do {
-                        syncOutput = try await self.handlers.triggerCloudSync()
-                    } catch {
-                        syncErr = error
-                    }
-                    sem.signal()
-                }
-                sem.wait()
-                if let err = syncErr {
-                    throw err
-                }
-                outputText = syncOutput
-
-            case "switch_semester_or_week":
-                outputText = try handlers.switchSemesterOrWeek(arguments: arguments)
-
-            case "open_app":
-                let tab = arguments["tab"] as? String
-                outputText = handlers.openApp(tab: tab)
-
-            default:
-                sendError(id: id, code: -32601, message: "Unknown tool name: \(name)")
-                return
-            }
-
+            let outputText = try invokeTool(name: name, arguments: arguments)
             let response: [String: Any] = [
                 "content": [
                     [
@@ -244,7 +205,6 @@ public final class MCPServer: Sendable {
                 "isError": false
             ]
             sendResult(id: id, result: response)
-
         } catch {
             let errorResponse: [String: Any] = [
                 "content": [
@@ -256,6 +216,102 @@ public final class MCPServer: Sendable {
                 "isError": true
             ]
             sendResult(id: id, result: errorResponse)
+        }
+    }
+
+    private func invokeTool(name: String, arguments: [String: Any]) throws -> String {
+        switch name {
+        case "get_status":
+            let status = handlers.getStatus()
+            let data = try JSONSerialization.data(withJSONObject: status, options: [.prettyPrinted])
+            return String(data: data, encoding: .utf8) ?? "{}"
+
+        case "query_timetable":
+            let week = arguments["week"] as? Int
+            let dayOfWeek = arguments["day_of_week"] as? Int
+            let result = handlers.queryTimetable(week: week, dayOfWeek: dayOfWeek)
+            let data = try JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted])
+            return String(data: data, encoding: .utf8) ?? "{}"
+
+        case "add_course":
+            return try handlers.addCourse(arguments: arguments)
+
+        case "update_course":
+            return try handlers.updateCourse(arguments: arguments)
+
+        case "delete_course":
+            return try handlers.deleteCourse(arguments: arguments)
+
+        case "list_courses":
+            let list = handlers.listCourses()
+            let data = try JSONSerialization.data(withJSONObject: list, options: [.prettyPrinted])
+            return String(data: data, encoding: .utf8) ?? "[]"
+
+        case "list_calendar_events":
+            let date = arguments["date"] as? String
+            let list = handlers.listCalendarEvents(date: date)
+            let data = try JSONSerialization.data(withJSONObject: list, options: [.prettyPrinted])
+            return String(data: data, encoding: .utf8) ?? "[]"
+
+        case "add_calendar_event":
+            return try handlers.addCalendarEvent(arguments: arguments)
+
+        case "delete_calendar_event":
+            return try handlers.deleteCalendarEvent(arguments: arguments)
+
+        case "list_tasks":
+            let filter = arguments["filter"] as? String
+            let list = handlers.listTasks(filter: filter)
+            let data = try JSONSerialization.data(withJSONObject: list, options: [.prettyPrinted])
+            return String(data: data, encoding: .utf8) ?? "[]"
+
+        case "add_task":
+            return try handlers.addTask(arguments: arguments)
+
+        case "complete_task":
+            return try handlers.completeTask(arguments: arguments)
+
+        case "delete_task":
+            return try handlers.deleteTask(arguments: arguments)
+
+        case "start_focus_timer":
+            return try handlers.startFocusTimer(arguments: arguments)
+
+        case "stop_focus_timer":
+            return try handlers.stopFocusTimer(arguments: arguments)
+
+        case "get_focus_statistics":
+            let stats = handlers.getFocusStatistics()
+            let data = try JSONSerialization.data(withJSONObject: stats, options: [.prettyPrinted])
+            return String(data: data, encoding: .utf8) ?? "{}"
+
+        case "trigger_cloud_sync":
+            let sem = DispatchSemaphore(value: 0)
+            var syncOutput = ""
+            var syncErr: Error?
+            Task {
+                do {
+                    syncOutput = try await self.handlers.triggerCloudSync()
+                } catch {
+                    syncErr = error
+                }
+                sem.signal()
+            }
+            sem.wait()
+            if let err = syncErr {
+                throw err
+            }
+            return syncOutput
+
+        case "switch_semester_or_week":
+            return try handlers.switchSemesterOrWeek(arguments: arguments)
+
+        case "open_app":
+            let tab = arguments["tab"] as? String
+            return handlers.openApp(tab: tab)
+
+        default:
+            throw NSError(domain: "ClassFlowMCP", code: -32601, userInfo: [NSLocalizedDescriptionKey: "Unknown tool name: \(name)"])
         }
     }
 
