@@ -97,6 +97,7 @@ public final class AppState {
     public var isShowingNewTaskSheet: Bool = false
 
     private var automationReceiver: MCPDesktopCommandReceiver?
+    private var calendarImportReceipts: [String: CalendarImportReceipt]?
     private let database: LocalDatabase
     public let timelineEngine: TimelineEngine
     private let mutationCoordinator: ScheduleMutationCoordinator
@@ -154,7 +155,7 @@ public final class AppState {
         let server = MCPServer(handlers: handlers)
         let result = try server.invokeTool(name: name, arguments: arguments)
         let reads: Set<String> = ["get_status", "query_timetable", "list_courses", "list_calendar_events", "list_tasks", "get_focus_statistics"]
-        if reads.contains(name) { return result }
+        if reads.contains(name) || (name == "import_calendar_events" && arguments["dry_run"] as? Bool == true) { return result }
         var after = database.load()
         recordAutomationChanges(before: before, after: after)
         after.syncDeviceId = syncEngine.deviceId
@@ -239,6 +240,7 @@ public final class AppState {
         self.pomodoroTasks = payload.pomodoroTasks
         self.pomodoroRecords = payload.pomodoroRecords
         self.calendarEvents = payload.calendarEvents
+        self.calendarImportReceipts = payload.calendarImportReceipts
         self.tombstones = SyncEngine.garbageCollectTombstones(payload.tombstones)
 
         for idx in self.semesters.indices {
@@ -290,7 +292,8 @@ public final class AppState {
             tombstones: tombstones,
             syncDeviceId: syncEngine.deviceId,
             syncSequence: syncEngine.latestSequence,
-            focusSession: focusSession
+            focusSession: focusSession,
+            calendarImportReceipts: calendarImportReceipts
         )
         do {
             try database.save(payload)

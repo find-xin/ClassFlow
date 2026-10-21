@@ -241,6 +241,8 @@ public final class MCPServer: Sendable {
             let data = try JSONSerialization.data(withJSONObject: list, options: [.prettyPrinted])
             return String(data: data, encoding: .utf8) ?? "[]"
 
+        case "import_calendar_events":
+            return try handlers.importCalendarEvents(arguments: arguments)
         case "add_calendar_event":
             return try handlers.addCalendarEvent(arguments: arguments)
         case "update_calendar_event":
@@ -739,13 +741,14 @@ public final class MCPServer: Sendable {
             ]
         ]
         tools.append(contentsOf: managementToolDefinitions())
+        tools.append(calendarImportDefinition())
         let readOnly: Set<String> = ["get_status", "query_timetable", "list_courses", "list_calendar_events", "list_tasks", "get_focus_statistics"]
         for i in tools.indices {
             let name = tools[i]["name"] as? String ?? ""
             tools[i]["annotations"] = [
                 "readOnlyHint": readOnly.contains(name),
                 "destructiveHint": name.hasPrefix("delete_"),
-                "idempotentHint": readOnly.contains(name) || name.hasPrefix("update_") || name == "complete_task",
+                "idempotentHint": readOnly.contains(name) || name.hasPrefix("update_") || name == "complete_task" || name == "import_calendar_events",
                 "openWorldHint": name == "trigger_cloud_sync"
             ]
             var schema = tools[i]["inputSchema"] as? [String: Any] ?? [:]

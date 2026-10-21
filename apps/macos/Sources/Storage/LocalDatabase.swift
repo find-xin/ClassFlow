@@ -18,6 +18,7 @@ public struct LocalDatabase: Sendable {
         public var syncDeviceId: String?
         public var syncSequence: Int?
         public var focusSession: FocusSession?
+        public var calendarImportReceipts: [String: CalendarImportReceipt]?
 
         public init(
             semesters: [Semester] = [],
@@ -33,7 +34,8 @@ public struct LocalDatabase: Sendable {
             tombstones: [SyncTombstone] = [],
             syncDeviceId: String? = nil,
             syncSequence: Int? = nil,
-            focusSession: FocusSession? = nil
+            focusSession: FocusSession? = nil,
+            calendarImportReceipts: [String: CalendarImportReceipt]? = nil
         ) {
             self.semesters = semesters
             self.courses = courses
@@ -49,6 +51,7 @@ public struct LocalDatabase: Sendable {
             self.syncDeviceId = syncDeviceId
             self.syncSequence = syncSequence
             self.focusSession = focusSession
+            self.calendarImportReceipts = calendarImportReceipts
         }
 
         public init(from decoder: Decoder) throws {
@@ -67,6 +70,7 @@ public struct LocalDatabase: Sendable {
             self.syncDeviceId = try container.decodeIfPresent(String.self, forKey: .syncDeviceId)
             self.syncSequence = try container.decodeIfPresent(Int.self, forKey: .syncSequence)
             self.focusSession = try container.decodeIfPresent(FocusSession.self, forKey: .focusSession)
+            self.calendarImportReceipts = try container.decodeIfPresent([String: CalendarImportReceipt].self, forKey: .calendarImportReceipts)
         }
     }
 

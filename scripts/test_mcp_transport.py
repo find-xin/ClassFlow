@@ -24,8 +24,8 @@ with subprocess.Popen([args.binary, '--mcp'], stdin=subprocess.PIPE, stdout=subp
     process.stdin.flush()
     tools = request(2, 'tools/list')['result']['tools']
     names = {tool['name'] for tool in tools}
-    assert len(names) == len(tools) == 23
-    assert {'update_task', 'update_calendar_event', 'pause_focus_timer', 'resume_focus_timer'} <= names
+    assert len(names) == len(tools) == 24
+    assert {'update_task', 'update_calendar_event', 'pause_focus_timer', 'resume_focus_timer', 'import_calendar_events'} <= names
     for tool in tools:
         assert tool['inputSchema']['type'] == 'object'
         assert isinstance(tool['annotations']['readOnlyHint'], bool)
@@ -33,4 +33,4 @@ with subprocess.Popen([args.binary, '--mcp'], stdin=subprocess.PIPE, stdout=subp
     assert request(4, 'not-a-method')['error']['code'] == -32601
     process.stdin.close()
     assert process.wait(timeout=10) == 0
-    print('PASS: initialize, notification, 23 tool schemas, annotations, ping, JSON-RPC error, clean EOF')
+    print('PASS: initialize, notification, 24 tool schemas, annotations, ping, JSON-RPC error, clean EOF')

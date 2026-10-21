@@ -164,3 +164,5 @@ uses generation-scoped startup/cancellation, an exclusive close-on-exec process 
 loopback readiness probes and bounded termination. Startup is opt-in and construction
 never reads Keychain. Runtime keys live only in Keychain and the child environment;
 connection preferences and private profiles are device-local and excluded from sync.
+
+Calendar migration uses an atomic MCP batch (up to 500 expanded occurrences), content-based duplicate adoption, and device-local replay receipts committed alongside events. AppState journals inserted events and preserves receipts during ordinary saves. Receipts are excluded from sync/backup and do not represent ongoing external calendar synchronization.

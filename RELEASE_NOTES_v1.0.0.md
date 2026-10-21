@@ -9,6 +9,7 @@ ClassFlow 是一款专为 macOS 与 Android 打造的高颜值、本地离线优
 
 ### 🍏 原生 macOS 体验 (Swift 6 + SwiftUI + AppKit)
 - **WakeUp 唯美课表美学**：全景流动壁纸底色、高斯磨砂顶栏、悬浮时间抽屉与马卡龙色系课程卡片；
+- **智能排版与冲突避让**：非本周课程仅在时段真正空白无安排时才透视显示；当该时段有任何生效课程或日程安排时，非本周课程自动让位隐藏，彻底消除并排挤占。日程支持根据物理时间动态智能反推作息节次；
 - **智能联想输入（WakeUp Style）**：添加与编辑课程时，自动检索已选课程、老师与教室，点击即可快速填入；
 - **高对比度夜间模式**：深度适配系统深色外观，独立暗夜渐变壁纸、柔和卡片反光与高对比度文字排版；
 - **原生 macOS 桌面小组件**：内置独立编译并签名的原生 WidgetKit 扩展（`.appex`），完美适配 macOS 通知中心与桌面；
@@ -16,13 +17,14 @@ ClassFlow 是一款专为 macOS 与 Android 打造的高颜值、本地离线优
 
 ### 🤖 现代 Android 架构 (Jetpack Compose + Room)
 - **WakeUp 唯美顶栏与悬浮周次抽屉**：左侧点击展开悬浮滑动周次抽屉与学期缩略卡，右侧配备 `+` 添加、`↓` 导入、`⤴` 导出、`⋮` 快捷菜单四大独立操作；
+- **智能排版对齐**：双端对齐非本周课程智能避让逻辑，遇本周活跃日程与课程自动隐藏让位；
 - **WakeUp 风格桌面小组件**：深色磨砂玻璃微件，支持“下节课”倒计时胶囊磁贴、“今日课表”垂直色条磁贴与“一周课表”迷你全周网格；
 - **全量多端云同步 (BYOC)**：跨设备完整同步课程、日程、待办清单、专注任务打卡统计与外观配置；支持用户自定义同步间隔与一键立即全量同步；
 - **智能导入与多格式导出**：支持直接粘贴教务解析脚本 / WakeUp JSON 一键导入课表，并支持 `.classflow` 全量备份包和 `.ics` 系统通用日历文件导入导出与系统分享；
 - **动漫暮光与深色模式**：新增动漫暮光紫蓝渐变预设，卡片透明度可自由滑动调节（30%~100%），夜间模式高对比度深度优化。
 
 ### 🧠 ChatGPT 与 AI 全功能接管套件 (MCP Server & Tunnel)
-- **23 个标准 MCP 工具**：涵盖课表查询、课程增删改查、日程日历管理、待办任务生命周期、番茄专注计时器打卡与统计、学期周次切换、全量云同步与应用调度；
+- **24 个标准 MCP 工具**：涵盖课表查询、课程增删改查、日程日历管理与批量导入（`import_calendar_events`）、待办任务生命周期、番茄专注计时器打卡与统计、学期周次切换、全量云同步与应用调度；
 - **原生桌面桥接机制**：通过本地安全 IPC 邮箱（`~/Library/Application Support/ClassFlow/automation`）直接驱动主线程 AppState，实现无感即时 UI 刷新；
 - **安全云端 MCP 隧道**：内置 `tunnel-client` 进程生命周期管理与安全健康探针，支持云端 ChatGPT（网页版/移动端）直接安全穿透连接本地 ClassFlow 实例；
 - **零明文密钥安全**：隧道 API Token 严格加密存储于 macOS 钥匙串（Keychain），严禁明文写入配置文件或命令行参数。
@@ -43,11 +45,13 @@ ClassFlow 是一款专为 macOS 与 Android 打造的高颜值、本地离线优
 
 | 平台 | 架构 / 类型 | 文件名 | 大小 | SHA-256 校验和 |
 | :--- | :--- | :--- | :--- | :--- |
-| **macOS 安装镜像** | Apple Silicon (arm64) | `ClassFlow-1.0.0-macOS-arm64.dmg` | 4.4 MB | `db91423f6297fe9c9988a5e27c156fc4ca29cffa133d374ea10c5dd86214e316` |
-| **macOS 绿色免安装** | Apple Silicon (arm64) | `ClassFlow-1.0.0-macOS-arm64.zip` | 6.8 MB | `6acd32451d3924477053ea63e3677e1a56612c4b2474035906ea84eb426208a8` |
-| **Android 客户端** | Universal (ARM/x86) | `ClassFlow-1.0.0-android.apk` | 13.4 MB | `0dc583a250f3ae4ff3f22b78b1aff4c6e766c9834abaf30af4170c6e20bdc884` |
-| **小米手环快应用** | 手环快应用安装包 | `ClassFlow-1.0.0-xiaomi-band.rpk` | 5.0 KB | `b296eb9640944c38a6c559074f04c1033d2c353eb92c62a20a3b01ad4322bf74` |
-| **小米手环离线包** | 开发者安装源码包 | `ClassFlow-1.0.0-xiaomi-band.zip` | 5.0 KB | `b296eb9640944c38a6c559074f04c1033d2c353eb92c62a20a3b01ad4322bf74` |
+| **macOS 安装镜像** | Apple Silicon (arm64) | `ClassFlow-1.0.0-macOS-arm64.dmg` | 4.4 MB | `2e3092d356a7ac2ef50703d980bb429fd50383d92ac0d15ca039beb3bfdd3d7a` |
+| **macOS 绿色免安装** | Apple Silicon (arm64) | `ClassFlow-1.0.0-macOS-arm64.zip` | 6.8 MB | `3096621d7ac6bc60fc2d7847c2a2015311b186d5f2bb752d455abe7719c40db7` |
+| **Android 客户端** | Universal (ARM/x86) | `ClassFlow-1.0.0-android.apk` | 13.4 MB | `a07137a280094137b487640c04bf3dccf0702f6107decc7c3ab7261b27912b8a` |
+| **小米手环快应用** | 手环快应用安装包 | `ClassFlow-1.0.0-xiaomi-band.rpk` | 4.7 KB | `8a3b4c6cbcfd3d6ec4e4a7580b13ea6dc98c6b543bca3735de98aae926938602` |
+| **小米手环离线包** | 开发者安装源码包 | `ClassFlow-1.0.0-xiaomi-band.zip` | 4.7 KB | `8a3b4c6cbcfd3d6ec4e4a7580b13ea6dc98c6b543bca3735de98aae926938602` |
+| **ChatGPT 本地插件** | Codex / Work 插件包 | `ClassFlow-Local-Plugin-1.1.0.zip` | 15.0 KB | `dd7a7de60a2c57dd28d10f918849acffe56616f64bf75f706647a919a3962ddc` |
+| **ChatGPT 配置指南** | 接入说明与文档 | `ClassFlow-ChatGPT-Setup.md` | 3.0 KB | `4820a4864226ff9b9fbe1a356464071bb5ea49e325fdb51f77dd9b3fe747375c` |
 
 ---
 

@@ -218,3 +218,9 @@ ls -1 ClassFlow-*.{apk,dmg,zip,rpk} | xargs shasum -a 256 > SHA256SUMS.txt
 
 `[VERIFIED]` 彻底清空所有平台首启预置课程、日程、待办、专注历史及虚构图谱，默认仅保留标准 12 节作息网格骨架；彻底置空 S3/WebDAV 默认云端地址与区域代号（转为浅灰 Placeholder 提示），确保用户下载获得绝对纯净的应用。
 `[VERIFIED]` 源码及 Release v1.0.0 标签已成功推送到远程仓库，通过 GitHub Actions 自动化工作流已在线发布最新的干净版本 DMG、ZIP、APK、RPK、本地插件包及 SHA256SUMS.txt 校验清单。全部 15 项 Release 线上附件哈希经 API 实测核验一致。
+
+### Batch calendar import (2026-10-21)
+
+Added import_calendar_events, tool 24: 1-500 rows, full validation, atomic save, occurrence deduplication, dry-run and persistent replay receipts. Old databases decode without the optional local receipt field. AppState preserves receipts; BYOC and backup do not include them. Refresh ChatGPT tool discovery after installing the updated App. Platform tool quotas cannot be increased by ClassFlow.
+
+[VERIFIED] 66 macOS tests and 24-tool installed-release protocol smoke checks passed; three portable plugin packaging checks passed. Updated Release installed with a pre-update App/database backup. After user completed native Keychain authorization, a real App-executed batch preview confirmed the expected duplicate/new counts, then a single commit inserted 223 events. A separate read verified 258 unique occurrences matching the prepared source manifest and all 35 prior records unchanged. Google Calendar was read only; no Google writes were issued. Cloud-chat discovery of tool 24 still needs a connection refresh. Migration source and prepared request are private local application-support files, excluded from the repository.

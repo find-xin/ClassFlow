@@ -53,9 +53,10 @@
 
 如果 `init` 报已有配置，不自动覆盖；先检查已有 profile。已有正确 profile 可用 `tunnel-client doctor --profile classflow --explain` 和 `tunnel-client run --profile classflow` 复用，运行密钥仍来自环境引用。账户或工作区功能不可用时记录 `[BLOCKED]` 及实际错误，不伪装成已连接。
 
-## 23 个工具的覆盖范围
+## 24 个工具的覆盖范围
 
 - 状态和课表：`get_status`、`query_timetable`、`list_courses`。
+- 批量迁移：`import_calendar_events`，每批 1–500 条，先 dry_run 预览，全批验证后原子写入；固定 batch_id 和内容可安全重试。
 - 课程：`add_course`、`update_course`、`delete_course`；属性包括教师、学分、颜色、备注、地点。修改星期、节次、周次时，多课时课程必须提供 `schedule_id`。
 - 日程：`list_calendar_events`、`add_calendar_event`、`update_calendar_event`、`delete_calendar_event`；支持标题、日期、时间、全天、地点、颜色、备注。
 - 待办：`list_tasks`、`add_task`、`update_task`、`complete_task`、`delete_task`；支持备注、预估番茄、截止日期和优先级。待办颜色由优先级决定，现有领域模型没有独立颜色字段。
@@ -121,3 +122,9 @@ python3 scripts/test_mcp_transport.py apps/macos/.build/debug/ClassFlow
 ## Release 附件打包
 
 `python3 scripts/package_chatgpt.py` 从明确文件清单生成本地插件 ZIP、独立接入说明及各自的 SHA-256 文件，不读取用户配置、隧道 profile 或钥匙串。隐藏的插件 manifest 与 `.mcp.json` 包含在 ZIP 中；无需克隆源码仓库即可运行其中的安装脚本。普通 ChatGPT 聊天使用 App 中的隧道连接，本地插件附件不表示已上架官方公共目录。简明用户说明见 [CHATGPT_RELEASE_SETUP.md](CHATGPT_RELEASE_SETUP.md)。
+
+## Batch calendar migration
+
+Tool count is now 24. import_calendar_events accepts a stable batch_id, 1-500 expanded occurrences and optional dry_run=true (no writes). Convert times to the Mac local timezone first; end_date supports cross-day events and is inclusive for all-day events. Recurrences must be expanded. Identity deduplication uses title, start/end, all-day, location and recurrence; it preserves existing notes/colors. The same batch ID/content replays its original receipt, even after later edits or deletions; changed content with the same ID is rejected. Receipts are device-local, excluded from BYOC and backups. Cloud chat must refresh tool discovery after updating the App; old 23-tool connections do not acquire a new tool automatically. Platform call/context limits still apply.
+
+[VERIFIED] Installed App batch import: preview and acknowledged commit completed; an independent MCP read verified 258 unique occurrences, 223 newly inserted, all 35 prior records preserved, and exact identity coverage against the source manifest. This verifies App/stdio execution; cloud-chat discovery of the new tool still needs a connection refresh. Private migration data is stored outside the repository.

@@ -7,7 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.0.0] - 2026-10-14
+## [1.0.0] - 2026-10-21
+
+### Fixed
+- **Timetable Grid Interval Conflict Resolution (macOS & Android)**:
+  - Resolved layout issue where non-current week courses appeared side-by-side with active current-week calendar events and schedules.
+  - Implemented interval-based minute range and section overlap detection (`itemsOverlap`): non-current week courses are only displayed when the time slot is completely free of any active arrangements.
+  - Added dynamic section inference for `CalendarEvent` occurrences without explicit `startSection` based on event start/end times and semester section timetable.
 
 ### Added
 - **Core Calculation Engine (`packages/core-engine`)**:

@@ -113,3 +113,7 @@ A local ready status does not replace a real cloud-chat tool call with user cred
 ### Release plugin kit
 
 `python3 scripts/test_chatgpt_package.py` verifies deterministic ZIP bytes, hidden manifests, executable mode, checksums and missing-file failure. It extracts the kit into a path with spaces and runs its real installer with an isolated HOME and a stub Codex CLI; no user client is changed.
+
+### Batch calendar migration
+
+MCPBatchImportTests covers 258 rows adopting 35 prior events and inserting 223, whole-batch rollback, dry-run, durable replay after restart/deletion, conflicting batch IDs, intra/inter-batch deduplication, limits, cross-day dates, and AppState journaling/receipt preservation. All use temporary databases. MCP transport now verifies 24 tools.

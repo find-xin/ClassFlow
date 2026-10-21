@@ -13,11 +13,11 @@ struct MCPServerTests {
         return (handlers, db)
     }
 
-    @Test("Verify all 23 MCP tools are defined and registered")
+    @Test("Verify all 24 MCP tools are defined and registered")
     func testToolsListCompleteness() {
         let server = MCPServer()
         let tools = server.defineTools()
-        #expect(tools.count == 23)
+        #expect(tools.count == 24)
 
         let toolNames = Set(tools.compactMap { $0["name"] as? String })
         let expectedNames: Set<String> = [
@@ -39,7 +39,7 @@ struct MCPServerTests {
             "get_focus_statistics",
             "trigger_cloud_sync",
             "switch_semester_or_week",
-            "open_app", "update_calendar_event", "update_task", "pause_focus_timer", "resume_focus_timer"
+            "import_calendar_events", "open_app", "update_calendar_event", "update_task", "pause_focus_timer", "resume_focus_timer"
         ]
         #expect(toolNames == expectedNames)
     }
