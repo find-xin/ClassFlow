@@ -8,9 +8,21 @@ if [[ ! -x "$CLASSFLOW_BIN" ]]; then
     echo "Install the current ClassFlow.app first, or set CLASSFLOW_APP_BIN." >&2
     exit 1
 fi
-CODEX_BIN="$(command -v codex || true)"
+# GUI installations can bundle the CLI without adding it to a terminal's PATH.
+# Allow an explicit path; otherwise use PATH, then known per-user/system desktop bundles.
+CODEX_BIN="${CLASSFLOW_CODEX_BIN:-$(command -v codex || true)}"
 if [[ -z "$CODEX_BIN" ]]; then
-    echo "Codex CLI not found. Open ChatGPT Work/Codex and install its CLI before continuing." >&2
+    for candidate in \
+        "${HOME}/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex" \
+        "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex"; do
+        if [[ -x "$candidate" ]]; then
+            CODEX_BIN="$candidate"
+            break
+        fi
+    done
+fi
+if [[ -z "$CODEX_BIN" || ! -x "$CODEX_BIN" ]]; then
+    echo "Codex CLI not found. Install the desktop CLI or set CLASSFLOW_CODEX_BIN to its executable path." >&2
     exit 1
 fi
 MARKETPLACE_DIR="${HOME}/.codex/marketplaces/classflow-marketplace"

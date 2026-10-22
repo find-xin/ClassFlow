@@ -171,3 +171,26 @@ Calendar migration uses an atomic MCP batch (up to 500 expanded occurrences), co
 ### MCP editing v1.2
 
 The 28-tool contract is shared by stdio and HTTP/OpenAPI. Validated editing handlers retain UUIDs for in-place changes, split future series and detach individual calendar occurrences, and journal all changes through AppState. CalendarEvent.timeMode is optional for backwards compatibility; `sections` binds the event to the semester's current SectionTime values, while legacy timestamps retain their concrete times. CalendarEventProjector is shared by native Mac views, MCP, widgets and reminder planning; Android mirrors recurrence/count/day-clipping semantics and persists the new fields. TaskRecurrence generates one stable-ID successor on completion without inventing focus statistics. batch_edit_items stages only allowed data mutations in a private temporary database, commits atomically, and saves device-local replay receipts. Full editing context excludes settings and credentials and is paginated. FocusSession may contain optional course metadata and location; it remains device-local. See CHATGPT_INTEGRATION.md for scope and runtime verification boundaries.
+
+### Calendar projection batching (2026-10-22)
+
+`CalendarEventRecurrence.swift` owns frequency normalization and occurrence-date enumeration;
+`CalendarEventProjector.swift` owns visible-week clipping and `TimelineItem` creation.
+The additive `project(events:semester:week:exceptions:)` API projects a caller-provided snapshot,
+sharing a call-local date formatter, week boundaries and event/date exception index. The original
+single-event API delegates to the same implementation. Input order, stable occurrence IDs,
+first matching exception, count limits and midnight-exclusive timed endings remain unchanged.
+Clipping visits only the visible portion of each occurrence (at most seven days); recurrence
+counts still enumerate from the series origin, so this is not a bound on total recurrence work.
+
+macOS timetable reads, widget payloads and occurrence deep links use the batch API. MCP reads
+exceptions from the already-loaded payload instead of reloading the complete JSON database for
+each event. AppState keeps date-cache week/semester keys independent from occurrence-cache keys;
+widget generation reuses its clock formatter and groups active occurrences by weekday once.
+No persistence schema, MCP tool schema or Android storage contract changes are involved.
+
+Legacy/Android CalendarEvent payloads may encode unused customDaysOfWeek/customWeeks as empty
+arrays instead of null. Recurrence enumeration treats both representations as no additional
+filter, matching Android. Nonempty filters still constrain dates. MCP validation continues to
+reject newly requested customDays/customWeeks modes without a nonempty corresponding selection;
+this read compatibility does not weaken write validation or rewrite existing records.

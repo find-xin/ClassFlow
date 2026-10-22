@@ -55,6 +55,7 @@ class ChatGPTReleaseTests(unittest.TestCase):
             calls = work / 'calls.txt'
             env = dict(os.environ, HOME=str(home), PATH=str(commands) + os.pathsep + os.environ['PATH'],
                        CLASSFLOW_APP_BIN=sys.executable, CLASSFLOW_TEST_CALLS=str(calls))
+            env.pop('CLASSFLOW_CODEX_BIN', None)
             result = subprocess.run(['bash', str(kit / 'scripts/install_mcp.sh')], cwd=work,
                                     env=env, capture_output=True, text=True, timeout=15)
             self.assertEqual(result.returncode, 0, result.stderr)
@@ -64,6 +65,37 @@ class ChatGPTReleaseTests(unittest.TestCase):
             self.assertEqual(calls.read_text().splitlines(), [
                 'plugin marketplace add ' + str(marketplace), 'plugin add classflow@classflow-marketplace'])
             self.assertTrue((marketplace / '.agents/plugins/marketplace.json').is_file())
+
+    def test_installer_discovers_cli_outside_terminal_path(self):
+        for mode in ('explicit', 'desktop_bundle', 'invalid_explicit'):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory(prefix='classflow cli ') as folder:
+                work = Path(folder)
+                home = work / 'home'
+                home.mkdir()
+                if mode == 'desktop_bundle':
+                    cli = home / 'Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex'
+                else:
+                    cli = work / 'outside path/codex'
+                cli.parent.mkdir(parents=True)
+                cli.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$CLASSFLOW_TEST_CALLS"\n')
+                cli.chmod(0o755)
+                calls = work / 'calls.txt'
+                env = dict(os.environ, HOME=str(home), PATH='/usr/bin:/bin',
+                           CLASSFLOW_APP_BIN=sys.executable, CLASSFLOW_TEST_CALLS=str(calls))
+                env.pop('CLASSFLOW_CODEX_BIN', None)
+                if mode != 'desktop_bundle':
+                    env['CLASSFLOW_CODEX_BIN'] = str(cli if mode == 'explicit' else work / 'missing')
+                result = subprocess.run(['/bin/bash', str(ROOT / 'scripts/install_mcp.sh')],
+                                        env=env, capture_output=True, text=True, timeout=15)
+                if mode == 'invalid_explicit':
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn('CLASSFLOW_CODEX_BIN', result.stderr)
+                    self.assertFalse(calls.exists())
+                    self.assertFalse((home / '.codex').exists())
+                else:
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(len(calls.read_text().splitlines()), 2)
+                    self.assertTrue((home / '.codex/marketplaces/classflow-marketplace/plugins/classflow/.mcp.json').exists())
 
     def test_missing_required_file_fails_without_partial_artifact(self):
         with tempfile.TemporaryDirectory() as folder:

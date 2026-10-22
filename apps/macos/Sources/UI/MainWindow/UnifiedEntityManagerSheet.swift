@@ -478,7 +478,7 @@ public struct UnifiedEntityManagerSheet: View {
                 HStack(spacing: 8) {
                     if let sDate = ev.startDate {
                         if let uDate = ev.endRepeatUntil ?? ev.endDate, !uDate.isEmpty, uDate != sDate {
-                            Text("日期范围：\(sDate) ~ \(uDate) (已截止)")
+                            Text("日期范围：\(sDate) ~ \(uDate)")
                                 .font(.system(size: 10.5))
                                 .foregroundColor(.secondary.opacity(0.85))
                         } else {

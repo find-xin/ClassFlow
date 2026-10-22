@@ -58,10 +58,8 @@ public struct MCPToolHandlers: Sendable {
             showNonCurrentWeekCourses: payload.settings.showNonCurrentWeekCourses
         )
 
-        let wDates = timelineEngine.weekCalculator.dateStringsInWeek(weekNumber: currentWeek, semesterStartDate: current.startDate)
-        for event in currentEvents {
-            weekItems.append(contentsOf: projectCalendarEventOccurrences(event, weekDates: wDates, semester: current, selectedWeek: currentWeek))
-        }
+        weekItems.append(contentsOf: CalendarEventProjector().project(
+            events: currentEvents, semester: current, week: currentWeek, exceptions: payload.exceptions))
 
         let todayItems = weekItems.filter { $0.date == todayStr && $0.status != .cancelled && $0.isCurrentWeek }
             .sorted { $0.startSection < $1.startSection }
@@ -163,10 +161,8 @@ public struct MCPToolHandlers: Sendable {
             showNonCurrentWeekCourses: true
         )
 
-        let weekDates = timelineEngine.weekCalculator.dateStringsInWeek(weekNumber: targetWeek, semesterStartDate: semester.startDate)
-        for event in semEvents {
-            items.append(contentsOf: projectCalendarEventOccurrences(event, weekDates: weekDates, semester: semester, selectedWeek: targetWeek))
-        }
+        items.append(contentsOf: CalendarEventProjector().project(
+            events: semEvents, semester: semester, week: targetWeek, exceptions: payload.exceptions))
 
         if let day = dayOfWeek {
             items = items.filter { $0.dayOfWeek == day }
@@ -614,12 +610,4 @@ public struct MCPToolHandlers: Sendable {
         return presets[c] ?? "#4F46E5"
     }
 
-    private func projectCalendarEventOccurrences(
-        _ event: CalendarEvent,
-        weekDates: [String],
-        semester: Semester,
-        selectedWeek: Int
-    ) -> [TimelineItem] {
-        CalendarEventProjector().project(event, semester: semester, week: selectedWeek, exceptions: database.load().exceptions)
-    }
 }

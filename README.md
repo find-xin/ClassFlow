@@ -57,8 +57,8 @@
 
 | 模块 / 特性 | 实现栈 | 测试覆盖 | 验证状态 | 说明 |
 | :--- | :--- | :--- | :--- | :--- |
-| **Core Engine** | Swift 6 Package | 62 单元测试通过 | `[VERIFIED]` | 覆盖冲突检测、周次计算、ICS 编解码、ZIP 备份包、S3/WebDAV 协议与 3-way 合并 |
-| **macOS Client** | SwiftUI + AppKit | 75 单元测试通过 | `[VERIFIED]` | macOS 15.8 Sequoia 原生运行，支持深色模式、键盘导航、联想输入与多学期管理 |
+| **Core Engine** | Swift 6 Package | 69 单元测试通过 | `[VERIFIED]` | 覆盖冲突检测、周次计算、ICS 编解码、ZIP 备份包、S3/WebDAV 协议与 3-way 合并 |
+| **macOS Client** | SwiftUI + AppKit | 87 单元测试通过 | `[VERIFIED]` | macOS 15.8 Sequoia 原生运行，支持深色模式、键盘导航、联想输入与多学期管理 |
 | **macOS Widget** | WidgetKit Extension | 已嵌入并本地签名 | `[VERIFIED]` | 独立 `.appex` 扩展，支持系统桌面与通知中心课表微件 |
 | **MCP AI Server** | Model Context Protocol | 自动化测试通过 | `[VERIFIED]` | 28 个标准工具覆盖课程、日程、待办、番茄专注、云同步与学期切换 |
 | **ChatGPT 安全隧道** | Swift Native Subprocess | 进程与钥匙串测试通过 | `[VERIFIED]` | 安全管理 `tunnel-client` 守护进程，本地健康探针，Token 存入 Keychain |
@@ -134,16 +134,18 @@ ClassFlow 提供本地 stdio MCP 与云端 Secure MCP Tunnel 两种连接方式�
 
 ## 5. 下载与安装
 
-### 正式发布文件 (Release v1.2.0)
+### 正式发布文件 (Release v1.2.0，macOS build 5)
+
+本修订修复重复日程空筛选导致课表不显示的问题，优化批量投影，并支持自动发现 ChatGPT 内置 CLI。Android 与手环附件未变更；详见 [发布说明](RELEASE_NOTES_v1.2.0.md)。
 
 | 平台 | 安装包名称 | 文件大小 | SHA-256 校验和 |
 | :--- | :--- | :--- | :--- |
-| **macOS (Apple Silicon)** | `ClassFlow-1.2.0-macOS-arm64.dmg` | 4.6 MB | `7ab5d669c58f966ef02d2d62799ff8d4236dc56a3932e9b840b4222ffbb6cf64` |
-| **macOS ZIP** | `ClassFlow-1.2.0-macOS-arm64.zip` | 3.9 MB | `d22412e1e4c8ee54d6d5e367fa3ef37c5d1a3b518a5352d2e3b9073e126aa0f1` |
+| **macOS (Apple Silicon)** | `ClassFlow-1.2.0-macOS-arm64.dmg` | 4.6 MB | `825417e01f7198608782c97ffaa9f30d6175d31dc9ee698277184cbb460c0444` |
+| **macOS ZIP** | `ClassFlow-1.2.0-macOS-arm64.zip` | 3.9 MB | `dd8b28078d82a9431bf945435e64c9b16c1aa76b1df6d8e5a564ff0de045f8f3` |
 | **Android 客户端** | `ClassFlow-1.2.0-android.apk` | 13.4 MB | `9b135d62763dcbccfd651b9af5ab3cedbbec52a366fa03fab5dd5ca301e8db37` |
 | **小米手环（未变更）** | `ClassFlow-1.0.0-xiaomi-band.rpk` | 4.7 KB | `8a3b4c6cbcfd3d6ec4e4a7580b13ea6dc98c6b543bca3735de98aae926938602` |
 | **小米手环源码包（未变更）** | `ClassFlow-1.0.0-xiaomi-band.zip` | 4.7 KB | `8a3b4c6cbcfd3d6ec4e4a7580b13ea6dc98c6b543bca3735de98aae926938602` |
-| **本地 Work / Codex 插件** | `ClassFlow-Local-Plugin-1.2.0.zip` | 20.2 KB | `f038e62d5c13c2765a006816c418a76b94f7b4c8a1ebdd2034fb65f5da89c28d` |
+| **本地 Work / Codex 插件** | `ClassFlow-Local-Plugin-1.2.0.zip` | 20.5 KB | `48931bbb0b4d1da9a246366177198b6dd5469a1660b882db1078a6ad8a792f09` |
 
 > 校验命令：`cd dist && shasum -a 256 -c SHA256SUMS.txt`
 

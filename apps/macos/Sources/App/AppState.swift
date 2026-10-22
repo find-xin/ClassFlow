@@ -692,6 +692,8 @@ public final class AppState {
 
     private var _cachedOccurrences: [TimelineItem]? = nil
     private var _cachedWeekDates: [String]? = nil
+    private var _cachedDatesWeekNumber: Int? = nil
+    private var _cachedDatesSemesterId: UUID? = nil
     private var _cachedWeekNumber: Int? = nil
     private var _cachedSemesterId: UUID? = nil
     private var _cachedDataVersion: Int = -1
@@ -701,13 +703,15 @@ public final class AppState {
         dataVersion += 1
         _cachedOccurrences = nil
         _cachedWeekDates = nil
+        _cachedDatesWeekNumber = nil
+        _cachedDatesSemesterId = nil
         _cachedWeekNumber = nil
         _cachedSemesterId = nil
     }
 
     public var currentWeekDates: [String] {
         guard let current = currentSemester else { return [] }
-        if let cached = _cachedWeekDates, _cachedWeekNumber == selectedWeek, _cachedSemesterId == current.id {
+        if let cached = _cachedWeekDates, _cachedDatesWeekNumber == selectedWeek, _cachedDatesSemesterId == current.id {
             return cached
         }
         let dates = timelineEngine.weekCalculator.dateStringsInWeek(
@@ -715,13 +719,13 @@ public final class AppState {
             semesterStartDate: current.startDate
         )
         _cachedWeekDates = dates
+        _cachedDatesWeekNumber = selectedWeek
+        _cachedDatesSemesterId = current.id
         return dates
     }
 
     public var currentWeekOccurrences: [TimelineItem] {
         guard let current = currentSemester else { return [] }
-        let currentCourses = courses.filter { $0.semesterId == current.id }
-
         if let cached = _cachedOccurrences,
            _cachedDataVersion == dataVersion,
            _cachedWeekNumber == selectedWeek,
@@ -730,6 +734,7 @@ public final class AppState {
             return cached
         }
 
+        let currentCourses = courses.filter { $0.semesterId == current.id }
         var items = timelineEngine.generateOccurrences(
             semester: current,
             courses: currentCourses,
@@ -739,16 +744,13 @@ public final class AppState {
             showNonCurrentWeekCourses: settings.showNonCurrentWeekCourses
         )
 
-        let weekDates = currentWeekDates
         let defaultSemId = semesters.first?.id
         let currentEvents = calendarEvents.filter {
             $0.semesterId == current.id || ($0.semesterId == nil && current.id == defaultSemId)
         }
 
-        for event in currentEvents {
-            let eventItems = projectCalendarEvent(event, weekDates: weekDates, semester: current)
-            items.append(contentsOf: eventItems)
-        }
+        items.append(contentsOf: CalendarEventProjector().project(
+            events: currentEvents, semester: current, week: selectedWeek, exceptions: exceptions))
 
         _cachedOccurrences = items
         _cachedWeekNumber = selectedWeek
@@ -756,11 +758,6 @@ public final class AppState {
         _cachedDataVersion = dataVersion
         _cachedShowNonCurrent = settings.showNonCurrentWeekCourses
         return items
-    }
-
-    private func projectCalendarEvent(_ event: CalendarEvent, weekDates: [String], semester: Semester) -> [TimelineItem] {
-        let week = weekDates.first.flatMap { timelineEngine.weekCalculator.weekIndex(for: $0, semesterStartDate: semester.startDate) } ?? selectedWeek
-        return CalendarEventProjector().project(event, semester: semester, week: week, exceptions: exceptions)
     }
 
     // MARK: - Calendar Event CRUD
@@ -1294,10 +1291,8 @@ public final class AppState {
             $0.semesterId == current.id || ($0.semesterId == nil && current.id == defaultSemId)
         }
 
-        for event in currentEvents {
-            let eventItems = projectCalendarEvent(event, weekDates: weekDates, semester: current)
-            weekOccurrences.append(contentsOf: eventItems)
-        }
+        weekOccurrences.append(contentsOf: CalendarEventProjector().project(
+            events: currentEvents, semester: current, week: weekNum, exceptions: exceptions))
 
         let dfTime = DateFormatter()
         dfTime.dateFormat = "HH:mm"
@@ -1308,14 +1303,14 @@ public final class AppState {
             ($0.startTime ?? "00:00") < ($1.startTime ?? "00:00")
         }
 
+        let dfFull = DateFormatter()
+        dfFull.dateFormat = "yyyy-MM-dd HH:mm"
         let todayWidgetItems: [WidgetCourseItem] = todayItems.map { item in
             let start = item.startTime ?? "00:00"
             let end = item.endTime ?? "23:59"
             let isOngoing = currentTimeStr >= start && currentTimeStr <= end
 
             var minutesUntil: Int? = nil
-            let dfFull = DateFormatter()
-            dfFull.dateFormat = "yyyy-MM-dd HH:mm"
             if let startDate = dfFull.date(from: "\(todayStr) \(start)") {
                 let diff = startDate.timeIntervalSince(now) / 60.0
                 if diff > 0 {
@@ -1341,10 +1336,11 @@ public final class AppState {
         let nextItem = todayWidgetItems.first(where: { $0.isOngoing || ($0.minutesUntilStart != nil && $0.minutesUntilStart! >= 0) })
 
         let dayNames = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+        let activeByDay = Dictionary(grouping: weekOccurrences.filter { $0.status != .cancelled }, by: \.dayOfWeek)
         var weekSchedules: [WidgetDaySchedule] = []
         for dayIdx in 1...7 {
             let dateStr = (dayIdx <= weekDates.count) ? weekDates[dayIdx - 1] : ""
-            let dayCourses = weekOccurrences.filter { $0.dayOfWeek == dayIdx && $0.status != .cancelled }.map { item in
+            let dayCourses = (activeByDay[dayIdx] ?? []).map { item in
                 WidgetCourseItem(
                     id: item.id,
                     title: item.title,
@@ -1415,10 +1411,8 @@ public final class AppState {
                         activeWeek: calculatedCurrentWeek,
                         showNonCurrentWeekCourses: true
                     )
-                    let wDates = timelineEngine.weekCalculator.dateStringsInWeek(weekNumber: w, semesterStartDate: semester.startDate)
-                    for event in currentEvents {
-                        occs.append(contentsOf: projectCalendarEvent(event, weekDates: wDates, semester: semester))
-                    }
+                    occs.append(contentsOf: CalendarEventProjector().project(
+                        events: currentEvents, semester: semester, week: w, exceptions: exceptions))
                     if let occ = occs.first(where: { $0.id == targetId }) {
                         selectedWeek = w
                         selectedOccurrence = occ

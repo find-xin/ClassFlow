@@ -22,7 +22,7 @@
 
 ## 本地 Work / Codex
 
-先安装并登录支持插件的本地 Work / Codex，确保其 `codex` CLI 可从终端调用，并安装 Python 3。解压插件 ZIP 后，在 `ClassFlow-Local-Plugin` 文件夹内运行：
+先安装并登录支持插件的本地 Work / Codex，并安装 Python 3。安装脚本会自动查找终端 PATH 和 ChatGPT App 内置的 `codex` CLI；特殊安装路径可通过 `CLASSFLOW_CODEX_BIN` 指定。解压插件 ZIP 后，在 `ClassFlow-Local-Plugin` 文件夹内运行：
 
 ```bash
 bash scripts/install_mcp.sh

@@ -268,3 +268,40 @@ Core/App and local plugin versions are 1.2.0; Android versionCode and macOS bund
 batch_edit_items保留原名及旧回执兼容，operations扩到1000；新增selection+action+changes一次处理最多5000个实体/完整系列，避免LLM列全量UUID再逐条调用。日程导入2000条、查询1000/页及过滤。无新工具名称。LocalDatabase仅为自动化增加显式内存工作区，最终业务数据与同步元数据一次原子持久化，本地数据库仍是唯一真理源。App变更对比用UUID索引，去除重复微件刷新，待办/专注不重排无关课表与日程通知。selection的日期范围是实体基础开始日期（待办截止/开始日期），不是循环实例；实例级作用域仍用operations。系统代理和云端配额边界见集成说明。
 
 [VERIFIED] 发布前安装版为1.2.0 (4)，28项工具协议、App/Widget签名、ZIP解压与符号链接、DMG完整性检查通过。实际安装版选择器预检一次匹配170条日程，本地App通道约0.07秒，数据库字节保持一致；更新前后课程、日程、任务、异常与专注记录按UUID完全一致。隧道控制平面与代理均为ok；无真实删除测试。
+
+### 日程投影性能与职责整理（2026-10-22，未发布源码变更）
+
+[VERIFIED] 拆分 CalendarEventRecurrence（重复规则与日期枚举）和 CalendarEventProjector（周范围裁剪与 TimelineItem 构造），新增批量 project(events:semester:week:exceptions:)；保留原单项接口。每批复用日期格式器、周边界及异常索引，重复异常仍取首项。跨天实例只遍历本周可见部分；重复次数仍从系列原点计算，不承诺历史重复枚举为常数时间。
+
+[VERIFIED] macOS 课表、微件与深链切换采用批量投影；MCP 课表查询/微件构建复用同一 payload，移除逐日程完整数据库读取。日期缓存与事项缓存使用独立周次/学期标记，防止切周缓存误命中；缓存命中前不再筛选课程，微件复用日期格式器并一次按星期分组。持久化格式、MCP Schema 与 Android 代码未修改。
+
+[VERIFIED] 本轮实际运行：核心67项、macOS86项、debug可执行文件28工具协议检查、Foundation 5组及插件打包3项通过。新增测试覆盖批量顺序/UUID/异常隔离、首条异常优先、次数结束后的跨周尾段、夏令时/午夜结束、并发隔离、长跨天裁剪、500项查询数据库字节不变和切周缓存。
+
+[VERIFIED] 同机Debug隔离单次样本：500项日程的queryTimetable从2.560秒降到0.105秒；20条2010年至2026年长跨天日程的周投影从0.454秒降到0.009秒（输出均为60个可见日片段）。基线为本轮修改前95361c6源码加同一测试数据；新投影调用改用批量入口。耗时不含编译，无时间阈值断言，不代表统计基准、Release性能或云端端到端保证。可用以下命令复测：
+
+```bash
+swift test --package-path apps/macos --filter largeTimetableQuery
+swift test --package-path packages/core-engine --filter longSpan
+```
+
+[UNVERIFIED] 本轮未重新执行Android测试、GUI交互验收、云端调用、真机同步或通知送达；未打包、安装、发布或触碰用户真实业务数据库。
+
+### 空重复筛选兼容与插件更新修复（2026-10-22，v1.2.0 build 5，本地未发布）
+
+[VERIFIED] 用户报告事项管理保留日程、课表却不显示。只读备份检查发现19条日程的customWeeks均为[]，普通daily日程的customDaysOfWeek也为[]；Android将空集合解释为无额外限制，Swift此前却将其当作无匹配日期。对同一私有数据库副本独立运行HEAD旧投影器与修复后投影器，第8周旧结果0条、修复后60个实例（10月22日至25日每天15条）。该判断在性能优化前的HEAD已存在；上一轮性能测试未覆盖此跨端空数组形态，不能用测试通过代替实际数据兼容验收。
+
+[VERIFIED] CalendarEventRecurrence读取兼容null/[]，非空星期和周次筛选仍生效；MCP写入对空customDays/customWeeks的校验保持不变。未迁移或重写已有日程。新增8种频次的参数化测试、非空筛选约束测试，以及与报告相同的学期起点/第8周/空数组原生AppState测试。顺带移除事项管理日期范围无条件标注“已截止”的错误文字。
+
+[VERIFIED] install_mcp.sh支持CLASSFLOW_CODEX_BIN，PATH未找到时自动检查用户和系统Applications中的ChatGPT内置CLI。脚本在真实PATH=/usr/bin:/bin条件下注册成功；CLI返回ClassFlow插件1.2.0安装目录，缓存的manifest、技能和启动器与源码一致。安装测试覆盖显式路径、带空格的内置CLI路径、无效覆盖时不写客户端配置。不是通过直接改插件缓存或降低审批实现更新。
+
+[VERIFIED] 核心69项、macOS87项、Foundation 5组、插件打包4项通过。build 5 Release已构建并安装；App/Widget严格签名、DMG完整性、ZIP解包版本/符号链接/签名、打包及解包可执行文件28工具协议通过。插件套件与本地SHA256SUMS已重新生成；未推送GitHub或替换线上Release。旧App和数据库已备份至用户私有Application Support目录，未进入仓库。
+
+[VERIFIED] 新安装版首次GUI启动曾等待macOS钥匙串授权，进程采样确认AppState.init → KeychainService.readSecret → SecItemCopyMatching。用户在系统窗口亲自授权后，安装版真实第8周课表已显示早餐、科研、午休、技术学习等日程，截图与辅助功能树均核对通过。本地ClassFlow插件与ChatGPT云端Classflow插件分别实际调用query_timetable(week:8,day_of_week:4)，均返回16项（15条日程实例、1条课程）；云端get_status确认19条日程实体与第8周状态。未修改连接权限或凭据，未执行云端写操作。
+
+[VERIFIED] 更新前后按UUID及全部业务字段比较，学期1、课程4、日程19、异常5、任务0、专注记录0均保持；其中一条日程的Set<Int>星期数组在重编码后顺序变化，按集合语义归一化后内容完全一致，不是用户规则被修改。更新后的本地插件已注册至1.2.0且原有只读调用已成功；新会话可加载新版技能文件。
+
+[UNVERIFIED] 云端写操作、Android真机同步及通知送达仍不属于本轮验收；本轮产物仅在本机更新，未替换GitHub线上发布。
+
+### v1.2.0 build 5 发布准备（2026-10-22）
+
+按用户要求更新现有v1.2.0 Release，沿用原发布地址；修复源码、macOS build 5、README下载哈希及发布说明一并提交，v1.2.0标签随修复提交更新。发布工作流重新生成便携插件及校验清单，并覆盖现有同名附件；Android和手环附件保持原内容。线上完成状态需核对本次GitHub Actions结果及15个附件的实际摘要，不能以本地打包成功代替发布成功。

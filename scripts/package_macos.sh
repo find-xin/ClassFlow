@@ -15,7 +15,7 @@ if match is None:
 print(match.group(1))
 PYVERSION
 )
-BUILD_NUMBER="4"
+BUILD_NUMBER="5"
 BUNDLE_DIR="${DIST_DIR}/${APP_NAME}.app"
 DMG_NAME="${APP_NAME}-${APP_VERSION}-macOS-arm64.dmg"
 

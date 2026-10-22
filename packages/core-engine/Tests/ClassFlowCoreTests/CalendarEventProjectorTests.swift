@@ -9,6 +9,103 @@ struct CalendarEventProjectorTests {
     func event(_ frequency: String, _ count: Int = 3) -> CalendarEvent {
         CalendarEvent(title: "Event", startTime: "2026-10-19T09:00:00", endTime: "2026-10-19T10:00:00", frequency: frequency, startDate: "2026-10-19", endRepeatType: "count", endRepeatCount: count)
     }
+    @Test("Legacy empty recurrence filters mean unrestricted, matching Android",
+          arguments: ["daily", "workdays", "weekends", "weekly", "biweekly", "monthly", "customDays", "customWeeks"])
+    func emptyRecurrenceFilters(frequency: String) {
+        let unrestricted = event(frequency, 4)
+        var legacy = unrestricted
+        legacy.customWeeks = []
+        legacy.customDaysOfWeek = []
+        let expected = projector.occurrenceDates(unrestricted, semester: semester, through: "2027-01-31")
+        #expect(!expected.isEmpty)
+        #expect(projector.occurrenceDates(legacy, semester: semester, through: "2027-01-31") == expected)
+        #expect(projector.project(events: [legacy], semester: semester, week: 1) ==
+                projector.project(events: [unrestricted], semester: semester, week: 1))
+    }
+
+    @Test("Nonempty recurrence filters still restrict dates with legacy empty weeks")
+    func legacyDaysWithEmptyWeeks() {
+        var value = event("customDays", 4)
+        value.customWeeks = []
+        value.customDaysOfWeek = [2, 4]
+        #expect(projector.occurrenceDates(value, semester: semester, through: "2026-10-31") ==
+                ["2026-10-20", "2026-10-22", "2026-10-27", "2026-10-29"])
+        value.customWeeks = [1]
+        #expect(projector.occurrenceDates(value, semester: semester, through: "2026-10-31") ==
+                ["2026-10-20", "2026-10-22"])
+    }
+
+    @Test("Batch projection preserves order and first matching exceptions per event and date")
+    func batchProjection() {
+        let single = event("none")
+        let recurring = event("daily", 2)
+        let exceptions = [
+            ScheduleException(scheduleId: single.id, originalDate: "2026-10-19", exceptionType: .room_change),
+            ScheduleException(scheduleId: single.id, originalDate: "2026-10-19", exceptionType: .cancel, reason: "单次删除"),
+            ScheduleException(scheduleId: recurring.id, originalDate: "2026-10-19", exceptionType: .cancel),
+            ScheduleException(scheduleId: UUID(), originalDate: "2026-10-20", exceptionType: .cancel, reason: "单次删除")
+        ]
+        let items = projector.project(events: [single, recurring], semester: semester, week: 1, exceptions: exceptions)
+        #expect(items.map(\.calendarEventId) == [single.id, recurring.id, recurring.id])
+        #expect(items.map(\.date) == ["2026-10-19", "2026-10-19", "2026-10-20"])
+        #expect(items.map(\.status) == [.normal, .cancelled, .normal])
+        #expect(items == [single, recurring].flatMap {
+            projector.project($0, semester: semester, week: 1, exceptions: exceptions)
+        })
+        #expect(projector.project(events: [], semester: semester, week: 1).isEmpty)
+    }
+
+    @Test("Count-limited cross-week series retains tails and exceptions at its original date")
+    func countedSeriesTail() {
+        let trip = CalendarEvent(title: "Trip", startTime: "2026-10-18T19:00:00",
+            endTime: "2026-10-20T10:00:00", frequency: "weekly", endRepeatType: "count", endRepeatCount: 1)
+        let items = projector.project(events: [trip], semester: semester, week: 1)
+        #expect(items.map(\.date) == ["2026-10-19", "2026-10-20"])
+        #expect(items.map(\.startTime) == ["00:00", "00:00"])
+        #expect(items.map(\.endTime) == ["23:59", "10:00"])
+        #expect(projector.project(events: [trip], semester: semester, week: 2).isEmpty)
+        let deleted = ScheduleException(scheduleId: trip.id, originalDate: "2026-10-18", exceptionType: .cancel, reason: "单次删除")
+        #expect(projector.project(events: [trip], semester: semester, week: 1, exceptions: [deleted]).isEmpty)
+    }
+
+    @Test("Visible-day clipping respects daylight saving and midnight-exclusive timed endings")
+    func daylightSavingClipping() {
+        let local = CalendarEventProjector(timeZone: TimeZone(identifier: "America/New_York")!)
+        let spring = Semester(name: "Spring", startDate: "2026-03-02", endDate: "2026-03-31", totalWeeks: 5)
+        let trip = CalendarEvent(title: "Trip", startTime: "2026-03-06T19:00:00", endTime: "2026-03-09T00:00:00")
+        let items = local.project(events: [trip], semester: spring, week: 1)
+        #expect(items.map(\.date) == ["2026-03-06", "2026-03-07", "2026-03-08"])
+        #expect(items.map(\.startTime) == ["19:00", "00:00", "00:00"])
+        #expect(items.allSatisfy { $0.endTime == "23:59" })
+        #expect(local.project(events: [trip], semester: spring, week: 2).isEmpty)
+    }
+
+    @Test("Concurrent projection batches do not share mutable date resources")
+    func concurrentBatches() async {
+        let events = [event("daily", 2), event("weekly", 2)]
+        let expected = projector.project(events: events, semester: semester, week: 1)
+        await withTaskGroup(of: [TimelineItem].self) { group in
+            for _ in 0..<16 {
+                group.addTask { projector.project(events: events, semester: semester, week: 1) }
+            }
+            for await items in group { #expect(items == expected) }
+        }
+    }
+
+    @Test("Long all-day events clip to the visible week without losing their ending")
+    func longSpan() {
+        let events = (0..<20).map { index in
+            CalendarEvent(title: "Long event \(index)", startTime: "2010-01-01T00:00:00",
+                endTime: "2026-10-21T00:00:00", isAllDay: true, frequency: "none", endDate: "2026-10-21")
+        }
+        let start = ContinuousClock.now
+        let items = projector.project(events: events, semester: semester, week: 1)
+        print("PERF projection, 20 long events: \(start.duration(to: .now))")
+        #expect(items.count == 60)
+        #expect(Set(items.map(\.date)) == ["2026-10-19", "2026-10-20", "2026-10-21"])
+        #expect(items.allSatisfy { $0.startTime == "00:00" && $0.endTime == "23:59" })
+    }
+
     @Test("All frequencies respect count and date endings")
     func frequencies() {
         let expected = ["daily": ["2026-10-19", "2026-10-20", "2026-10-21"], "workdays": ["2026-10-19", "2026-10-20", "2026-10-21"],

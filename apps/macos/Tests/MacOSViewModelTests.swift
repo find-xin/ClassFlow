@@ -39,6 +39,46 @@ struct MacOSViewModelTests {
         return mathCourse
     }
 
+    @Test("Imported daily events with empty Android filters remain visible in week eight")
+    @MainActor
+    func importedEventsRemainVisible() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let database = LocalDatabase(customURL: root.appendingPathComponent("database.json"))
+        let semester = Semester(name: "Imported", startDate: "2026-09-01", endDate: "2027-01-20", totalWeeks: 25, isCurrent: true)
+        let event = CalendarEvent(semesterId: semester.id, title: "Imported daily event",
+            startTime: "2026-10-22T09:00:00", endTime: "2026-10-22T11:30:00", frequency: "daily",
+            customWeeks: [], customDaysOfWeek: [], startDate: "2026-10-22",
+            endRepeatType: "untilDate", endRepeatUntil: "2026-11-09")
+        try database.save(LocalDatabase.DatabasePayload(semesters: [semester], calendarEvents: [event]))
+        let state = AppState(database: database, notificationService: MockNotificationService())
+        state.selectedWeek = 8
+        let items = state.currentWeekOccurrences.filter { $0.calendarEventId == event.id }
+        #expect(items.map(\.date) == ["2026-10-22", "2026-10-23", "2026-10-24", "2026-10-25"])
+        #expect(items.allSatisfy { $0.startTime == "09:00" && $0.endTime == "11:30" })
+    }
+
+    @Test("Week dates and occurrence caches remain independent across navigation")
+    @MainActor
+    func independentWeekCaches() {
+        let state = makeIsolatedAppState()
+        state.selectedWeek = 1
+        let firstDates = state.currentWeekDates
+        _ = state.currentWeekOccurrences
+        state.selectedWeek = 2
+        _ = state.currentWeekOccurrences
+        let secondDates = state.currentWeekDates
+        #expect(firstDates != secondDates)
+        #expect(secondDates.first == "2026-09-14")
+        state.selectedWeek = 1
+        #expect(state.currentWeekDates == firstDates)
+        _ = state.currentWeekOccurrences
+        state.selectedWeek = 2
+        #expect(state.currentWeekDates == secondDates)
+        state.invalidateOccurrencesCache()
+        #expect(state.currentWeekDates == secondDates)
+    }
+
     @Test("AppState bootstraps default semester and clean empty courses")
     @MainActor
     func testBootstrapLoading() {

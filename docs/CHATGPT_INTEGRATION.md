@@ -22,7 +22,7 @@
 ## 安装本地插件
 
 1. 下载并安装 Release 中的 macOS 版 ClassFlow.app，打开一次。
-2. 下载 `ClassFlow-Local-Plugin-1.1.0.zip`，解压后在其 `ClassFlow-Local-Plugin` 文件夹内运行 `bash scripts/install_mcp.sh`；源码仓库内也可直接运行同一脚本。需要 Python 3 与支持插件的 `codex` CLI。
+2. 下载 `ClassFlow-Local-Plugin-1.2.0.zip`，解压后在其 `ClassFlow-Local-Plugin` 文件夹内运行 `bash scripts/install_mcp.sh`；源码仓库内也可直接运行同一脚本。需要 Python 3 与支持插件的 `codex` CLI。脚本依次检查 `CLASSFLOW_CODEX_BIN`、终端 PATH，以及用户／系统 Applications 中 ChatGPT 内置 CLI；通常无需手动修改 PATH。
 3. 新建本地 Work / Codex 会话并选用 ClassFlow 插件。
 4. 调用 `get_status`，确认返回的是自己的学期和日期；再查询课表。
 

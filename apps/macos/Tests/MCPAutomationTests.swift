@@ -12,6 +12,30 @@ struct MCPAutomationTests {
         return (MCPToolHandlers(database: db, widgetStore: widgets, enablesAppIntegration: false), db, root)
     }
 
+    @Test("Large timetable queries preserve event identity, exceptions and source data")
+    func largeTimetableQuery() throws {
+        let (handler, db, root) = isolated()
+        defer { try? FileManager.default.removeItem(at: root) }
+        var payload = db.load()
+        let semester = try #require(payload.semesters.first)
+        let date = WeekCalculator().dateStringsInWeek(weekNumber: 1, semesterStartDate: semester.startDate)[0]
+        payload.calendarEvents = (0..<500).map { index in
+            CalendarEvent(semesterId: semester.id, title: "Event \(index)",
+                startTime: "\(date)T09:00:00", endTime: "\(date)T10:00:00", frequency: "none")
+        }
+        payload.exceptions = [ScheduleException(scheduleId: payload.calendarEvents[0].id,
+            originalDate: date, exceptionType: .cancel, reason: "单次删除")]
+        try db.save(payload)
+        let before = try Data(contentsOf: db.fileURL)
+        let start = ContinuousClock.now
+        let result = handler.queryTimetable(week: 1, dayOfWeek: 1)
+        print("PERF timetable query, 500 events: \(start.duration(to: .now))")
+        let items = try #require(result["items"] as? [[String: Any]])
+        #expect(items.count == 499)
+        #expect(Set(items.compactMap { $0["id"] as? String }) == Set(payload.calendarEvents.dropFirst().map { "event_occ_\($0.id)_\(date)" }))
+        #expect(try Data(contentsOf: db.fileURL) == before)
+    }
+
     @Test("Event updates preserve UUID, notes and color and reject invalid dates")
     func eventUpdates() throws {
         let (handler, db, root) = isolated()
