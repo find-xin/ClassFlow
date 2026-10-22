@@ -258,4 +258,13 @@ Core/App and local plugin versions are 1.2.0; Android versionCode and macOS bund
 
 [VERIFIED] 77 项 macOS 测试通过。GUI 启动的隧道继承 macOS 静态 HTTPS / SOCKS 代理（显式代理环境变量优先），通过 env 引用传给 control-plane.http-proxy，不在命令行或配置文件中保存代理凭据。就绪探针改为同时检查本地 ready 与控制平面 status=ok，覆盖本地 ready=true、云端连续 timeout 的假就绪场景。PAC 解析未实现。
 
-[UNVERIFIED] 本次修复的安装版云端调用验收尚在进行；本地 stdio 协议 28 项工具已通过检查。
+[VERIFIED] 修复安装后，实际云端 ClassFlow get_status 调用成功；control-plane、proxy、MCP 均为ok，轮询失败计数为0。本地 stdio 协议28项工具通过检查。
+
+
+### MCP 批量扩容与事务性能（2026-10-22，v1.2.0 build 4）
+
+[VERIFIED] 84项macOS测试、62项核心测试通过；新增独立临时数据库测试覆盖5000项删除、1000项混合编辑、2000条导入、选择器隔离、预检不写、整批回滚、提交后新实体不被旧批次重放误删、课程/时段/异常墓碑和App同步日志。开发环境并行测试实测：5000项删除约0.33秒，1000项混合编辑约0.53秒，App执行258项删除含日志与UI刷新约0.54秒；这些不是云端端到端耗时保证。
+
+batch_edit_items保留原名及旧回执兼容，operations扩到1000；新增selection+action+changes一次处理最多5000个实体/完整系列，避免LLM列全量UUID再逐条调用。日程导入2000条、查询1000/页及过滤。无新工具名称。LocalDatabase仅为自动化增加显式内存工作区，最终业务数据与同步元数据一次原子持久化，本地数据库仍是唯一真理源。App变更对比用UUID索引，去除重复微件刷新，待办/专注不重排无关课表与日程通知。selection的日期范围是实体基础开始日期（待办截止/开始日期），不是循环实例；实例级作用域仍用operations。系统代理和云端配额边界见集成说明。
+
+[VERIFIED] 发布前安装版为1.2.0 (4)，28项工具协议、App/Widget签名、ZIP解压与符号链接、DMG完整性检查通过。实际安装版选择器预检一次匹配170条日程，本地App通道约0.07秒，数据库字节保持一致；更新前后课程、日程、任务、异常与专注记录按UUID完全一致。隧道控制平面与代理均为ok；无真实删除测试。

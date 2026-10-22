@@ -112,7 +112,7 @@ ClassFlow 提供本地 stdio MCP 与云端 Secure MCP Tunnel 两种连接方式�
 3. **日程**：完整编辑标题、时间模式、跨天/全天、重复规则与结束日期/次数、提醒、颜色与备注；支持三级范围修改和删除。
 4. **待办**：课程关联、三级优先级、起止日期、精确分钟数、备注与重复规则；支持完成、恢复及周期任务后续生成。
 5. **专注**：番茄钟、正向计时、目标倒计时，暂停、继续、结束、`reset_focus_timer` 重置和真实统计。
-6. **批量与同步**：`batch_edit_items` 每批 1–100 项原子编辑与预检；`import_calendar_events` 每批最多 500 条展开实例迁移；保留 App 导航、学期切换与已配置 BYOC 同步。
+6. **批量与同步**：`batch_edit_items` 每批 1–1000 项混合原子编辑，或按条件一次修改/删除/完成最多5000项，无需逐条调用；`import_calendar_events` 每批最多 2000 条展开实例迁移；保留 App 导航、学期切换与已配置 BYOC 同步。
 
 更新 App 后，请在 ChatGPT 原 Classflow 连接点击“刷新工具”，再新建聊天；出现 28 项工具后使用新版参数。本地客户端重连 MCP。详见 [完整接口及限制](docs/CHATGPT_INTEGRATION.md)。
 
@@ -138,12 +138,12 @@ ClassFlow 提供本地 stdio MCP 与云端 Secure MCP Tunnel 两种连接方式�
 
 | 平台 | 安装包名称 | 文件大小 | SHA-256 校验和 |
 | :--- | :--- | :--- | :--- |
-| **macOS (Apple Silicon)** | `ClassFlow-1.2.0-macOS-arm64.dmg` | 4.5 MB | `f950ff0a82512f431ccab852e278a30dd39f56ca33d76c1359e6b5c5c93ad527` |
-| **macOS ZIP** | `ClassFlow-1.2.0-macOS-arm64.zip` | 3.9 MB | `23ae708475f84578ff8b04b694543353f5b6b148ae3ac2bda7203546e2e19fc5` |
+| **macOS (Apple Silicon)** | `ClassFlow-1.2.0-macOS-arm64.dmg` | 4.6 MB | `7ab5d669c58f966ef02d2d62799ff8d4236dc56a3932e9b840b4222ffbb6cf64` |
+| **macOS ZIP** | `ClassFlow-1.2.0-macOS-arm64.zip` | 3.9 MB | `d22412e1e4c8ee54d6d5e367fa3ef37c5d1a3b518a5352d2e3b9073e126aa0f1` |
 | **Android 客户端** | `ClassFlow-1.2.0-android.apk` | 13.4 MB | `9b135d62763dcbccfd651b9af5ab3cedbbec52a366fa03fab5dd5ca301e8db37` |
 | **小米手环（未变更）** | `ClassFlow-1.0.0-xiaomi-band.rpk` | 4.7 KB | `8a3b4c6cbcfd3d6ec4e4a7580b13ea6dc98c6b543bca3735de98aae926938602` |
 | **小米手环源码包（未变更）** | `ClassFlow-1.0.0-xiaomi-band.zip` | 4.7 KB | `8a3b4c6cbcfd3d6ec4e4a7580b13ea6dc98c6b543bca3735de98aae926938602` |
-| **本地 Work / Codex 插件** | `ClassFlow-Local-Plugin-1.2.0.zip` | 18.4 KB | `7140b87a1d6502dc9ff4e1de255368e41ae4ecd06a7b9275f6d77fa6a40037f7` |
+| **本地 Work / Codex 插件** | `ClassFlow-Local-Plugin-1.2.0.zip` | 20.2 KB | `f038e62d5c13c2765a006816c418a76b94f7b4c8a1ebdd2034fb65f5da89c28d` |
 
 > 校验命令：`cd dist && shasum -a 256 -c SHA256SUMS.txt`
 

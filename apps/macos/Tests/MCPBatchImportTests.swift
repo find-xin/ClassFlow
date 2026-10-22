@@ -86,7 +86,7 @@ struct MCPBatchImportTests {
     func guards() throws {
         let (handler, db, root) = fixture()
         defer { try? FileManager.default.removeItem(at: root) }
-        for rows in [[], (0..<501).map(row)] {
+        for rows in [[], (0..<2001).map(row)] {
             #expect(throws: Error.self) { try handler.importCalendarEvents(arguments: ["batch_id": "invalid", "events": rows]) }
         }
         #expect(throws: Error.self) { try handler.importCalendarEvents(arguments: ["batch_id": "bad-preview", "events": [row(0)], "dry_run": "true"]) }

@@ -142,7 +142,7 @@ public final class AppState {
     }
 
     func executeAutomationTool(name: String, arguments: [String: Any]) async throws -> String {
-        try database.validateForAutomation()
+        let before = try database.loadForAutomation()
         if name == "trigger_cloud_sync" {
             guard let provider = createConfiguredStorageProvider() else {
                 throw NSError(domain: "ClassFlowAutomation", code: 1, userInfo: [NSLocalizedDescriptionKey: "请先在 App 设置中配置云同步凭据。"])
@@ -150,21 +150,22 @@ public final class AppState {
             let summary = try await executeCloudSync(storage: provider)
             return "云同步完成：推送 \(summary.uploadedOperationsCount) 项，拉取 \(summary.downloadedPeerOperationsCount) 项。"
         }
-        let before = database.load()
-        let handlers = MCPToolHandlers(database: database, enablesAppIntegration: false)
+        let workspace = LocalDatabase(automationPayload: before)
+        let handlers = MCPToolHandlers(database: workspace, enablesAppIntegration: false)
         let server = MCPServer(handlers: handlers)
         let result = try server.invokeTool(name: name, arguments: arguments)
         let reads: Set<String> = ["get_editing_context", "get_status", "query_timetable", "list_courses", "list_calendar_events", "list_tasks", "get_focus_statistics"]
         if reads.contains(name) || (["import_calendar_events", "batch_edit_items"].contains(name) && arguments["dry_run"] as? Bool == true) { return result }
-        var after = database.load()
+        var after = workspace.load()
         recordAutomationChanges(before: before, after: after)
         after.syncDeviceId = syncEngine.deviceId
         after.syncSequence = syncEngine.latestSequence
         try database.save(after)
         load()
         if name == "switch_semester_or_week", let week = arguments["week"] as? Int { selectedWeek = week }
-        updateWidgetData()
-        await scheduleNotifications()
+        // load() already refreshes widgets. Tasks/focus do not change course or calendar alerts.
+        let alertChanges: Set<String> = ["add_course", "update_course", "delete_course", "manage_course_schedule", "add_calendar_event", "update_calendar_event", "delete_calendar_event", "import_calendar_events", "batch_edit_items", "switch_semester_or_week"]
+        if alertChanges.contains(name) { await scheduleNotifications() }
         if name == "open_app" {
             // Navigation must run in the main actor, with an acknowledgement to the caller.
             let tab = arguments["tab"] as? String ?? "courses"
@@ -183,15 +184,17 @@ public final class AppState {
         func record<T: Encodable & Identifiable>(_ old: [T], _ new: [T], type: String) where T.ID == UUID {
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.sortedKeys]
+            let oldByID = Dictionary(old.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+            let newIDs = Set(new.map(\.id))
             for value in new {
                 guard let data = try? encoder.encode(value) else { continue }
-                let previous = old.first { $0.id == value.id }
+                let previous = oldByID[value.id]
                 let previousData = previous.flatMap { try? encoder.encode($0) }
                 if previousData != data {
                     _ = syncEngine.recordOperation(action: previous == nil ? "INSERT" : "UPDATE", entityType: type, entityId: value.id, payload: data)
                 }
             }
-            for value in old where !new.contains(where: { $0.id == value.id }) {
+            for value in old where !newIDs.contains(value.id) {
                 _ = syncEngine.recordOperation(action: "DELETE", entityType: type, entityId: value.id)
             }
         }

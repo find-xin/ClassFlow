@@ -74,9 +74,33 @@ public struct LocalDatabase: Sendable {
         }
     }
 
+    /// Private transaction workspace: shared only by handlers in one synchronous automation call.
+    /// The lock preserves Sendable guarantees; durable state is committed explicitly by the caller.
+    private final class Workspace: @unchecked Sendable {
+        let lock = NSLock()
+        var payload: DatabasePayload
+        init(_ payload: DatabasePayload) { self.payload = payload }
+        func load() -> DatabasePayload { lock.withLock { payload } }
+        func save(_ value: DatabasePayload) { lock.withLock { payload = value } }
+    }
+    private let workspace: Workspace?
     public let fileURL: URL
 
+    init(automationPayload: DatabasePayload) {
+        workspace = Workspace(automationPayload)
+        fileURL = URL(fileURLWithPath: "/__classflow_memory_transaction__/" + UUID().uuidString)
+    }
+
+    /// Decode once and fail closed; automation must never replace corrupted data with defaults.
+    func loadForAutomation() throws -> DatabasePayload {
+        if let workspace { return workspace.load() }
+        guard FileManager.default.fileExists(atPath: fileURL.path) else { return makeBootstrapData() }
+        return try JSONDecoder().decode(DatabasePayload.self, from: Data(contentsOf: fileURL))
+    }
+
+
     public init(customURL: URL? = nil) {
+        self.workspace = nil
         if let customURL {
             self.fileURL = customURL
         } else {
@@ -88,6 +112,7 @@ public struct LocalDatabase: Sendable {
 
     /// Automation must fail closed on corruption rather than overwrite data with sample courses.
     public func validateForAutomation() throws {
+        if workspace != nil { return }
         if FileManager.default.fileExists(atPath: fileURL.path) {
             _ = try JSONDecoder().decode(DatabasePayload.self, from: Data(contentsOf: fileURL))
         }
@@ -95,6 +120,7 @@ public struct LocalDatabase: Sendable {
 
     /// Loads the database payload, or generates sample bootstrap data if missing.
     public func load() -> DatabasePayload {
+        if let workspace { return workspace.load() }
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
             return makeBootstrapData()
         }
@@ -111,6 +137,7 @@ public struct LocalDatabase: Sendable {
 
     /// Persists payload to disk atomically.
     public func save(_ payload: DatabasePayload) throws {
+        if let workspace { workspace.save(payload); return }
         let folder = fileURL.deletingLastPathComponent()
         if !FileManager.default.fileExists(atPath: folder.path) {
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)

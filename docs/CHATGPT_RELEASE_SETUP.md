@@ -38,3 +38,10 @@ Claude 等其他支持 stdio MCP 的客户端可自行配置 `/Applications/Clas
 ### 编辑接口 v1.2 更新
 
 使用包含 28 项工具的 Mac App 后，在已有 ChatGPT ClassFlow 连接中刷新工具列表（本地客户端重连 MCP）。应能看到 `get_editing_context`、`manage_course_schedule`、`batch_edit_items`、`reset_focus_timer`。只上传新的本地插件 ZIP 不会自动替换云端连接缓存。无需重新填写隧道 Token；凭据仍保存在系统钥匙串。完整字段与作用域说明见 `docs/CHATGPT_INTEGRATION.md`。Mac 提供执行器；手机经已配置的 BYOC 接收数据，不会接收 Mac 的运行中计时器。
+
+
+### v1.2.0 修订包（macOS build 4）
+
+修复 GUI 隧道未沿用系统静态 HTTPS/SOCKS 代理造成的连接超时；状态同时检查云端轮询。连接时读取系统代理，修改代理后在 App 停止并重连；PAC 自动代理脚本暂不解析。
+
+批量工具仍为 `batch_edit_items`：operations 上限1000；selection按条件统一修改/删除/完成上限5000；日程导入上限2000。删除全部日程可一次提交 selection={kind:events,all:true}, action=delete，无需逐条查询和删除。更新 App 后请在 ChatGPT 原连接刷新工具，再新建聊天，以便加载新增参数。App不能修改ChatGPT每轮工具调用配额。

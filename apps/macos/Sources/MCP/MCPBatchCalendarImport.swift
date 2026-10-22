@@ -13,8 +13,8 @@ extension MCPToolHandlers {
     public func importCalendarEvents(arguments: [String: Any]) throws -> String {
         guard let batchID = arguments["batch_id"] as? String,
               !batchID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, batchID.utf8.count <= 200,
-              let rows = arguments["events"] as? [[String: Any]], (1...500).contains(rows.count) else {
-            throw automationError("请提供 batch_id 和 1–500 条 events；重试时保持批次 ID 和内容不变。")
+              let rows = arguments["events"] as? [[String: Any]], (1...2000).contains(rows.count) else {
+            throw automationError("请提供 batch_id 和 1–2000 条 events；重试时保持批次 ID 和内容不变。")
         }
         guard Set(arguments.keys).isSubset(of: ["batch_id", "events", "dry_run"]),
               arguments["dry_run"] == nil || arguments["dry_run"] is Bool else {
@@ -103,11 +103,11 @@ extension MCPToolHandlers {
 extension MCPServer {
     func calendarImportDefinition() -> [String: Any] {
         ["name": "import_calendar_events",
-         "description": "批量迁移日程，一次 1–500 条。整批校验后原子保存，按标题/起止时间/全天/地点/重复规则去重。重试必须保留 batch_id 及原内容；不会覆盖已有日程。Google 等来源先展开重复实例，转换为本机时区；全天跨日用含最后一天的 end_date。优先批量调用，勿逐条新增或反复列出全量日程。dry_run=true 仅预览。",
+         "description": "批量迁移日程，一次 1–2000 条。整批校验后原子保存，按标题/起止时间/全天/地点/重复规则去重。重试必须保留 batch_id 及原内容；不会覆盖已有日程。Google 等来源先展开重复实例，转换为本机时区；全天跨日用含最后一天的 end_date。优先批量调用，勿逐条新增或反复列出全量日程。dry_run=true 仅预览。",
          "inputSchema": ["type": "object", "properties": [
             "batch_id": ["type": "string", "maxLength": 200],
             "dry_run": ["type": "boolean", "default": false],
-            "events": ["type": "array", "minItems": 1, "maxItems": 500,
+            "events": ["type": "array", "minItems": 1, "maxItems": 2000,
                 "items": ["type": "object", "properties": [
                     "title": ["type": "string"], "date": ["type": "string", "description": "YYYY-MM-DD，本机时区"],
                     "end_date": ["type": "string", "description": "可选结束日期；全天为含最后一天的日期"],

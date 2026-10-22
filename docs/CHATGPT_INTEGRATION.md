@@ -63,7 +63,7 @@
 | 日程 | `add_calendar_event/update_calendar_event/delete_calendar_event`：标题、颜色、地点、备注、全天、跨天、具体时间/节次跟随、全部重复频次、自定义星期/周次、间隔、结束日期/次数、独立提醒（null 无提醒，0 开始时）。修改/删除支持三级范围，后两者必须 occurrence_date，单次拆出独立日程，后续拆出系列并保留历史。 |
 | 待办 | `add_task/update_task/complete_task/delete_task`：标题、备注、关联/解除课程、三级优先级、开始日期、截止日期时间、精确分钟/番茄数、全部重复字段。完成重复任务在 Mac 生成下次，稳定 UUID 避免重复完成重复生成；统计由真实专注产生。 |
 | 专注 | `start_focus_timer` 支持 pomodoro/count_up/countdown，关联待办或课程，可指定时段绑定教室；暂停/继续/停止/重置、统计。reset 丢弃本次。暂停不计时；停止不接受伪造时长。 |
-| 批量 | `batch_edit_items` 每批 1–100 项混合编辑，临时库逐项预检后单次提交；一项失败整批不写入；dry_run；固定 batch_id+内容安全重放。`import_calendar_events` 保留每批 1–500 条展开日程迁移和去重。 |
+| 批量 | `batch_edit_items` 每批 1–1000 项混合编辑，内存事务校验后单次提交；一项失败整批不写入；dry_run；固定 batch_id+内容安全重放。`import_calendar_events` 保留每批 1–2000 条展开日程迁移和去重。 |
 | 导航/同步 | `open_app/switch_semester_or_week/trigger_cloud_sync`；凭据仍在 App/Keychain 中配置。 |
 
 所有编辑通过 Mac App 主线程执行并记录 BYOC 增量同步。Android 保留新字段并使用同样的重复次数、跨天、节次与调课投影；Mac 的运行中专注会话不会同步成手机上的远程计时器。新增工具需要在 ChatGPT 连接设置刷新工具发现，本地客户端重连 MCP；仅更新技能文字不会更新已缓存的工具列表。
@@ -142,3 +142,18 @@ Historical batch-import milestone (24 tools; superseded by the 28-tool editing i
 GUI 启动的 `tunnel-client` 不会自动读取 macOS 系统代理。ClassFlow 在每次连接时读取系统静态 HTTPS / SOCKS 代理，将控制平面代理通过环境变量引用传给官方客户端；显式 HTTPS_PROXY / ALL_PROXY / HTTP_PROXY 优先。代理地址及认证信息不写入配置文件、日志或命令行。仅控制平面使用该代理，本机 stdio MCP 与健康探针不经代理。修改系统代理后在 App 内停止并重新连接。PAC 自动配置暂不支持解析。
 
 连接指示同时检查本地 `/health?details=true` 的 ready 与 control-plane.status=ok，避免 `/readyz` 返回成功而云端轮询持续超时的假就绪。`Session terminated` 本身也可能来自旧的云端会话；先恢复隧道连通，再刷新 ChatGPT 连接并在新对话中测试只读工具，不能仅凭本地进程存活判定云端验收成功。
+
+
+### 大批量与执行性能（macOS build 4）
+
+`batch_edit_items` 同时支持两种模式（互斥）：
+
+```json
+{"batch_id":"unique-delete-id","selection":{"kind":"events","all":true},"action":"delete"}
+```
+
+上述示例删除 ClassFlow 日程实体/完整重复系列，不修改课程、待办或 Google Calendar。selection需显式all=true或至少一个筛选；可按ids、title_contains、semester_id、date_from/date_to（闭区间）筛选。日期针对日程基础开始日期，待办用截止日期（无截止则开始日期），不展开重复实例。待办另支持course_id与is_completed。全部标记和其他筛选不能混用。统一update通过changes传可编辑字段；complete只用于待办。单次或未来实例的作用域操作继续使用operations。
+
+operations上限1000项；selection匹配最多5000项，超过限制整批报错不部分执行；import_calendar_events上限2000条且原有4MiB请求限制保留。批量编辑请求8MiB上限。批次保留回滚、dry_run和持久化重放回执；兼容旧版回执。范围已明确且已授权可直接提交，不要求每批先预检；大批默认摘要，result_mode=full可返回逐项结果。selection返回matched/count及最多20个sample_ids。相同batch_id重试返回原结果，不会对提交后新建的项目再次执行“全部删除”。
+
+get_editing_context支持最多1000/页和selection过滤，matching_totals是过滤后总数，totals仍是原始总数。App所有本地MCP请求使用内存工作副本，业务变更及同步元数据最后一次持久化，批量内部不逐项写临时文件。同步变更对比改为UUID索引；避免重复微件刷新，待办与专注操作不重排无关课程/日程通知。ChatGPT思考、网络延迟、平台每轮调用配额与用户配置的确认策略不由App控制。

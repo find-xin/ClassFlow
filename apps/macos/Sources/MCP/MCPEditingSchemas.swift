@@ -33,7 +33,7 @@ extension MCPServer {
         task.merge(["task_id": text, "title": text, "new_title": text, "notes": nullable, "course_id": nullable, "priority": ["type": ["string", "integer"]],
             "start_date": nullable, "due_date": nullable, "target_minutes": integer, "estimated_pomodoros": integer]) { _, new in new }
         return [
-            tool("get_editing_context", "读取完整学期、作息节次、课程及每个时段 UUID、日程重复与提醒规则、待办全部可编辑字段、异常与当前专注。编辑前先读取以准确定位；不含密钥。通过 kind、offset、limit 分页；totals 返回各类总数。", ["kind": ["type": "string", "enum": ["all", "semesters", "courses", "events", "tasks", "exceptions"]], "offset": integer, "limit": integer]),
+            tool("get_editing_context", "读取完整学期、作息节次、课程及每个时段 UUID、日程重复与提醒规则、待办全部可编辑字段、异常与当前专注。单条复杂编辑或存在重名时读取以准确定位；已知UUID直接操作，批量统一变更直接用batch_edit_items选择器。不含密钥。kind/offset/limit分页（最大1000）；selection过滤，matching_totals为过滤后总数。", ["kind": ["type": "string", "enum": ["all", "semesters", "courses", "events", "tasks", "exceptions"]], "offset": integer, "limit": ["type": "integer", "minimum": 1, "maximum": 1000], "selection": ["type": "object", "description": "可选，与批量工具相同的筛选条件；kind必须与查询kind一致。仅支持events/courses/tasks。"]]),
             tool("add_course", "新建课程（同名课程追加时段）。支持学分、备注、颜色、每时段教师地点、具体时间或节次、周次矩阵；schedules 创建多个时段。", course, required: ["name"]),
             tool("update_course", "完整编辑课程。course_id 或原 name 定位，new_name 改名。schedules 为完整替换，已有时段须保留 schedule_id；空数组清空时段。单时段修改用 schedule_id。null 清除选填字段。", course),
             tool("delete_course", "删除课程：all 彻底删除；this_only 按 occurrence_date 取消当天有效课时；this_and_future 按 week/occurrence_date 截断未来并保留历史。schedule_id 可限定时段。", ["course_id": text, "name": text, "id": text, "scope": scope, "date": text, "occurrence_date": text, "week": integer, "schedule_id": text]),
@@ -45,7 +45,16 @@ extension MCPServer {
             tool("update_task", "修改待办所有可编辑字段，task_id 或原 title 定位，new_title 改名。null 清除关联课程/备注/起止日期。target_minutes 保留精确分钟，不修改已完成统计。", task),
             tool("start_focus_timer", "开始真实专注，mode=pomodoro/count_up/countdown。可指定 task_id 或 task_title，或 course_id 直接开启课程专注；schedule_id 可绑定教室。已有会话时先停止或重置。", ["task_id": text, "task_title": text, "course_id": text, "schedule_id": text, "mode": ["type": "string", "enum": ["pomodoro", "count_up", "countdown", "番茄钟", "正向计时", "定目标"]], "duration_minutes": integer]),
             tool("reset_focus_timer", "重置并丢弃当前专注会话，不产生专注记录。", [:]),
-            tool("batch_edit_items", "原子批量编辑课程/时段/日程/待办，每批1–100项。任一失败整批不写入；dry_run 预检。相同 batch_id+内容重试不重复执行。先读取 UUID，operations 按顺序执行；不支持专注、同步或嵌套批量。", ["batch_id": text, "dry_run": boolean, "operations": ["type": "array", "minItems": 1, "maxItems": 100, "items": ["type": "object", "properties": ["tool": text, "arguments": ["type": "object"]], "required": ["tool", "arguments"], "additionalProperties": false]]], required: ["batch_id", "operations"])
+            tool("batch_edit_items", "优先用于所有多项新增/修改/删除/完成，禁止逐条循环调用。operations 一次1–1000项；或 selection 按条件一次处理最多5000个实体，无需先列全部UUID。删除全部日程示例：batch_id=唯一ID, selection={kind:events,all:true}, action=delete。selection 与 operations 二选一。选择器筛选基础日程/系列的开始日期（不展开重复实例），任务按截止/开始日期；delete/update 作用于整个实体/系列。update 用 changes（new_title/new_name重命名）；complete 仅待办。dry_run可选预检；明确授权后直接提交，无需重复预检或逐条核对。原子保存，任一失败整批回滚，同batch_id相同内容重试安全。默认大批量只返回摘要，小批operations兼容逐项结果；result_mode=full可选。不同scope或各不相同的修改用operations；不支持嵌套/同步/专注。", [
+                "batch_id": text, "dry_run": boolean, "result_mode": ["type": "string", "enum": ["summary", "full"]],
+                "selection": ["type": "object", "properties": [
+                    "kind": ["type": "string", "enum": ["events", "courses", "tasks"]], "all": boolean,
+                    "ids": ["type": "array", "minItems": 1, "maxItems": 5000, "items": text], "title_contains": text,
+                    "date_from": text, "date_to": text, "semester_id": text, "course_id": text, "is_completed": boolean
+                ], "required": ["kind"], "additionalProperties": false],
+                "action": ["type": "string", "enum": ["delete", "update", "complete"]], "changes": ["type": "object"],
+                "operations": ["type": "array", "minItems": 1, "maxItems": 1000, "items": ["type": "object", "properties": ["tool": text, "arguments": ["type": "object"]], "required": ["tool", "arguments"], "additionalProperties": false]]
+            ], required: ["batch_id"])
         ]
     }
 

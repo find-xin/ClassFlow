@@ -57,55 +57,28 @@ extension MCPToolHandlers {
     }
 
     func editingContext(arguments: [String: Any]) throws -> String {
-        let payload = database.load()
+        var payload = database.load()
+        let totals = ["semesters": payload.semesters.count, "courses": payload.courses.count, "events": payload.calendarEvents.count, "tasks": payload.pomodoroTasks.count, "exceptions": payload.exceptions.count]
         // Deliberately exclude settings, credentials, cloud configuration and import receipts.
         struct Context: Encodable {
             var semesters: [Semester]; var courses: [Course]; var events: [CalendarEvent]
             var tasks: [PomodoroTask]; var exceptions: [ScheduleException]; var focusSession: FocusSession?
-            var totals: [String: Int]; var offset: Int; var limit: Int
+            var totals: [String: Int]; var matching_totals: [String: Int]; var offset: Int; var limit: Int
         }
         let kind = arguments["kind"] as? String ?? "all"
+        if let selection = arguments["selection"] as? [String: Any] {
+            guard selection["kind"] as? String == kind else { throw automationError("selection.kind 必须与 kind 一致。") }
+            let ids = Set(try selectedIDs(selection, payload: payload))
+            if kind == "events" { payload.calendarEvents.removeAll { !ids.contains($0.id) } }
+            if kind == "courses" { payload.courses.removeAll { !ids.contains($0.id) } }
+            if kind == "tasks" { payload.pomodoroTasks.removeAll { !ids.contains($0.id) } }
+        }
         let offset = try int("offset", arguments: arguments, old: 0, range: 0...1000000)
-        let limit = try int("limit", arguments: arguments, old: 50, range: 1...500)
+        let limit = try int("limit", arguments: arguments, old: 50, range: 1...1000)
         func page<T>(_ values: [T], _ name: String) -> [T] { kind == "all" || kind == name ? Array(values.dropFirst(offset).prefix(limit)) : [] }
         return try editJSON(Context(semesters: page(payload.semesters, "semesters"), courses: page(payload.courses, "courses"), events: page(payload.calendarEvents, "events"),
             tasks: page(payload.pomodoroTasks, "tasks"), exceptions: page(payload.exceptions, "exceptions"), focusSession: payload.focusSession,
-            totals: ["semesters": payload.semesters.count, "courses": payload.courses.count, "events": payload.calendarEvents.count, "tasks": payload.pomodoroTasks.count, "exceptions": payload.exceptions.count], offset: offset, limit: limit))
-    }
-
-    func batchEdit(arguments: [String: Any]) throws -> String {
-        guard let batchID = arguments["batch_id"] as? String, !batchID.isEmpty, batchID.count <= 200,
-              let operations = arguments["operations"] as? [[String: Any]], !operations.isEmpty, operations.count <= 100 else { throw automationError("需提供 batch_id 和 1–100 项 operations。") }
-        let allowed: Set<String> = ["add_course", "update_course", "delete_course", "manage_course_schedule", "add_calendar_event", "update_calendar_event", "delete_calendar_event", "add_task", "update_task", "complete_task", "delete_task"]
-        let data = try JSONSerialization.data(withJSONObject: operations, options: [.sortedKeys])
-        let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
-        var payload = database.load()
-        let key = "editing:" + batchID
-        if let prior = payload.calendarImportReceipts?[key] {
-            guard prior.digest == digest else { throw automationError("batch_id 已用于不同内容。") }
-            return prior.result
-        }
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("ClassFlow-edit-\(UUID())", isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        defer { try? FileManager.default.removeItem(at: directory) }
-        let staging = LocalDatabase(customURL: directory.appendingPathComponent("database.json"))
-        try staging.save(payload)
-        let server = MCPServer(handlers: MCPToolHandlers(database: staging, enablesAppIntegration: false))
-        var results: [String] = []
-        for (index, operation) in operations.enumerated() {
-            guard let name = operation["tool"] as? String, allowed.contains(name), let args = operation["arguments"] as? [String: Any] else { throw automationError("第 \(index + 1) 项操作无效或不支持批量执行。") }
-            do { results.append(try server.invokeTool(name: name, arguments: args)) }
-            catch { throw automationError("第 \(index + 1) 项失败，整批未写入：\(error.localizedDescription)") }
-        }
-        let dryRun = arguments["dry_run"] as? Bool ?? false
-        let result = try textJSON(["batch_id": batchID, "dry_run": dryRun, "count": results.count, "results": results])
-        if !dryRun {
-            payload = staging.load()
-            if payload.calendarImportReceipts == nil { payload.calendarImportReceipts = [:] }
-            payload.calendarImportReceipts?[key] = CalendarImportReceipt(digest: digest, result: result)
-            try saveEdit(payload)
-        }
-        return result
+            totals: totals, matching_totals: ["semesters": payload.semesters.count, "courses": payload.courses.count, "events": payload.calendarEvents.count, "tasks": payload.pomodoroTasks.count, "exceptions": payload.exceptions.count], offset: offset, limit: limit))
     }
 
     func resetFocus() throws -> String {
