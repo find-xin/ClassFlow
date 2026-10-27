@@ -261,22 +261,32 @@ public struct MCPToolHandlers: Sendable {
     public func listCalendarEvents(date: String?) -> [[String: Any]] {
         let payload = database.load()
         var events = payload.calendarEvents
-        if let d = date, !d.isEmpty {
-            events = events.filter { $0.startDate?.hasPrefix(d) == true || $0.startTime.hasPrefix(d) }
+        var instances: [UUID: TimelineItem] = [:]
+        if let date, !date.isEmpty {
+            events = events.filter { event in
+                guard let semester = payload.semesters.first(where: { $0.id == event.semesterId })
+                        ?? payload.semesters.first(where: { $0.isCurrent }) ?? payload.semesters.first,
+                      let week = WeekCalculator(timeZoneId: TimeZone.current.identifier).weekIndex(for: date, semesterStartDate: semester.startDate),
+                      let item = CalendarEventProjector().project(event, semester: semester, week: week, exceptions: payload.exceptions)
+                        .first(where: { $0.date == date && $0.status != .cancelled }) else { return false }
+                instances[event.id] = item
+                return true
+            }
         }
 
         return events.map { ev in
             [
                 "id": ev.id.uuidString,
                 "title": ev.title,
-                "date": ev.startDate ?? String(ev.startTime.prefix(10)),
+                "date": instances[ev.id]?.date ?? ev.startDate ?? String(ev.startTime.prefix(10)),
                 "start_time": ev.startTime,
                 "end_time": ev.endTime,
                 "is_all_day": ev.isAllDay,
                 "location": ev.location ?? "",
                 "frequency": ev.frequency ?? "none",
                 "color": ev.color,
-                "notes": ev.description ?? ""
+                "notes": ev.description ?? "",
+                "alert_minutes_before": ev.alertMinutesBefore.map { $0 as Any } ?? NSNull()
             ]
         }
     }

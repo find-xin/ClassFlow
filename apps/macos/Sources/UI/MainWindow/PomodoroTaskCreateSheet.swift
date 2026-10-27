@@ -102,7 +102,8 @@ public struct PomodoroTaskCreateSheet: View {
                             Text("任务备注")
                                 .font(.system(size: 14, weight: .medium))
                                 .frame(width: 72, alignment: .leading)
-                            TextField("例如：重点攻克多元微分例题 (选填)", text: $notes)
+                            TextField("例如：重点攻克多元微分例题 (选填)", text: $notes, axis: .vertical)
+                                .lineLimit(3...8)
                                 .textFieldStyle(.plain)
                         }
                         .padding(.horizontal, 16)

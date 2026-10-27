@@ -48,9 +48,7 @@ public struct TodayAgendaTimelineView: View {
     }
 
     private var selectedDayItems: [TimelineItem] {
-        currentWeekItems
-            .filter { $0.dayOfWeek == selectedDayOfWeek }
-            .sorted { $0.startSection < $1.startSection }
+        AgendaTimelinePolicy.sorted(currentWeekItems.filter { $0.dayOfWeek == selectedDayOfWeek })
     }
 
     private var todayWeekday: Int {
@@ -69,26 +67,6 @@ public struct TodayAgendaTimelineView: View {
         Self.titleDateFormatter.string(from: Date())
     }
 
-    private var nextUpcomingItem: TimelineItem? {
-        let todayItems = currentWeekItems.filter { $0.dayOfWeek == todayWeekday && $0.isCurrentWeek }
-        let now = Date()
-        let cal = Calendar.current
-        let currentMinutes = cal.component(.hour, from: now) * 60 + cal.component(.minute, from: now)
-
-        for item in todayItems.sorted(by: { $0.startSection < $1.startSection }) {
-            if let start = item.startTime {
-                let parts = start.split(separator: ":")
-                if parts.count == 2, let h = Int(parts[0]), let m = Int(parts[1]) {
-                    let itemMinutes = h * 60 + m
-                    if itemMinutes >= currentMinutes - 20 {
-                        return item
-                    }
-                }
-            }
-        }
-        return todayItems.first
-    }
-
     private var filteredTasks: [PomodoroTask] {
         let tasks = appState.currentSemesterPomodoroTasks
         switch taskFilter {
@@ -104,6 +82,12 @@ public struct TodayAgendaTimelineView: View {
     // MARK: - Body
 
     public var body: some View {
+        TimelineView(.periodic(from: .now, by: 30)) { context in
+            agendaContent(now: context.date)
+        }
+    }
+
+    private func agendaContent(now: Date) -> some View {
         VStack(spacing: 0) {
             // 1. Top Bar: Date title, Day Pager & New Task Action (Window Controls Safe)
             topAgendaHeader
@@ -112,7 +96,7 @@ public struct TodayAgendaTimelineView: View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 20) {
                     // Next Upcoming Class Hero Card
-                    if let hero = nextUpcomingItem {
+                    if let hero = AgendaTimelinePolicy.upcoming(currentWeekItems, now: now) {
                         nextClassHeroCard(hero)
                     } else {
                         noUpcomingHeroCard
@@ -344,7 +328,7 @@ public struct TodayAgendaTimelineView: View {
                 Spacer()
 
                 if let time = item.startTime {
-                    Text("开课时间: \(time)")
+                    Text("\(item.sourceType == .calendarEvent ? "开始时间" : "开课时间"): \(time)")
                         .font(.system(size: 12, weight: .medium, design: .monospaced))
                         .foregroundColor(.white.opacity(0.85))
                 }
@@ -369,7 +353,7 @@ public struct TodayAgendaTimelineView: View {
                                 .foregroundColor(.white.opacity(0.85))
                         }
 
-                        if item.startSection > 0 {
+                        if AgendaTimelinePolicy.showsSections(item, events: appState.calendarEvents) {
                             Text("第\(item.startSection)-\(item.endSection)节")
                                 .font(.system(size: 12, weight: .medium, design: .monospaced))
                                 .foregroundColor(.white.opacity(0.8))
@@ -590,7 +574,7 @@ public struct TodayAgendaTimelineView: View {
                             .foregroundColor(.secondary.opacity(0.85))
                     }
 
-                    if item.startSection > 0 {
+                    if AgendaTimelinePolicy.showsSections(item, events: appState.calendarEvents) {
                         Text("第\(item.startSection)-\(item.endSection)节")
                             .font(.system(size: 10.5, design: .monospaced))
                             .foregroundColor(.secondary.opacity(0.7))

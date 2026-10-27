@@ -17,6 +17,7 @@ public struct LocalDatabase: Sendable {
         public var tombstones: [SyncTombstone]
         public var syncDeviceId: String?
         public var syncSequence: Int?
+        public var syncPeerSequences: [String: Int]?
         public var focusSession: FocusSession?
         public var calendarImportReceipts: [String: CalendarImportReceipt]?
 
@@ -34,6 +35,7 @@ public struct LocalDatabase: Sendable {
             tombstones: [SyncTombstone] = [],
             syncDeviceId: String? = nil,
             syncSequence: Int? = nil,
+            syncPeerSequences: [String: Int]? = nil,
             focusSession: FocusSession? = nil,
             calendarImportReceipts: [String: CalendarImportReceipt]? = nil
         ) {
@@ -50,6 +52,7 @@ public struct LocalDatabase: Sendable {
             self.tombstones = tombstones
             self.syncDeviceId = syncDeviceId
             self.syncSequence = syncSequence
+            self.syncPeerSequences = syncPeerSequences
             self.focusSession = focusSession
             self.calendarImportReceipts = calendarImportReceipts
         }
@@ -69,6 +72,7 @@ public struct LocalDatabase: Sendable {
             self.tombstones = try container.decodeIfPresent([SyncTombstone].self, forKey: .tombstones) ?? []
             self.syncDeviceId = try container.decodeIfPresent(String.self, forKey: .syncDeviceId)
             self.syncSequence = try container.decodeIfPresent(Int.self, forKey: .syncSequence)
+            self.syncPeerSequences = try container.decodeIfPresent([String: Int].self, forKey: .syncPeerSequences)
             self.focusSession = try container.decodeIfPresent(FocusSession.self, forKey: .focusSession)
             self.calendarImportReceipts = try container.decodeIfPresent([String: CalendarImportReceipt].self, forKey: .calendarImportReceipts)
         }

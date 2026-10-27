@@ -157,3 +157,25 @@ GUI 启动的 `tunnel-client` 不会自动读取 macOS 系统代理。ClassFlow 
 operations上限1000项；selection匹配最多5000项，超过限制整批报错不部分执行；import_calendar_events上限2000条且原有4MiB请求限制保留。批量编辑请求8MiB上限。批次保留回滚、dry_run和持久化重放回执；兼容旧版回执。范围已明确且已授权可直接提交，不要求每批先预检；大批默认摘要，result_mode=full可返回逐项结果。selection返回matched/count及最多20个sample_ids。相同batch_id重试返回原结果，不会对提交后新建的项目再次执行“全部删除”。
 
 get_editing_context支持最多1000/页和selection过滤，matching_totals是过滤后总数，totals仍是原始总数。App所有本地MCP请求使用内存工作副本，业务变更及同步元数据最后一次持久化，批量内部不逐项写临时文件。同步变更对比改为UUID索引；避免重复微件刷新，待办与专注操作不重排无关课程/日程通知。ChatGPT思考、网络延迟、平台每轮调用配额与用户配置的确认策略不由App控制。
+
+## Android 独立连接（2026-10-23，待真机云端验收）
+
+Android 已新增原生四工具执行器、连接设置与出站隧道服务，Mac可以离线。
+这与本文原有Mac的28工具入口分开，需使用专用Tunnel ID。完整配置、支持范围和
+验证边界见 [Android独立连接](ANDROID_CHATGPT.md)；不得以Mac云端成功替代Android验收。
+
+### 日期查询与提醒一致性修复（2026-10-23，build8本地）
+
+list_calendar_events省略date继续返回系列；指定date使用共享投影器查询重复实例，id保留
+系列UUID，date为匹配日期，新增可空alert_minutes_before输出。10分钟与自定义提醒不再在
+编辑器中被映射为无提醒；普通同步保留网络等待期间已确认的本地修改。没有批量恢复既有
+提醒值。复现、兼容性及独立验收边界见[MCP修复报告](MCP_REPAIR_REPORT_2026-10-23.md)。
+
+### 历史提醒恢复与旧端兼容（2026-10-23）
+
+旧端缺失提醒字段与用户显式选择无提醒通过可选reminderConfigured标记区分，Mac持久化
+本机已处理的同步序号，避免重启重放旧快照。原19系列按Google原规则逐项恢复，不是全部
+设10分钟；实际重启和UI验收见[MCP剩余问题报告](MCP_REMAINING_REPAIR_2026-10-23.md)。
+get_status增加可选notification_status诊断，不改变28工具名称或原请求参数。
+
+通知诊断进一步区分plannedCalendarAlertCount、acceptedCalendarAlertCount与calendarAlertCount；add回调接受不等于系统持续保留，缺失时不得报告所有提醒已成功调度。

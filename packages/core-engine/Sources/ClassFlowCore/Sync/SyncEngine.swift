@@ -33,11 +33,13 @@ public final class SyncEngine: @unchecked Sendable {
     public init(
         deviceId: String = "dev_" + UUID().uuidString.prefix(8).lowercased(),
         deviceName: String = "Apple Silicon Mac",
-        initialSequence: Int = 0
+        initialSequence: Int = 0,
+        initialPeerSequences: [String: Int] = [:]
     ) {
         self.deviceId = deviceId
         self.deviceName = deviceName
         self.localSequence = initialSequence
+        self.peerSequences = initialPeerSequences
     }
 
     public static let tombstoneRetentionDays: Int = 90
@@ -51,6 +53,8 @@ public final class SyncEngine: @unchecked Sendable {
         }
         return active
     }
+
+    public var peerSequenceSnapshot: [String: Int] { peerSequences }
 
     public var latestSequence: Int {
         localSequence
@@ -655,7 +659,7 @@ public final class SyncEngine: @unchecked Sendable {
             let pevTitle = pev.title.trimmingCharacters(in: .whitespacesAndNewlines)
 
             if let idx = calendarEvents.firstIndex(where: { $0.id == pev.id }) {
-                var merged = pev
+                var merged = pev.preservingLegacyReminder(from: calendarEvents[idx])
                 merged.semesterId = resolvedSemId
                 calendarEvents[idx] = merged
             } else if let idx = calendarEvents.firstIndex(where: {
@@ -826,7 +830,7 @@ public final class SyncEngine: @unchecked Sendable {
                 if let payload = op.payload,
                    let peerEvent = try? decoder.decode(CalendarEvent.self, from: payload) {
                     if let idx = calendarEvents.firstIndex(where: { $0.id == peerEvent.id }) {
-                        calendarEvents[idx] = peerEvent
+                        calendarEvents[idx] = peerEvent.preservingLegacyReminder(from: calendarEvents[idx])
                     } else {
                         calendarEvents.append(peerEvent)
                     }

@@ -24,7 +24,9 @@ public struct CalendarEvent: Codable, Sendable, Identifiable, Equatable, Hashabl
     /// Optional section end
     public var endSection: Int?
     /// Minutes before start to notify user
-    public var alertMinutesBefore: Int?
+    public var alertMinutesBefore: Int? { didSet { reminderConfigured = true } }
+    /// nil denotes an older writer with no reminder intent; true includes explicit no-reminder.
+    public var reminderConfigured: Bool? = nil
     /// Recurrence pattern (none, daily, weekly, biweekly, workdays, monthly, customWeeks)
     public var frequency: String?
     /// Specific semester teaching weeks if frequency == "customWeeks"
@@ -79,6 +81,7 @@ public struct CalendarEvent: Codable, Sendable, Identifiable, Equatable, Hashabl
         self.startSection = startSection
         self.endSection = endSection
         self.alertMinutesBefore = alertMinutesBefore
+        self.reminderConfigured = true
         self.frequency = frequency
         self.customWeeks = customWeeks
         self.customDaysOfWeek = customDaysOfWeek
@@ -127,6 +130,7 @@ public struct CalendarEvent: Codable, Sendable, Identifiable, Equatable, Hashabl
         self.startSection = try container.decodeIfPresent(Int.self, forKey: .startSection)
         self.endSection = try container.decodeIfPresent(Int.self, forKey: .endSection)
         self.alertMinutesBefore = try container.decodeIfPresent(Int.self, forKey: .alertMinutesBefore)
+        self.reminderConfigured = try container.decodeIfPresent(Bool.self, forKey: .reminderConfigured) ?? (container.contains(.alertMinutesBefore) ? true : nil)
         self.frequency = try container.decodeIfPresent(String.self, forKey: .frequency) ?? "none"
         self.customWeeks = try container.decodeIfPresent(Set<Int>.self, forKey: .customWeeks)
         self.customDaysOfWeek = try container.decodeIfPresent(Set<Int>.self, forKey: .customDaysOfWeek)
@@ -137,4 +141,12 @@ public struct CalendarEvent: Codable, Sendable, Identifiable, Equatable, Hashabl
         self.endRepeatUntil = try container.decodeIfPresent(String.self, forKey: .endRepeatUntil)
         self.endRepeatCount = try container.decodeIfPresent(Int.self, forKey: .endRepeatCount)
     }
+    public func preservingLegacyReminder(from local: CalendarEvent) -> CalendarEvent {
+        guard reminderConfigured != true, alertMinutesBefore == nil else { return self }
+        var result = self
+        result.alertMinutesBefore = local.alertMinutesBefore
+        result.reminderConfigured = local.reminderConfigured
+        return result
+    }
+
 }

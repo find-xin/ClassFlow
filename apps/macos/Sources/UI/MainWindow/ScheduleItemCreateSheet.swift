@@ -26,6 +26,7 @@ public struct ScheduleItemCreateSheet: View {
         case workdays = "工作日 (周一至周五)"
         case weekends = "周末 (周六周日)"
         case weekly = "每周"
+        case biweekly = "每两周"
         case monthly = "每月"
         case customDays = "自定义每周某几天"
         case customWeeks = "按周次重复"
@@ -38,6 +39,7 @@ public struct ScheduleItemCreateSheet: View {
             case .workdays: return "workdays"
             case .weekends: return "weekends"
             case .weekly: return "weekly"
+            case .biweekly: return "biweekly"
             case .monthly: return "monthly"
             case .customDays: return "customDays"
             case .customWeeks: return "customWeeks"
@@ -51,6 +53,7 @@ public struct ScheduleItemCreateSheet: View {
             case "workdays": self = .workdays
             case "weekends": self = .weekends
             case "weekly": self = .weekly
+            case "biweekly": self = .biweekly
             case "monthly": self = .monthly
             case "customDays": self = .customDays
             case "customWeeks": self = .customWeeks
@@ -63,6 +66,8 @@ public struct ScheduleItemCreateSheet: View {
         case none = "无提醒"
         case atTime = "日程开始时"
         case min5 = "提前 5 分钟"
+        case min10 = "提前 10 分钟"
+        case custom = "保留自定义提醒"
         case min15 = "提前 15 分钟"
         case min30 = "提前 30 分钟"
         case hour1 = "提前 1 小时"
@@ -74,6 +79,8 @@ public struct ScheduleItemCreateSheet: View {
             case .none: return nil
             case .atTime: return 0
             case .min5: return 5
+            case .min10: return 10
+            case .custom: return nil
             case .min15: return 15
             case .min30: return 30
             case .hour1: return 60
@@ -85,12 +92,18 @@ public struct ScheduleItemCreateSheet: View {
             switch minutesBefore {
             case 0: self = .atTime
             case 5: self = .min5
+            case 10: self = .min10
             case 15: self = .min15
             case 30: self = .min30
             case 60: self = .hour1
             case 1440: self = .day1
-            default: self = .none
+            case nil: self = .none
+            default: self = .custom
             }
+        }
+
+        public func resolvedMinutes(preserving value: Int?) -> Int? {
+            self == .custom ? value : minutesBefore
         }
     }
 
@@ -575,8 +588,8 @@ public struct ScheduleItemCreateSheet: View {
                         .font(.system(size: 13, weight: .medium))
                     Spacer()
                     Picker("", selection: $alertOption) {
-                        ForEach(AlertOption.allCases) { opt in
-                            Text(opt.rawValue).tag(opt)
+                        ForEach(AlertOption.allCases.filter { $0 != .custom || editingEvent?.alertMinutesBefore != nil }) { opt in
+                            Text(opt == .custom ? "提前 \(editingEvent?.alertMinutesBefore ?? 0) 分钟" : opt.rawValue).tag(opt)
                         }
                     }
                     .labelsHidden()
@@ -606,7 +619,8 @@ public struct ScheduleItemCreateSheet: View {
                     Image(systemName: "note.text")
                         .foregroundColor(.secondary)
                         .font(.system(size: 12))
-                    TextField("备注说明 (选填)", text: $eventNotes)
+                    TextField("备注说明 (选填)", text: $eventNotes, axis: .vertical)
+                        .lineLimit(3...8)
                         .textFieldStyle(.plain)
                 }
                 .padding(.horizontal, 14)
@@ -861,7 +875,8 @@ public struct ScheduleItemCreateSheet: View {
                     Image(systemName: "note.text")
                         .foregroundColor(.secondary)
                         .font(.system(size: 12))
-                    TextField("待办详情与备忘说明 (选填)", text: $taskNotes)
+                    TextField("待办详情与备忘说明 (选填)", text: $taskNotes, axis: .vertical)
+                        .lineLimit(3...8)
                         .textFieldStyle(.plain)
                 }
                 .padding(14)
@@ -926,7 +941,7 @@ public struct ScheduleItemCreateSheet: View {
             updated.color = eventColor
             updated.startSection = resolvedStartSec
             updated.endSection = resolvedEndSec
-            updated.alertMinutesBefore = alertOption.minutesBefore
+            updated.alertMinutesBefore = alertOption.resolvedMinutes(preserving: editingEvent?.alertMinutesBefore)
             updated.frequency = frequency.internalCode
             updated.customWeeks = (frequency == .customWeeks) ? customWeeks : nil
             updated.customDaysOfWeek = (frequency == .customDays) ? customDaysOfWeek : nil
@@ -935,7 +950,7 @@ public struct ScheduleItemCreateSheet: View {
             updated.endRepeatType = endRepeatType
             updated.endRepeatUntil = df.string(from: endRepeatUntil)
             updated.endRepeatCount = endRepeatCount
-            appState.updateCalendarEvent(updated)
+            appState.updateCalendarEvent(CalendarEditorPreservation.apply(original: existing, draft: updated))
         } else {
             let newEvent = CalendarEvent(
                 id: UUID(),
@@ -952,7 +967,7 @@ public struct ScheduleItemCreateSheet: View {
                 color: eventColor,
                 startSection: resolvedStartSec,
                 endSection: resolvedEndSec,
-                alertMinutesBefore: alertOption.minutesBefore,
+                alertMinutesBefore: alertOption.resolvedMinutes(preserving: editingEvent?.alertMinutesBefore),
                 frequency: frequency.internalCode,
                 customWeeks: (frequency == .customWeeks) ? customWeeks : nil,
                 customDaysOfWeek: (frequency == .customDays) ? customDaysOfWeek : nil,

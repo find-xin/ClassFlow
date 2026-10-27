@@ -443,16 +443,13 @@ public struct UnifiedEntityManagerSheet: View {
                         .background(Color(hex: "#34C759").opacity(0.12))
                         .clipShape(Capsule())
 
-                    if let notes = ev.description, !notes.isEmpty {
-                        Text(notes)
-                            .font(.system(size: 10))
-                            .foregroundColor(.secondary)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Color.primary.opacity(0.06))
-                            .clipShape(Capsule())
-                            .lineLimit(1)
-                    }
+                }
+                if let notes = ev.description, !notes.isEmpty {
+                    Text(notes)
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .textSelection(.enabled)
                 }
 
                 HStack(spacing: 10) {

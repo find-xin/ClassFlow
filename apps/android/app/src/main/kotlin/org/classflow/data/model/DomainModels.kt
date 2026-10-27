@@ -149,6 +149,7 @@ data class CalendarEvent(
     val targetMinutes: Int? = null,
     val customWeeks: List<Int> = emptyList(),
     val alertMinutes: Int? = null,
+    val reminderConfigured: Boolean? = true,
     val timeMode: String? = null,
     val startDate: String? = null,
     val endDate: String? = null,

@@ -26,6 +26,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import org.classflow.ui.components.AdaptiveLayoutProvider
+import org.classflow.ui.components.LocalAdaptiveLayout
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -54,11 +57,11 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 class MainActivity : ComponentActivity() {
-    private val targetTabState = mutableStateOf<NavigationTab?>(NavigationTab.TIMETABLE)
+    private val targetTabState = mutableStateOf<NavigationTab?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        handleIntent(intent)
+        if (savedInstanceState == null) handleIntent(intent)
         setContent {
             MainApp(
                 targetTab = targetTabState.value,
@@ -147,17 +150,19 @@ fun MainApp(
             customWallpaperUri = appSettings.customWallpaperUri,
             usePureColorBackground = appSettings.usePureColorBackground
         ) {
-            MainScreenHost(
-                appSettings = appSettings,
-                isDark = isDark,
-                isWallpaperDark = isWallpaperDark,
-                targetTab = targetTab,
-                onTargetTabConsumed = onTargetTabConsumed,
-                onUpdateSettings = { updated ->
-                    appSettings = updated
-                    org.classflow.data.local.SettingsManager.saveSettings(context, updated)
-                }
-            )
+            AdaptiveLayoutProvider {
+                MainScreenHost(
+                    appSettings = appSettings,
+                    isDark = isDark,
+                    isWallpaperDark = isWallpaperDark,
+                    targetTab = targetTab,
+                    onTargetTabConsumed = onTargetTabConsumed,
+                    onUpdateSettings = { updated ->
+                        appSettings = updated
+                        org.classflow.data.local.SettingsManager.saveSettings(context, updated)
+                    }
+                )
+            }
         }
     }
 }
@@ -168,7 +173,8 @@ fun MacStyleTabBar(
     showStudyTab: Boolean,
     isDark: Boolean,
     isWallpaperDark: Boolean,
-    onTabSelected: (NavigationTab) -> Unit
+    onTabSelected: (NavigationTab) -> Unit,
+    atTop: Boolean = false
 ) {
     val textActive = if (isDark || isWallpaperDark) Color.White else Color(0xFF1F2937)
     val textInactive = if (isDark || isWallpaperDark) Color.White.copy(alpha = 0.70f) else Color(0xFF6B7280)
@@ -177,9 +183,9 @@ fun MacStyleTabBar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .navigationBarsPadding()
+            .then(if (atTop) Modifier.statusBarsPadding() else Modifier.navigationBarsPadding())
             .padding(vertical = 6.dp),
-        horizontalArrangement = Arrangement.SpaceEvenly,
+        horizontalArrangement = if (atTop) Arrangement.Center else Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically
     ) {
         val tabs = buildList {
@@ -197,6 +203,7 @@ fun MacStyleTabBar(
                 modifier = Modifier
                     .clip(RoundedCornerShape(8.dp))
                     .clickable { onTabSelected(tab) }
+                    .heightIn(min = 48.dp)
                     .padding(horizontal = 24.dp, vertical = 4.dp)
             ) {
                 Text(
@@ -230,7 +237,7 @@ fun MainScreenHost(
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
 
-    var selectedTab by remember { mutableStateOf(NavigationTab.TIMETABLE) }
+    var selectedTab by rememberSaveable { mutableStateOf(NavigationTab.TIMETABLE) }
 
     LaunchedEffect(targetTab) {
         if (targetTab != null) {
@@ -244,7 +251,7 @@ fun MainScreenHost(
             addAll(CourseDataManager.loadSemesters(context))
         }
     }
-    var activeSemesterId by remember {
+    var activeSemesterId by rememberSaveable {
         mutableStateOf(semesters.find { it.isCurrent }?.id ?: semesters.firstOrNull()?.id ?: "sem_1")
     }
     val currentSemester = semesters.find { it.id == activeSemesterId }
@@ -264,11 +271,10 @@ fun MainScreenHost(
     val currentWeek = remember(currentSemester.startDate, totalWeeks) {
         TimelineProjection.calculateCurrentWeek(currentSemester.startDate, totalWeeks)
     }
-    var selectedWeek by remember { mutableIntStateOf(currentWeek) }
+    var selectedWeek by rememberSaveable(currentSemester.id, currentSemester.startDate, totalWeeks) { mutableIntStateOf(currentWeek) }
 
     LaunchedEffect(activeSemesterId, currentSemester.name) {
         semesterName = currentSemester.name
-        selectedWeek = currentWeek
     }
 
     val topCourseSelections = remember {
@@ -572,6 +578,15 @@ fun MainScreenHost(
         sectionTimes.addAll(org.classflow.data.local.CourseDataManager.loadSectionTimes(context))
     }
 
+    DisposableEffect(context) {
+        val prefs = context.getSharedPreferences("classflow_courses_prefs", android.content.Context.MODE_PRIVATE)
+        val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == "automation_receipts_json") reloadAllData()
+        }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        onDispose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+
     // Step 1: Remote Save Sync on Startup
     LaunchedEffect(Unit) {
         if (appSettings.syncOnStartup) {
@@ -649,10 +664,17 @@ fun MainScreenHost(
 
     val hasWallpaper = !appSettings.customWallpaperUri.isNullOrBlank() || (!appSettings.usePureColorBackground && appSettings.wallpaperPreset != "default")
 
+    val desktopToolbar = LocalAdaptiveLayout.current.desktopToolbar
     Scaffold(
+        topBar = {
+            if (desktopToolbar) MacStyleTabBar(
+                selectedTab, appSettings.enableStudyModule, isDark, isWallpaperDark,
+                onTabSelected = { selectedTab = it }, atTop = true
+            )
+        },
         containerColor = Color.Transparent,
         bottomBar = {
-            MacStyleTabBar(
+            if (!desktopToolbar) MacStyleTabBar(
                 selectedTab = selectedTab,
                 showStudyTab = appSettings.enableStudyModule,
                 isDark = isDark,

@@ -47,6 +47,8 @@ jobs:
             "dist/ClassFlow-${APP_VERSION}-macOS-arm64.zip.sha256"
             "dist/ClassFlow-${APP_VERSION}-android.apk"
             "dist/ClassFlow-${APP_VERSION}-android.apk.sha256"
+            "dist/ClassFlow-Android-${APP_VERSION}-build4-preview.apk"
+            "dist/ClassFlow-Android-${APP_VERSION}-build4-preview.apk.sha256"
             "dist/ClassFlow-${BAND_VERSION}-xiaomi-band.rpk"
             "dist/ClassFlow-${BAND_VERSION}-xiaomi-band.rpk.sha256"
             "dist/ClassFlow-${BAND_VERSION}-xiaomi-band.zip"

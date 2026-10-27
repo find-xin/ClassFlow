@@ -252,16 +252,13 @@ object CourseDataManager {
         }
         val jsonStr = prefs.getString(KEY_COURSES, "[]") ?: "[]"
         val courses = deserializeCourses(jsonStr)
-        val consolidated = consolidateCourses(courses)
-        if (consolidated != courses) {
-            saveCourses(context, consolidated)
-        }
+        val consolidated = courses
         val tombstones = loadTombstones(context).map { it.entityId }.toSet()
         return if (tombstones.isEmpty()) consolidated else consolidated.filterNot { it.id in tombstones }
     }
 
     fun saveCourses(context: Context, courses: List<Course>) {
-        val consolidated = consolidateCourses(courses)
+        val consolidated = courses
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().putString(KEY_COURSES, serializeCourses(consolidated)).apply()
     }
@@ -306,6 +303,7 @@ object CourseDataManager {
                         color = obj.optString("color", "#039BE5"),
                         frequency = obj.optString("frequency", "none"),
                         timeMode = obj.optString("timeMode").takeIf { it == "sections" || it == "time" },
+                        reminderConfigured = if (obj.has("reminderConfigured")) obj.optBoolean("reminderConfigured") else if (obj.has("alertMinutesBefore")) true else null,
                         alertMinutes = if (obj.has("alertMinutesBefore") && !obj.isNull("alertMinutesBefore")) obj.getInt("alertMinutesBefore") else if (obj.has("alertMinutes") && !obj.isNull("alertMinutes")) obj.getInt("alertMinutes") else null,
                         intervalWeeks = obj.optInt("intervalWeeks", 1),
                         startSection = if (obj.has("startSection") && !obj.isNull("startSection")) obj.getInt("startSection") else null,
@@ -350,6 +348,7 @@ object CourseDataManager {
             obj.put("frequency", s.frequency)
             if (s.timeMode != null) obj.put("timeMode", s.timeMode)
             if (s.alertMinutes != null) obj.put("alertMinutesBefore", s.alertMinutes)
+            if (s.reminderConfigured != null) obj.put("reminderConfigured", s.reminderConfigured)
             obj.put("intervalWeeks", s.intervalWeeks)
             if (s.startSection != null) obj.put("startSection", s.startSection)
             if (s.endSection != null) obj.put("endSection", s.endSection)
@@ -409,16 +408,13 @@ object CourseDataManager {
         }
         val jsonStr = prefs.getString(KEY_SCHEDULES, "[]") ?: "[]"
         val schedules = deserializeSchedules(jsonStr)
-        val consolidated = consolidateCalendarEvents(schedules)
-        if (consolidated != schedules) {
-            saveSchedules(context, consolidated)
-        }
+        val consolidated = schedules
         val tombstones = loadTombstones(context).map { it.entityId }.toSet()
         return if (tombstones.isEmpty()) consolidated else consolidated.filterNot { it.id in tombstones }
     }
 
     fun saveSchedules(context: Context, schedules: List<CalendarEvent>) {
-        val consolidated = consolidateCalendarEvents(schedules)
+        val consolidated = schedules
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().putString(KEY_SCHEDULES, serializeSchedules(consolidated)).apply()
     }

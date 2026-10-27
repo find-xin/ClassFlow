@@ -252,6 +252,7 @@ fun ScheduleAddDialog(
             ),
             shadowElevation = 8.dp,
             modifier = Modifier
+                .widthIn(max = 680.dp)
                 .fillMaxWidth(0.92f)
                 .heightIn(max = 680.dp)
         ) {
@@ -374,6 +375,7 @@ fun ScheduleAddDialog(
                                         endRepeatUntil = endRepeatUntil,
                                         endRepeatCount = endRepeatCount,
                                         alertMinutes = alertMins,
+                                        reminderConfigured = if (initialEvent == null || initialEvent.alertMinutes != alertMins) true else initialEvent.reminderConfigured,
                                         isTask = false
                                     )
                                     val updatedEvent = baseEvent.copy(
@@ -396,6 +398,7 @@ fun ScheduleAddDialog(
                                         endRepeatUntil = endRepeatUntil,
                                         endRepeatCount = endRepeatCount,
                                         alertMinutes = alertMins,
+                                        reminderConfigured = if (initialEvent == null || initialEvent.alertMinutes != alertMins) true else initialEvent.reminderConfigured,
                                         isTask = false
                                     )
                                     onSaveSchedule(updatedEvent)
@@ -1170,7 +1173,9 @@ fun ScheduleAddDialog(
                                     BasicTextField(
                                         value = eventNotes,
                                         onValueChange = { eventNotes = it },
-                                        singleLine = true,
+                                        singleLine = false,
+                                        minLines = 3,
+                                        maxLines = 8,
                                         textStyle = TextStyle(fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface),
                                         decorationBox = { inner ->
                                             if (eventNotes.isEmpty()) {
@@ -1801,7 +1806,9 @@ fun ScheduleAddDialog(
                                 BasicTextField(
                                     value = taskNotes,
                                     onValueChange = { taskNotes = it },
-                                    singleLine = true,
+                                    singleLine = false,
+                                    minLines = 3,
+                                    maxLines = 8,
                                     textStyle = TextStyle(fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface),
                                     decorationBox = { inner ->
                                         if (taskNotes.isEmpty()) {

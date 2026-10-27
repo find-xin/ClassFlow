@@ -528,7 +528,12 @@ object FullSyncManager {
      * Executes decentralized synchronization adhering to docs/SYNC_PROTOCOL.md.
      * Uses device-isolated paths (devices/{deviceId}/) and snapshot bootstrapping.
      */
-    suspend fun executeFullSync(context: Context): Result<SyncResultSummary> = withContext(Dispatchers.IO) {
+    suspend fun executeFullSync(context: Context): Result<SyncResultSummary> {
+        org.classflow.automation.AutomationGate.beginSync()
+        return try { executeFullSyncInternal(context) } finally { org.classflow.automation.AutomationGate.endSync() }
+    }
+
+    private suspend fun executeFullSyncInternal(context: Context): Result<SyncResultSummary> = withContext(Dispatchers.IO) {
         try {
             val creds = org.classflow.data.local.SettingsManager.loadSyncCredentials(context)
             if (creds.providerType == "none") {
@@ -837,7 +842,12 @@ object FullSyncManager {
      * Forces full download of cloud/peer snapshot, clearing all local tombstones and overwriting local state.
      * Guarantees recovery from local deletions or tombstone conflicts.
      */
-    suspend fun executeForcePullFromCloud(context: Context): Result<SyncResultSummary> = withContext(Dispatchers.IO) {
+    suspend fun executeForcePullFromCloud(context: Context): Result<SyncResultSummary> {
+        org.classflow.automation.AutomationGate.beginSync()
+        return try { executeForcePullFromCloudInternal(context) } finally { org.classflow.automation.AutomationGate.endSync() }
+    }
+
+    private suspend fun executeForcePullFromCloudInternal(context: Context): Result<SyncResultSummary> = withContext(Dispatchers.IO) {
         try {
             val creds = org.classflow.data.local.SettingsManager.loadSyncCredentials(context)
             if (creds.providerType == "none") {

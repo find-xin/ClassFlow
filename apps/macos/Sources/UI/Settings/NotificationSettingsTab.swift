@@ -93,10 +93,24 @@ public struct NotificationSettingsTab: View {
 
             Section("提醒调度操作") {
                 HStack(spacing: 12) {
+                    Button("测试系统通知") {
+                        Task {
+                            statusMessage = "测试通知将在5秒后触发，正在等待系统送达回执…"
+                            let delivered = await appState.notificationService.sendDiagnosticAlert()
+                            statusMessage = delivered ? "系统已确认测试通知送达。" : "未收到送达确认，请检查系统权限与专注模式。"
+                        }
+                    }
                     Button("立即更新待发送提醒") {
                         Task {
                             await appState.scheduleNotifications()
-                            statusMessage = "提醒已更新并调度完成！"
+                            if let status = await appState.notificationService.diagnosticStatus(),
+                               let planned = status.plannedCalendarAlertCount {
+                                statusMessage = status.calendarAlertCount == planned
+                                    ? "系统待发送日程提醒：\(status.calendarAlertCount)条。"
+                                    : "计划\(planned)条日程提醒，系统待发送\(status.calendarAlertCount)条，尚未全部确认。"
+                            } else {
+                                statusMessage = "已请求更新提醒；尚未获得系统队列确认。"
+                            }
                         }
                     }
                     .buttonStyle(.borderedProminent)

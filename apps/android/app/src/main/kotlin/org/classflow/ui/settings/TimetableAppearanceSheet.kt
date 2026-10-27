@@ -114,6 +114,7 @@ fun TimetableAppearanceDialog(
     ) {
         Surface(
             modifier = Modifier
+                .widthIn(max = 720.dp)
                 .fillMaxWidth(0.95f)
                 .fillMaxHeight(0.92f)
                 .clip(RoundedCornerShape(20.dp)),

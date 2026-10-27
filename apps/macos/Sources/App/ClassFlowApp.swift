@@ -11,6 +11,13 @@ struct ClassFlowApp: App {
         WindowGroup {
             MainWindowView(appState: appState)
                 .preferredColorScheme(colorScheme(for: appState.settings.themeMode))
+                .task {
+                    await appState.notificationService.clearDeliveredAlerts()
+                    while !Task.isCancelled {
+                        await appState.scheduleNotifications()
+                        do { try await Task.sleep(for: .seconds(3600)) } catch { break }
+                    }
+                }
                 .onOpenURL { url in
                     appState.handleDeepLink(url)
                 }

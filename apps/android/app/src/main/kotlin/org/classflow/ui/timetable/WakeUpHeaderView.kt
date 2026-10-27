@@ -17,6 +17,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import org.classflow.ui.components.LocalAdaptiveLayout
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -46,6 +47,7 @@ import kotlin.math.roundToInt
  *     (⤴) Export (Export .ics / Full Backup .classflow)
  *     (⋮) More / Settings Drawer
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun WakeUpHeaderView(
     currentWeek: Int,
@@ -113,12 +115,13 @@ fun WakeUpHeaderView(
         SimpleDateFormat("yyyy/MM/dd", Locale.getDefault()).format(Date())
     }
 
-    Row(
+    val desktopToolbar = LocalAdaptiveLayout.current.desktopToolbar
+    FlowRow(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         // 1. Left: Clickable Date & Week Title (exact WakeUp layout Image 1)
         Column(
@@ -156,6 +159,18 @@ fun WakeUpHeaderView(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
+            if (desktopToolbar) {
+                IconButton(onClick = { onWeekChange(selectedWeek - 1) }, enabled = selectedWeek > 1) {
+                    Icon(Icons.Default.ChevronLeft, contentDescription = "上一周", tint = iconTint)
+                }
+                TextButton(onClick = { onWeekChange(currentWeek) }, enabled = selectedWeek != currentWeek) {
+                    Text("本周", color = textPrimary)
+                }
+                IconButton(onClick = { onWeekChange(selectedWeek + 1) }, enabled = selectedWeek < totalWeeks) {
+                    Icon(Icons.Default.ChevronRight, contentDescription = "下一周", tint = iconTint)
+                }
+            }
+
             // Week / Day View Toggle Capsule (macOS & mobile parity)
             Row(
                 modifier = Modifier
@@ -198,7 +213,7 @@ fun WakeUpHeaderView(
             Box {
                 IconButton(
                     onClick = { showAddMenu = true },
-                    modifier = Modifier.size(36.dp)
+                    modifier = Modifier.size(if (desktopToolbar) 48.dp else 36.dp)
                 ) {
                     Icon(
                         Icons.Default.Add,

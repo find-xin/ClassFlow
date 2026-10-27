@@ -134,7 +134,7 @@ public final class AppState {
         let payload = database.load()
         let devId = payload.syncDeviceId ?? ("dev_mac_" + UUID().uuidString.prefix(8).lowercased())
         let seq = payload.syncSequence ?? 0
-        self.syncEngine = SyncEngine(deviceId: devId, deviceName: Host.current().localizedName ?? "Apple Silicon Mac", initialSequence: seq)
+        self.syncEngine = SyncEngine(deviceId: devId, deviceName: Host.current().localizedName ?? "Apple Silicon Mac", initialSequence: seq, initialPeerSequences: payload.syncPeerSequences ?? [:])
 
         load(startup: true)
         setupDistributedObservers()
@@ -154,12 +154,18 @@ public final class AppState {
         let handlers = MCPToolHandlers(database: workspace, enablesAppIntegration: false)
         let server = MCPServer(handlers: handlers)
         let result = try server.invokeTool(name: name, arguments: arguments)
+        if name == "get_status", let status = await notificationService.diagnosticStatus(),
+           var response = try JSONSerialization.jsonObject(with: Data(result.utf8)) as? [String: Any] {
+            response["notification_status"] = try JSONSerialization.jsonObject(with: JSONEncoder().encode(status))
+            return String(decoding: try JSONSerialization.data(withJSONObject: response, options: [.sortedKeys]), as: UTF8.self)
+        }
         let reads: Set<String> = ["get_editing_context", "get_status", "query_timetable", "list_courses", "list_calendar_events", "list_tasks", "get_focus_statistics"]
         if reads.contains(name) || (["import_calendar_events", "batch_edit_items"].contains(name) && arguments["dry_run"] as? Bool == true) { return result }
         var after = workspace.load()
         recordAutomationChanges(before: before, after: after)
         after.syncDeviceId = syncEngine.deviceId
         after.syncSequence = syncEngine.latestSequence
+        after.syncPeerSequences = syncEngine.peerSequenceSnapshot
         try database.save(after)
         load()
         if name == "switch_semester_or_week", let week = arguments["week"] as? Int { selectedWeek = week }
@@ -296,6 +302,7 @@ public final class AppState {
             tombstones: tombstones,
             syncDeviceId: syncEngine.deviceId,
             syncSequence: syncEngine.latestSequence,
+            syncPeerSequences: syncEngine.peerSequenceSnapshot,
             focusSession: focusSession,
             calendarImportReceipts: calendarImportReceipts
         )
@@ -312,6 +319,21 @@ public final class AppState {
 
     // MARK: - BYOC Cloud Synchronization
 
+    private func requeueLocalSyncEdits<T: Codable & Equatable & Identifiable>(baseline: [T], local: [T], merged: [T], type: String) where T.ID == UUID {
+        let before = Dictionary(baseline.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let currentIDs = Set(local.map(\.id))
+        for item in local where before[item.id] != item {
+            if let final = merged.first(where: { $0.id == item.id }), let data = try? JSONEncoder().encode(final) {
+                _ = syncEngine.recordOperation(action: before[item.id] == nil ? "INSERT" : "UPDATE", entityType: type, entityId: item.id, payload: data)
+            }
+        }
+        for old in baseline where !currentIDs.contains(old.id) {
+            _ = syncEngine.recordOperation(action: "DELETE", entityType: type, entityId: old.id)
+        }
+    }
+
+    private var cloudSyncInProgress = false
+
     public func executeCloudSync(storage: StorageProvider) async throws -> SyncEngine.SyncSummary {
         syncEngine.queueInitialDataIfNeeded(
             courses: courses,
@@ -322,6 +344,10 @@ public final class AppState {
             pomodoroRecords: pomodoroRecords,
             timetableProfiles: timetableProfiles
         )
+        guard !cloudSyncInProgress else { throw NSError(domain: "ClassFlowSync", code: 409, userInfo: [NSLocalizedDescriptionKey: "云同步正在进行，请稍后重试。"] ) }
+        cloudSyncInProgress = true
+        defer { cloudSyncInProgress = false }
+        let baseline = try database.loadForAutomation()
         var localCourses = courses
         var localExceptions = exceptions
         var localSemesters = semesters
@@ -342,7 +368,24 @@ public final class AppState {
             timetableProfiles: &localProfiles,
             tombstones: &localTombstones
         )
-        self.courses = SyncEngine.consolidateCourses(localCourses)
+        // Network awaits allow UI/MCP edits on the main actor. Rebase those edits before saving.
+        localCourses = try LocalSyncRebase.merge(baseline: baseline.courses, local: courses, remote: localCourses)
+        localExceptions = try LocalSyncRebase.merge(baseline: baseline.exceptions, local: exceptions, remote: localExceptions)
+        localSemesters = try LocalSyncRebase.merge(baseline: baseline.semesters, local: semesters, remote: localSemesters)
+        localCalendarEvents = try LocalSyncRebase.merge(baseline: baseline.calendarEvents, local: calendarEvents, remote: localCalendarEvents)
+        localPomodoroTasks = try LocalSyncRebase.merge(baseline: baseline.pomodoroTasks, local: pomodoroTasks, remote: localPomodoroTasks)
+        localPomodoroRecords = try LocalSyncRebase.merge(baseline: baseline.pomodoroRecords, local: pomodoroRecords, remote: localPomodoroRecords)
+        localProfiles = try LocalSyncRebase.merge(baseline: baseline.timetableProfiles, local: timetableProfiles, remote: localProfiles)
+        // Requeue only concurrent local edits, carrying the merged record so peer fields survive.
+        requeueLocalSyncEdits(baseline: baseline.courses, local: courses, merged: localCourses, type: "course")
+        requeueLocalSyncEdits(baseline: baseline.exceptions, local: exceptions, merged: localExceptions, type: "exception")
+        requeueLocalSyncEdits(baseline: baseline.semesters, local: semesters, merged: localSemesters, type: "semester")
+        requeueLocalSyncEdits(baseline: baseline.calendarEvents, local: calendarEvents, merged: localCalendarEvents, type: "calendarEvent")
+        requeueLocalSyncEdits(baseline: baseline.pomodoroTasks, local: pomodoroTasks, merged: localPomodoroTasks, type: "pomodoroTask")
+        requeueLocalSyncEdits(baseline: baseline.pomodoroRecords, local: pomodoroRecords, merged: localPomodoroRecords, type: "pomodoroRecord")
+        requeueLocalSyncEdits(baseline: baseline.timetableProfiles, local: timetableProfiles, merged: localProfiles, type: "timetableProfile")
+        localTombstones += tombstones.filter { local in !localTombstones.contains(where: { $0.entityId == local.entityId && $0.deletedAt == local.deletedAt }) }
+        self.courses = localCourses
         self.exceptions = localExceptions
         self.semesters = localSemesters
         self.calendarEvents = localCalendarEvents
@@ -1234,35 +1277,53 @@ public final class AppState {
 
     // MARK: - Notifications
 
+    private var notificationUpdateTask: Task<Void, Never>?
+
     public func scheduleNotifications() async {
-        guard let current = currentSemester else { return }
-        let currentWeek = calculatedCurrentWeek
-        let weekOccurrences = timelineEngine.generateOccurrences(
-            semester: current,
-            courses: courses.filter { $0.semesterId == current.id },
-            exceptions: exceptions,
-            forWeek: currentWeek,
-            activeWeek: currentWeek
-        )
-
-        if settings.enableClassAlerts {
-            await notificationService.schedulePreClassAlerts(
-                occurrences: weekOccurrences,
-                offsetMinutes: settings.classAlertMinutes
-            )
-        } else {
-            await notificationService.cancelClassAlerts()
+        let previous = notificationUpdateTask
+        let update = Task { @MainActor in
+            await previous?.value
+            await self.rebuildNotifications()
         }
+        notificationUpdateTask = update
+        await update.value
+    }
 
+    private func rebuildNotifications() async {
+        // Persisted business data is authoritative; view caches may lag an IPC/sync commit.
+        guard let snapshot = try? database.loadForAutomation() else { return }
+        let settings = snapshot.settings
+        let semesters = snapshot.semesters
+        let courses = snapshot.courses
+        let exceptions = snapshot.exceptions
+        let calendarEvents = snapshot.calendarEvents
+        // Replace the complete pending snapshot, including legacy repeating briefings.
+        await notificationService.cancelAll()
+        guard var current = semesters.first(where: { $0.id == currentSemesterId }) ?? semesters.first else { return }
+        if current.sections.isEmpty {
+            current.sections = snapshot.timetableProfiles.first?.sections ?? Semester.standardDefaultSections
+        }
+        let now = Date()
+        let today = timelineEngine.weekCalculator.formatDate(now)
+        let end = Calendar.current.date(byAdding: .day, value: 7, to: now) ?? now
+        let lastDate = timelineEngine.weekCalculator.formatDate(end)
+        let firstWeek = calculateCurrentWeek(for: current)
+        let lastWeek = timelineEngine.weekCalculator.weekIndex(for: lastDate, semesterStartDate: current.startDate) ?? firstWeek
+        var occurrences: [TimelineItem] = []
+        for week in max(1, firstWeek)...max(1, lastWeek) {
+            occurrences += timelineEngine.generateOccurrences(
+                semester: current, courses: courses.filter { $0.semesterId == current.id },
+                exceptions: exceptions, forWeek: week, activeWeek: week,
+                showNonCurrentWeekCourses: false
+            ).filter { $0.date >= today && $0.date < lastDate }
+        }
+        if settings.enableClassAlerts {
+            await notificationService.schedulePreClassAlerts(occurrences: occurrences, offsetMinutes: settings.classAlertMinutes)
+        }
         await notificationService.scheduleCalendarAlerts(events: calendarEvents, semesters: semesters, exceptions: exceptions)
-        let todayStr = timelineEngine.weekCalculator.formatDate(Date())
-        let todayItems = weekOccurrences.filter { $0.date == todayStr }
         if settings.enableDailyBriefing {
-            await notificationService.scheduleDailyBriefing(
-                todayOccurrences: todayItems,
-                hour: settings.dailyBriefingHour,
-                minute: settings.dailyBriefingMinute
-            )
+            await notificationService.scheduleDailyBriefing(todayOccurrences: occurrences,
+                hour: settings.dailyBriefingHour, minute: settings.dailyBriefingMinute)
         }
     }
 

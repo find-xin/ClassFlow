@@ -522,7 +522,7 @@ public final class MCPServer: Sendable {
             ],
             [
                 "name": "list_calendar_events",
-                "description": "查询通用日程安排（会议、考试、日常活动等）。",
+                "description": "查询通用日程。省略date返回系列；指定date按共享重复规则、截止条件及取消例外筛选当日有效实例，id保持系列UUID。",
                 "inputSchema": [
                     "type": "object",
                     "properties": [

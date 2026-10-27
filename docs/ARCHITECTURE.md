@@ -2,6 +2,12 @@
 
 **Document Version**: 1.0.0 | **Phase**: 1 | **Status**: Active Design
 
+> Current implementation note (2026-10-23): the SQLite/Room descriptions below
+> include target architecture. macOS currently persists LocalDatabase as atomic JSON;
+> Android's main screens use CourseDataManager JSON in SharedPreferences, while Room
+> scaffolding also exists. Android currently compiles/targets SDK 35 with minSdk 26.
+> Do not treat the older database or API 36/37 targets as completed migrations.
+
 ---
 
 ## 1. Architectural Philosophy & Core Tenets
@@ -194,3 +200,57 @@ arrays instead of null. Recurrence enumeration treats both representations as no
 filter, matching Android. Nonempty filters still constrain dates. MCP validation continues to
 reject newly requested customDays/customWeeks modes without a nonempty corresponding selection;
 this read compatibility does not weaken write validation or rewrite existing records.
+
+### Android tablet layout (2026-10-23)
+
+`AdaptiveLayoutProvider` measures the available Compose window, rather than identifying
+tablet models or physical screen inches. At 840 dp (scaled up for larger system text),
+the native UI uses centered top navigation, explicit week navigation, a wider section
+axis and larger card titles. Narrow windows retain bottom navigation; the header can
+wrap when controls no longer fit. Header and grid share axis/padding metrics. Settings
+and editor dialogs have bounded widths. No permanent sidebar takes space from the week.
+
+Tab, selected semester/week and week/day mode use saved instance state. Activity
+recreation no longer consumes the original launch intent as a fresh widget navigation.
+Existing Android data, synchronization and action handlers remain the execution path.
+Android ChatGPT uses a separate Kotlin executor and outbound tunnel protocol client,
+with its own four-tool contract in android_mcp_tools.json. The user explicitly chooses
+independent execution; Mac credentials are never copied. See ANDROID_CHATGPT.md.
+
+### macOS agenda presentation (2026-10-23)
+
+The agenda uses AgendaTimelinePolicy to sort concrete date/clock values. Projected
+startSection/endSection for clock-based CalendarEvents are timetable drawing coordinates,
+not authoritative agenda order or user-facing period bindings. Only courses and explicit
+sections-mode events display period labels. Hero selection filters by today's date, active
+week and noncancelled status, and uses endTime to retain ongoing events; completed-day
+fallback does not select an expired first item. The native view refreshes every30 seconds.
+
+### Course notifications (2026-10-23)
+
+Notifications exclude ghost/noncurrent course projections at both generation and planning.
+AppState serializes complete queue replacement, including cleanup when switches are off or
+no semester remains. CourseNotificationPlan creates date-specific one-shot briefings for
+seven days, never a repeating request containing one day's cached course text. The visible
+App refreshes hourly; startup clears old delivered ClassFlow notices. Pending requests are
+bounded to27 course +27 event +7 briefing entries. OS delivery remains separately verified.
+
+### MCP calendar consistency and in-flight sync (2026-10-23)
+
+Calendar date queries use CalendarEventProjector, retaining series UUIDs and sharing
+recurrence/end/exception rules with timetable reads. UI reminder choices preserve arbitrary
+supported minute values instead of defaulting unknown values to none. Ordinary cloud sync
+rebases top-level fields changed locally while the network was awaiting, by UUID; local
+concurrent field changes win, independent remote fields remain, and merged local operations
+are requeued for the next sync. It is not a nested-array element merge. Explicit force pull
+retains its documented overwrite semantics. See MCP_REPAIR_REPORT_2026-10-23.md.
+
+### Legacy reminder intent and persisted peer cursors (2026-10-23)
+
+CalendarEvent.reminderConfigured is an optional additive compatibility marker: true includes
+an explicit no-reminder value; missing denotes an older writer. A missing reminder from an
+older snapshot/UPDATE cannot erase local reminder intent. A modern explicit null can clear it.
+Mac's device-local DatabasePayload.syncPeerSequences persists consumed peer revisions across
+App restarts and is not part of DeviceSnapshot or explicit business exports. Old databases
+still decode without either field. CalendarEditorPreservation prevents hidden UI defaults
+from rewriting untouched event fields. See MCP_REMAINING_REPAIR_2026-10-23.md.

@@ -18,6 +18,8 @@ import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import org.classflow.ui.components.LocalAdaptiveLayout
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -85,7 +87,7 @@ fun TimetableScreen(
     onSelectTopCourse: (clusterKey: String, courseId: String) -> Unit = { _, _ -> },
     onOpenThreeDotsMenu: () -> Unit
 ) {
-    var displayMode by remember { mutableStateOf("week") } // "week" or "day"
+    var displayMode by rememberSaveable { mutableStateOf("week") } // "week" or "day"
     var activeSlotForAction by remember { mutableStateOf<Pair<Int, Int>?>(null) }
 
     // Calculate dates for the 7 days of the selected week
@@ -248,12 +250,12 @@ fun WakeUpDayHeaderRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 4.dp, vertical = 2.dp),
+            .padding(horizontal = LocalAdaptiveLayout.current.gridPadding.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         // 1. Month Column: Stacked "10" and "月" (width 44dp, matching WakeUp Image 1)
         Column(
-            modifier = Modifier.width(44.dp),
+            modifier = Modifier.width(LocalAdaptiveLayout.current.axisWidth.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
@@ -522,8 +524,7 @@ fun buildEffectiveSectionTimes(
     // Late night section (section 99, "晚")
     val updatedLastEnd = parseTimeToMinutes(result.lastOrNull()?.endTime) ?: 1290
     if (latestEnd > updatedLastEnd) {
-        val h = minOf(23, (latestEnd + 59) / 60)
-        val lateEndStr = String.format(Locale.getDefault(), "%02d:00", h)
+        val lateEndStr = String.format(Locale.getDefault(), "%02d:%02d", latestEnd / 60, latestEnd % 60)
         result.add(SectionTime(99, result.last().endTime, lateEndStr))
     }
 
@@ -682,10 +683,11 @@ fun TimetableCanvas(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 8.dp)
+            .padding(horizontal = LocalAdaptiveLayout.current.gridPadding.dp)
+            .padding(bottom = 24.dp)
     ) {
         // 1. Left Section Axis with section numbers and start/end times (width 44dp matching SectionAxisView.swift)
-        Column(modifier = Modifier.width(44.dp)) {
+        Column(modifier = Modifier.width(LocalAdaptiveLayout.current.axisWidth.dp)) {
             for (secTime in effectiveSectionTimes) {
                 Column(
                     modifier = Modifier
@@ -1102,7 +1104,7 @@ fun CourseCard(
     val baseOpacity = if (isActiveThisWeek) appSettings.cardOpacity else appSettings.cardOpacity * appSettings.nonCurrentWeekOpacityRatio
 
     val radius = appSettings.cardCornerRadius.dp
-    val fontSize = maxOf(12f, appSettings.cardFontSize).sp
+    val fontSize = maxOf(if (LocalAdaptiveLayout.current.desktopToolbar) 14f else 12f, appSettings.cardFontSize).sp
 
     val isLight = remember(cardColor) { cardColor.isLight() }
     val effectiveTextColor = when {
@@ -1183,7 +1185,7 @@ fun CourseCard(
                 Text(
                     text = item.title,
                     fontSize = if (isCompact) 10.5.sp else fontSize,
-                    lineHeight = if (isCompact) 12.sp else 14.5.sp,
+                    lineHeight = if (isCompact) 12.sp else (fontSize.value + 2.5f).sp,
                     fontWeight = FontWeight.Bold,
                     color = effectiveTextColor,
                     textAlign = TextAlign.Center,

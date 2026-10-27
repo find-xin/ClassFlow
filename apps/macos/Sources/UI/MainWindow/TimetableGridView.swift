@@ -102,8 +102,11 @@ public struct TimetableGridView: View {
 
     /// Dynamically expands the section schedule to accommodate early morning, late night events, and custom section counts.
     private var effectiveSections: [SectionTime] {
-        let base = semester.sections.isEmpty ? AppState.standardSectionTimes() : semester.sections
+        Self.expandedSections(base: semester.sections.isEmpty ? AppState.standardSectionTimes() : semester.sections,
+                              occurrences: occurrences)
+    }
 
+    static func expandedSections(base: [SectionTime], occurrences: [TimelineItem]) -> [SectionTime] {
         var result = base
         let baseFirstStart = parseTimeToMinutes(base.first?.startTime ?? "08:00") ?? 480
         let baseLastEnd = parseTimeToMinutes(base.last?.endTime ?? "21:30") ?? 1290
@@ -155,8 +158,7 @@ public struct TimetableGridView: View {
 
         let updatedLastEnd = parseTimeToMinutes(result.last?.endTime ?? "21:30") ?? 1290
         if latestEnd > updatedLastEnd {
-            let h = min(23, (latestEnd + 59) / 60)
-            let lateEndStr = String(format: "%02d:00", h)
+            let lateEndStr = String(format: "%02d:%02d", latestEnd / 60, latestEnd % 60)
             let lateSec = SectionTime(section: 99, startTime: result.last?.endTime ?? "21:30", endTime: lateEndStr)
             result.append(lateSec)
         }
@@ -340,6 +342,7 @@ public struct TimetableGridView: View {
                         }
                     }
                 }
+                .padding(.bottom, 24)
             }
             .background {
                 TrackpadSwipeCaptureView(

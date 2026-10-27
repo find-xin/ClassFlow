@@ -132,6 +132,7 @@ fun CourseAddDialog(
             ),
             shadowElevation = 8.dp,
             modifier = Modifier
+                .widthIn(max = 680.dp)
                 .fillMaxWidth(0.92f)
                 .heightIn(max = 680.dp)
         ) {

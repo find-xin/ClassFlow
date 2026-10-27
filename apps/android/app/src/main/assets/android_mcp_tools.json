@@ -1,0 +1,717 @@
+{
+  "tools": [
+    {
+      "name": "get_status",
+      "description": "Android 独立执行器状态及实体数量；仅报告本平板，Mac 不参与执行。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "get_editing_context",
+      "description": "分页读取本机学期、节次、课程、日程、待办及异常。先查 UUID 再编辑。返回 totals 与当前页，不含凭据。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "semesters",
+              "sections",
+              "courses",
+              "events",
+              "tasks",
+              "exceptions"
+            ]
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "query_timetable",
+      "description": "从 Android 本地数据投影指定学期/周次课表，包含课程与重复日程。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "semester_id": {
+            "type": "string"
+          },
+          "week": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "day_of_week": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 7
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "batch_edit_items",
+      "description": "Android 独立批量编辑，1–1000项课程/日程 create/update/delete，整批原子提交；dry_run不写；重试保留batch_id与内容。create课程须semesterId/name，日程须semesterId/title/startDate/startTime/endTime。changes只写需改字段，删除须id且不带changes。课程schedules为完整替换，可保留已有slot id；省略不变。修改/删除日程针对完整系列，不支持单次/未来作用域。当前Android不提供专注控制、待办写入、凭据或系统设置操作。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "batch_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "dry_run": {
+            "type": "boolean"
+          },
+          "operations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "courses",
+                    "events"
+                  ]
+                },
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "create",
+                    "update",
+                    "delete"
+                  ]
+                },
+                "id": {
+                  "type": "string"
+                },
+                "changes": {
+                  "type": "object",
+                  "properties": {
+                    "semesterId": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 300
+                    },
+                    "teacher": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "maxLength": 16000
+                    },
+                    "credit": {
+                      "type": [
+                        "number",
+                        "null"
+                      ],
+                      "minimum": 0,
+                      "maximum": 100
+                    },
+                    "notes": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "maxLength": 16000
+                    },
+                    "color": {
+                      "type": "string",
+                      "pattern": "^#[0-9a-fA-F]{6}$"
+                    },
+                    "schedules": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "dayOfWeek": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 7
+                          },
+                          "startSection": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 100
+                          },
+                          "endSection": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 100
+                          },
+                          "classroom": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "maxLength": 16000
+                          },
+                          "teacher": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "maxLength": 16000
+                          },
+                          "weekPattern": {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "enum": [
+                                  "all",
+                                  "odd",
+                                  "even",
+                                  "custom"
+                                ]
+                              },
+                              "startWeek": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 100
+                              },
+                              "endWeek": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 100
+                              },
+                              "customWeeks": {
+                                "type": "array",
+                                "items": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 100
+                                },
+                                "minItems": 0,
+                                "maxItems": 100
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "startWeek",
+                              "endWeek"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "customStartTime": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "format": "time"
+                          },
+                          "customEndTime": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "format": "time"
+                          }
+                        },
+                        "required": [
+                          "dayOfWeek",
+                          "startSection",
+                          "endSection",
+                          "weekPattern"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "minItems": 0,
+                      "maxItems": 100
+                    },
+                    "title": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 300
+                    },
+                    "startDate": {
+                      "type": "string",
+                      "format": "date"
+                    },
+                    "endDate": {
+                      "type": "string",
+                      "format": "date"
+                    },
+                    "startTime": {
+                      "type": "string",
+                      "format": "time"
+                    },
+                    "endTime": {
+                      "type": "string",
+                      "format": "time"
+                    },
+                    "isAllDay": {
+                      "type": "boolean"
+                    },
+                    "location": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "maxLength": 16000
+                    },
+                    "description": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "maxLength": 16000
+                    },
+                    "timeMode": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        "clock",
+                        "sections"
+                      ]
+                    },
+                    "startSection": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
+                      "minimum": 1,
+                      "maximum": 100
+                    },
+                    "endSection": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
+                      "minimum": 1,
+                      "maximum": 100
+                    },
+                    "frequency": {
+                      "type": "string",
+                      "enum": [
+                        "none",
+                        "daily",
+                        "weekly",
+                        "biweekly",
+                        "monthly",
+                        "weekdays",
+                        "weekends",
+                        "customDays",
+                        "customWeeks"
+                      ]
+                    },
+                    "customDaysOfWeek": {
+                      "type": "array",
+                      "items": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 7
+                      },
+                      "minItems": 0,
+                      "maxItems": 7
+                    },
+                    "customWeeks": {
+                      "type": "array",
+                      "items": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 100
+                      },
+                      "minItems": 0,
+                      "maxItems": 100
+                    },
+                    "intervalWeeks": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 100
+                    },
+                    "endRepeatType": {
+                      "type": "string",
+                      "enum": [
+                        "never",
+                        "until",
+                        "count"
+                      ]
+                    },
+                    "endRepeatUntil": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "date"
+                    },
+                    "endRepeatCount": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
+                      "minimum": 1,
+                      "maximum": 10000
+                    },
+                    "alertMinutesBefore": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
+                      "minimum": 0,
+                      "maximum": 10080
+                    }
+                  },
+                  "required": [],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "kind",
+                "action"
+              ],
+              "additionalProperties": false
+            },
+            "minItems": 1,
+            "maxItems": 1000
+          }
+        },
+        "required": [
+          "batch_id",
+          "operations"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "openWorldHint": false
+      }
+    }
+  ],
+  "courseFields": {
+    "type": "object",
+    "properties": {
+      "semesterId": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 300
+      },
+      "teacher": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "maxLength": 16000
+      },
+      "credit": {
+        "type": [
+          "number",
+          "null"
+        ],
+        "minimum": 0,
+        "maximum": 100
+      },
+      "notes": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "maxLength": 16000
+      },
+      "color": {
+        "type": "string",
+        "pattern": "^#[0-9a-fA-F]{6}$"
+      },
+      "schedules": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "dayOfWeek": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 7
+            },
+            "startSection": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            },
+            "endSection": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            },
+            "classroom": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 16000
+            },
+            "teacher": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 16000
+            },
+            "weekPattern": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "all",
+                    "odd",
+                    "even",
+                    "custom"
+                  ]
+                },
+                "startWeek": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100
+                },
+                "endWeek": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100
+                },
+                "customWeeks": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100
+                  },
+                  "minItems": 0,
+                  "maxItems": 100
+                }
+              },
+              "required": [
+                "type",
+                "startWeek",
+                "endWeek"
+              ],
+              "additionalProperties": false
+            },
+            "customStartTime": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "time"
+            },
+            "customEndTime": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "time"
+            }
+          },
+          "required": [
+            "dayOfWeek",
+            "startSection",
+            "endSection",
+            "weekPattern"
+          ],
+          "additionalProperties": false
+        },
+        "minItems": 0,
+        "maxItems": 100
+      }
+    },
+    "required": [],
+    "additionalProperties": false
+  },
+  "eventFields": {
+    "type": "object",
+    "properties": {
+      "semesterId": {
+        "type": "string"
+      },
+      "title": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 300
+      },
+      "startDate": {
+        "type": "string",
+        "format": "date"
+      },
+      "endDate": {
+        "type": "string",
+        "format": "date"
+      },
+      "startTime": {
+        "type": "string",
+        "format": "time"
+      },
+      "endTime": {
+        "type": "string",
+        "format": "time"
+      },
+      "isAllDay": {
+        "type": "boolean"
+      },
+      "location": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "maxLength": 16000
+      },
+      "description": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "maxLength": 16000
+      },
+      "color": {
+        "type": "string",
+        "pattern": "^#[0-9a-fA-F]{6}$"
+      },
+      "timeMode": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "enum": [
+          "clock",
+          "sections"
+        ]
+      },
+      "startSection": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "minimum": 1,
+        "maximum": 100
+      },
+      "endSection": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "minimum": 1,
+        "maximum": 100
+      },
+      "frequency": {
+        "type": "string",
+        "enum": [
+          "none",
+          "daily",
+          "weekly",
+          "biweekly",
+          "monthly",
+          "weekdays",
+          "weekends",
+          "customDays",
+          "customWeeks"
+        ]
+      },
+      "customDaysOfWeek": {
+        "type": "array",
+        "items": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 7
+        },
+        "minItems": 0,
+        "maxItems": 7
+      },
+      "customWeeks": {
+        "type": "array",
+        "items": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "minItems": 0,
+        "maxItems": 100
+      },
+      "intervalWeeks": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100
+      },
+      "endRepeatType": {
+        "type": "string",
+        "enum": [
+          "never",
+          "until",
+          "count"
+        ]
+      },
+      "endRepeatUntil": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "format": "date"
+      },
+      "endRepeatCount": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "minimum": 1,
+        "maximum": 10000
+      },
+      "alertMinutesBefore": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "minimum": 0,
+        "maximum": 10080
+      }
+    },
+    "required": [],
+    "additionalProperties": false
+  }
+}

@@ -305,3 +305,87 @@ swift test --package-path packages/core-engine --filter longSpan
 ### v1.2.0 build 5 发布准备（2026-10-22）
 
 按用户要求更新现有v1.2.0 Release，沿用原发布地址；修复源码、macOS build 5、README下载哈希及发布说明一并提交，v1.2.0标签随修复提交更新。发布工作流重新生成便携插件及校验清单，并覆盖现有同名附件；Android和手环附件保持原内容。线上完成状态需核对本次GitHub Actions结果及15个附件的实际摘要，不能以本地打包成功代替发布成功。
+
+### Android 平板布局与独立 ChatGPT 执行（2026-10-23，本地预览）
+
+用户明确要求11英寸Android平板借鉴Mac布局、保留Android业务，并选择“Mac关机也能独立管理平板课表”。Compose按可用窗口宽度840dp及系统字体缩放切换顶部导航/周次操作；窄分屏保留手机布局，日期栏与网格共享轴宽及边距，编辑/设置窗口限制宽度。旋转后保存页面、学期、周次及周/日模式，Activity重建不再重放启动导航。
+
+Android新增四项独立MCP工具（非Mac28工具移植声明）：get_status、get_editing_context、query_timetable、batch_edit_items。批量支持课程/日程完整系列create/update/delete，最多1000操作；严格Schema、离线快照校验、一次SharedPreferences提交业务/墓碑/回执、dry_run与同ID同内容重放。常规持久化不再按名称/时间隐式合并UUID；云同步及强制拉取期间暂拒自动化，主界面监听回执刷新。当前不含单次/未来实例作用域、待办写入、专注控制或后台微件/提醒送达验收。
+
+原生AI设置保存独立Tunnel ID及Android安全存储的运行密钥，Kotlin服务实现官方公开poll/response协议，固定HTTPS出站，无公网监听、原始响应日志或Mac凭据复制。用户手动启动specialUse前台服务，通知可停止；不自动开机启动。系统自动备份禁用，显式.classflow备份仍保留。Google Play前台服务用途审核尚未进行。连接配置和验证说明见ANDROID_CHATGPT.md。
+
+[VERIFIED] 实际执行JAVA_HOME=/opt/homebrew/opt/openjdk@17 apps/android/gradlew -p apps/android testDebugUnitTest :app:assembleRelease成功；app54项、hyperos-adapter2项共56项测试，无失败。新增批量预检/回滚/重放/非法日期字段/UUID/课表投影/同步门禁测试与窗口宽度/字体策略测试。APK签名校验成功，打包内含4工具Schema；本地版本1.2.0 (versionCode3)。预览产物dist/ClassFlow-Android-1.2.0-build3-preview.apk，SHA256=6b4692bf730115ed32633bf3e6a9c82632a24ade3b649b6fe413d0cbae10d0ab。本轮未修改线上Release或原发布附件。
+
+[UNVERIFIED] adb无已连接设备；未做联想11英寸真机布局/旋转验收、前台服务生存与安全存储运行检查，也未配置平板专用隧道或实际从ChatGPT调用Android。网络传输实现通过编译但尚无真实控制平面验收。不能以已有Mac云端连接成功或上述JVM测试代替。下一步安装预览APK、配置独立隧道，先执行只读get_status/query_timetable，再在隔离数据中验收写操作；不得用用户真实数据做破坏性测试。
+
+### Mac 日程页实际时间排序修复（2026-10-23，build 6 本地准备）
+
+用户截图显示23:30睡觉出现在上午事项之间，并显示第1–14节。原因是日程页与推荐卡片按startSection排序；时钟日程投影到网格的节次仅为绘图坐标，超出作息范围时的回退不能当作实际时间或业务节次。另有推荐使用开始时间减20分钟、全部结束后回退首项的问题。
+
+新增AgendaTimelinePolicy：按具体日期、全天标记、起止时间与稳定ID排序；推荐仅考虑今天、本周有效、未取消、未结束的非全天实例，用结束时间识别仍在进行的长事项；无匹配返回空。视图每30秒刷新推荐，普通时钟日程不显示网格节次，课程/明确sections日程仍显示节次；日程卡片使用“开始时间”而非“开课时间”。不修改业务数据或持久化Schema。
+
+[VERIFIED] 本轮macOS90项测试通过，新增晚间日程排序、长事项进行中、已全部结束、其他日期/取消/非本周排除和节次标签回归。build6安装包构建中，最终产物验证及GUI安装状态仍需分别记录，不能以测试通过冒充已安装或发布。
+
+[VERIFIED] build6本地DMG/ZIP已生成，App/Widget严格签名校验、DMG完整性与产物28工具协议检查通过；核心69项和macOS90项测试通过。dist校验清单已与新产物同步。未覆盖/重启已安装App，尚未GUI验收，未发布GitHub；用户真实业务数据库未作任何修改。
+
+### 通知错误课程与过期摘要修复（2026-10-23，build7本地准备）
+
+用户报告非本周课程触发提醒，以及已不存在的大学物理反复出现在摘要。源码确认：课前提醒投影默认包含非本周占位，服务只排除取消项；早间摘要把某一天的课程正文设为repeats=true，后续可能每天复用旧正文，并且关闭摘要/无学期时不清理旧请求。不能据截图认定当前数据库仍包含大学物理。
+
+生成提醒显式showNonCurrentWeekCourses=false，服务再次校验course/isCurrentWeek/noncancelled，按日期时间排序。按真实当前日期生成跨周7天窗口，摘要每个具体日期独立一次性调度、不重复；每轮完整替换待发送队列，无学期/关闭开关也清理旧请求。课前27+日程27+摘要7共最多61条，保留系统余量。AppState串行化重建，避免await交错让旧任务重新写入过期请求。主窗口启动时清理本App历史已送达通知，运行期间每小时刷新滚动窗口；退出后仅已提交队列可送达。
+
+[VERIFIED] macOS92项测试通过，新增非本周/取消排除、逐日期摘要内容隔离、上午时间已过不调度今日、空日期不复用昨日课程。未修改用户实际课程数据。build7本地安装包准备中，系统授权、实际送达及通知中心清理效果尚未验收；不能以单元测试替代。
+
+[VERIFIED] build7本地DMG/ZIP已完成，App/Widget严格签名、DMG完整性、28工具协议校验通过；最终源码复跑macOS92项测试通过。dist校验清单已更新。本轮未替换安装版或修改用户业务数据、未更新GitHub Release；系统通知清理与真实送达仍为[UNVERIFIED]，需启动新版执行迁移清理。
+
+### MCP实测报告修复（2026-10-23，build8本地）
+
+[VERIFIED] 按任务书先运行失败测试：每日重复26/27日查询缺失、10分钟提醒映射nil；另复现普通云同步网络等待期间MCP已确认提醒写入随后被旧快照清空。修复日期查询复用投影、提醒10分钟/自定义值保留、双周映射、同步按UUID/顶层字段重合并本地并发修改并重新入队。未改业务Schema或重置用户数据。详细报告见MCP_REPAIR_REPORT_2026-10-23.md。
+
+[VERIFIED] 最终核心69项、macOS101项、插件打包4项、Foundation5组通过；debug、dist及ZIP解包可执行文件28工具协议检查通过。build8 App/Widget及ZIP解包签名、DMG完整性通过，校验清单已更新；未安装到Applications或发布GitHub。回归包含App执行器跨领域操作每步磁盘读取、重新构造App/MCP、提醒多值/三作用域和内存云存储交错同步及后续同步。
+
+[UNVERIFIED] CF-004初始化错误未稳定复现；真实隧道重连、真实BYOC多设备冲突、编辑窗口实际交互和通知送达需分别验收。确认的丢失路径不证明此前19条提醒一定由同一路径清空，也不自动恢复历史值。本轮不修改用户业务数据库。
+
+### 历史提醒恢复及真实重启验收（2026-10-23，build12已安装）
+
+[VERIFIED] 用户明确授权按原Google提醒恢复。只读Google原系列后按标题/时间/拆分系列对应，19个原UUID一次批量恢复：0分钟2个、10分钟13个、无提醒4个；短暂休息和晚餐的10分钟也由源系列明确确认。先备份至私有Backups/reminder-recovery-20261023-152841，计划和回执不入仓库。
+
+[VERIFIED] build9重启时再次真实复现全部提醒消失，进一步定位旧端快照无提醒字段整条覆盖，以及peerSequences仅内存导致重启重放。新增可选reminderConfigured表达明确提醒意图（含nil），快照/UPDATE兼容保护；Mac本机syncPeerSequences持久化已消费序号。Android编解码及编辑/自动化保留标记。新增CalendarEditorPreservation，保存时不再回写隐藏默认节次/次数和未变的表示格式。源数据不需删库迁移，旧客户端明确清空提醒需升级。
+
+[VERIFIED] 最终核心69、macOS104、Android56项测试通过；Foundation5组及插件打包4项通过。build10实际连续两次退出重启后19条提醒保持，build12安装后再读仍全正确；指定科研整理系列实际编辑器显示提前10分钟，保存后云端MCP仍为10。0分钟曾实际显示日程开始时。按UUID/集合语义核对19条除提醒/兼容标记外业务字段与恢复前一致。首次旧UI试保存产生的无关字段已按备份在App退出时恢复。
+
+[VERIFIED] build12已安装到Applications，App/Widget严格签名、DMG完整性及安装版28工具协议检查通过；本地校验清单更新。get_status新增只读notification_status。真实App返回已授权、当前队列23条（日程18条），最近17:20、17:50、18:50等符合提前10分钟规则。原生通知设置的独立测试通知实际得到系统deliveredNotifications回执，UI显示系统已确认测试通知送达；测试不新增业务日程，仅删除自己的诊断通知。云端get_status及23/26日查询实际成功（各15项）。
+
+[UNVERIFIED] CF-004历史初始化错误未稳定复现，不宣称根除。CF-006自然日程全天/多日实际送达及完整队列覆盖仍需继续验收：独立纯计划计算27个日程请求与系统观测18个待发日程数不同，本轮不把发送测试通知成功等同于完整计划全部进入系统队列。CF-007本机重启/旧快照及内存并发已验证，全部跨设备并发/休眠/长离线组合未完成。用户真实云存储未用于破坏性测试，未发布GitHub。详见MCP_REMAINING_REPAIR_2026-10-23.md。
+
+### 通知队列差异继续定位（2026-10-23，build15已安装）
+
+[VERIFIED] 新增NotificationSnapshotTests先复现失败：已提交提醒10、滞后视图缓存nil时调度收到nil。AppState.rebuildNotifications现一次读取LocalDatabase持久化快照；macOS105项通过。通知状态增加计划数/系统add接受数，原生更新按钮不再无条件宣称全部完成。19条历史提醒再次逐UUID匹配恢复计划，除提醒及兼容标记外其他字段不变（customDaysOfWeek/customWeeks按集合语义核对）。
+
+[VERIFIED] build14/15实际记录计划27、add成功27，但build15系统待发仅日程4/总7。usernoted日志明确“Too many requests, dropping”，涉及同App多个旧source和旧重复摘要。定向清理和removeAllPending等待均未解决；源码修复与系统队列完整性不能混为一谈。多来源与ad-hoc更新的因果关系仍未证实，不放宽签名、不修改系统通知数据库。已请求用户允许短暂关闭重开ClassFlow系统通知，尚待答复。当前CF-006未完成。
+
+[VERIFIED] build15已安装；App/Widget严格签名、DMG完整性、安装版28工具协议、插件4项、Foundation5组通过。核心69/Android56的既有本轮测试结果仍有效，本次新增改动仅Mac。dist校验清单已更新；未发布GitHub。
+
+### 2026-10-27 用户授权通知开关复验
+
+[VERIFIED] 系统ClassFlow通知on→off→on，原生立即更新后计划27/系统接受27/实际日程27、总33；独立测试通知得到系统送达回执。最近3分钟未观测ClassFlow请求过多丢弃。database.json前后SHA256一致，19条恢复提醒仍全匹配。build15保持，不重构建或发布。
+
+[UNVERIFIED] 开关操作前队列已经27/27，不将恢复归因于开关切换；历史多来源丢弃根因仍未最终证实，长期自然日程/休眠恢复送达仍待验收。详细证据见MCP_REMAINING_REPAIR_2026-10-23.md追加章节。
+
+### 2026-10-27 课表末尾裁切与多行备注（本地构建）
+
+安卓buildEffectiveSectionTimes原来把晚间结束时间向整点转换并封顶23:00，23:30–23:40末尾日程因而落在网格滚动内容之外。改为保留实际结束分钟（包括24:00），网格滚动内容末尾增加24dp留白。TimetableExtentTest覆盖23:40/23:59/24:00，验证晚间区间正向及卡片底部不越过内容高度。
+
+安卓ScheduleAddDialog的日程/待办备注改为3–8行的可滚动多行BasicTextField；macOS ScheduleItemCreateSheet及独立PomodoroTaskCreateSheet采用vertical TextField，自动折行、3–8行纵向编辑。Mac事项管理日程备注从标题行单行胶囊移至独立完整折行文本，可选取复制。无持久化模型或业务数据变更。
+
+[VERIFIED] macOS105项测试通过；Android app55项及适配2项无失败。最终包及构建状态见下方后续记录。[UNVERIFIED] 当前无可用adb真机连接，尚未在用户手机验证手势滚动、输入法及多行编辑；不将编译通过冒充设备UI验收。未替换运行中的安装版或发布GitHub。
+
+[VERIFIED] 最终Android测试/assembleRelease成功（57项、versionCode4），APK签名校验通过；预览包dist/ClassFlow-Android-1.2.0-build4-preview.apk及独立SHA256。macOS build16 DMG/ZIP打包成功，App/Widget严格签名、DMG完整性、产物28工具协议通过；dist校验清单同步。本轮未安装至Applications、未发布GitHub；真实业务数据未修改。
+
+### 2026-10-27 macOS课表末尾裁切（build17本地）
+
+用户确认Android滚动已修复，同时提供Mac末尾睡觉卡片裁切截图。Mac TimetableGridView.effectiveSections同样把晚间结束整点封顶23:00，导致23:30之后时间映射到网格同一底边；上一轮遗漏了Mac对应路径。本次抽取expandedSections供视图和回归测试共用，保留实际结束分钟（含24:00），滚动内容增加24pt底部留白。只改显示布局，不改变日程时段、节次或持久化数据。
+
+[VERIFIED] 新TimetableExtentTests先在旧逻辑下复现9处断言失败；修正后macOS106项全部通过，覆盖23:40/23:59/24:00结束时间、正向时段及映射边界。[UNVERIFIED] 新包尚未安装及执行GUI滚动验收。Android本轮不改，未发布GitHub。最终打包验证见后续记录。
+
+[VERIFIED] build17 DMG/ZIP已生成；App/Widget严格签名、DMG完整性、产物28工具协议通过，dist校验清单更新。未覆盖运行中的安装版，需安装新版查看实际滚动效果；不把旧安装版画面当作新版验收。

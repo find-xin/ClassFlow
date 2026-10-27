@@ -79,6 +79,7 @@ fun MacSettingsDialog(
     val categories = listOf(
         "general" to "通用",
         "sync" to "云同步",
+        "chatgpt" to "AI / ChatGPT",
         "notifications" to "通知",
         "backup" to "备份导入",
         "about" to "关于"
@@ -90,6 +91,7 @@ fun MacSettingsDialog(
     ) {
         Surface(
             modifier = Modifier
+                .widthIn(max = 840.dp)
                 .fillMaxWidth(0.94f)
                 .fillMaxHeight(0.90f)
                 .clip(RoundedCornerShape(20.dp)),
@@ -180,6 +182,7 @@ fun MacSettingsDialog(
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     when (selectedCategory) {
+                        "chatgpt" -> ChatGPTSettingsView()
                         "general" -> GeneralSettingsView(
                             appSettings = appSettings,
                             isDark = isDark,
