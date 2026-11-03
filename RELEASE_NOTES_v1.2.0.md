@@ -1,3 +1,12 @@
+## 2026-11-04 修订（macOS build19、Android build21 预览）
+
+- [macOS build19 DMG](https://github.com/find-xin/ClassFlow/releases/download/v1.2.0/ClassFlow-1.2.0-macOS-arm64.dmg) · [ZIP](https://github.com/find-xin/ClassFlow/releases/download/v1.2.0/ClassFlow-1.2.0-macOS-arm64.zip)
+- [Android build21 预览 APK](https://github.com/find-xin/ClassFlow/releases/download/v1.2.0/ClassFlow-Android-1.2.0-build21-preview.apk)：课表工具栏回到日期右侧，包含通知与周课表组件改进。原正式 APK 和历史预览包保留。
+- 两端支持重复日程永久排除，以及历史取消记录的预览、备份与原子清理。Mac 本地 MCP 暴露 30 项工具，Android 独立执行器暴露 6 项，新增清理预览和提交。普通 Chat 模式发现新工具仍未验收。
+- 新附件对应[源码提交 774ddf7](https://github.com/find-xin/ClassFlow/commit/774ddf7b05abba042395a161b81b90aecbe5634e)。原标签及旧版插件、手环附件保留。安装前可用 SHA256SUMS.txt 校验。
+
+以下为历史发布记录，其中的版本和验证结果不代表本次新包。
+
 # ClassFlow v1.2.0 — 完整 AI 编辑、日程兼容与投影性能优化
 
 本次更新补齐 ChatGPT 对课程、日程和待办的编辑能力，并修复课表卡片有空余高度却只显示两行标题的问题。macOS App、Android App 和本地插件包统一为 1.2.0；未修改的手环附件保留 1.0.0。

@@ -2,6 +2,8 @@ name: Release
 
 on:
   push:
+    branches: [main]
+    paths: [RELEASE_NOTES_v1.2.0.md]
     tags:
       - 'v*'
   workflow_dispatch:
@@ -31,7 +33,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+          RELEASE_TAG: ${{ github.event.inputs.tag || (github.ref_type == 'tag' && github.ref_name) || 'v1.2.0' }}
         run: |
           set -euo pipefail
           [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]] || { echo 'Invalid release tag'; exit 1; }
@@ -47,8 +49,8 @@ jobs:
             "dist/ClassFlow-${APP_VERSION}-macOS-arm64.zip.sha256"
             "dist/ClassFlow-${APP_VERSION}-android.apk"
             "dist/ClassFlow-${APP_VERSION}-android.apk.sha256"
-            "dist/ClassFlow-Android-${APP_VERSION}-build4-preview.apk"
-            "dist/ClassFlow-Android-${APP_VERSION}-build4-preview.apk.sha256"
+            "dist/ClassFlow-Android-${APP_VERSION}-build21-preview.apk"
+            "dist/ClassFlow-Android-${APP_VERSION}-build21-preview.apk.sha256"
             "dist/ClassFlow-${BAND_VERSION}-xiaomi-band.rpk"
             "dist/ClassFlow-${BAND_VERSION}-xiaomi-band.rpk.sha256"
             "dist/ClassFlow-${BAND_VERSION}-xiaomi-band.zip"
