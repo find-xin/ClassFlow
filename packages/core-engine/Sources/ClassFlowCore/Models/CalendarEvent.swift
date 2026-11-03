@@ -39,6 +39,8 @@ public struct CalendarEvent: Codable, Sendable, Identifiable, Equatable, Hashabl
     public var endRepeatType: String?
     public var endRepeatUntil: String?
     public var endRepeatCount: Int?
+    /// Permanently excluded recurrence origins (ISO dates); grow-only across ordinary edits/sync.
+    public var excludedDates: [String] = []
 
     public init(
         id: UUID = UUID(),
@@ -64,7 +66,8 @@ public struct CalendarEvent: Codable, Sendable, Identifiable, Equatable, Hashabl
         intervalWeeks: Int? = 1,
         endRepeatType: String? = "never",
         endRepeatUntil: String? = nil,
-        endRepeatCount: Int? = nil
+        endRepeatCount: Int? = nil,
+        excludedDates: [String] = []
     ) {
         self.id = id
         self.calendarId = calendarId
@@ -91,6 +94,7 @@ public struct CalendarEvent: Codable, Sendable, Identifiable, Equatable, Hashabl
         self.endRepeatType = endRepeatType
         self.endRepeatUntil = endRepeatUntil
         self.endRepeatCount = endRepeatCount
+        self.excludedDates = Array(Set(excludedDates)).sorted()
     }
 
     public init(from decoder: Decoder) throws {
@@ -140,12 +144,19 @@ public struct CalendarEvent: Codable, Sendable, Identifiable, Equatable, Hashabl
         self.endRepeatType = try container.decodeIfPresent(String.self, forKey: .endRepeatType)
         self.endRepeatUntil = try container.decodeIfPresent(String.self, forKey: .endRepeatUntil)
         self.endRepeatCount = try container.decodeIfPresent(Int.self, forKey: .endRepeatCount)
+        self.excludedDates = Array(Set(try container.decodeIfPresent([String].self, forKey: .excludedDates) ?? [])).sorted()
     }
     public func preservingLegacyReminder(from local: CalendarEvent) -> CalendarEvent {
         guard reminderConfigured != true, alertMinutesBefore == nil else { return self }
         var result = self
         result.alertMinutesBefore = local.alertMinutesBefore
         result.reminderConfigured = local.reminderConfigured
+        return result
+    }
+
+    public func preservingExclusions(from local: CalendarEvent) -> CalendarEvent {
+        var result = self
+        result.excludedDates = Array(Set(excludedDates).union(local.excludedDates)).sorted()
         return result
     }
 

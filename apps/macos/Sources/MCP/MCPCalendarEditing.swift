@@ -74,14 +74,12 @@ extension MCPToolHandlers {
         }
         guard let date = arguments["occurrence_date"] as? String else { throw automationError("单次或后续范围必须提供 occurrence_date。") }
         try validateDate(date)
-        let dates = CalendarEventProjector().occurrenceDates(original, semester: semester, through: date)
+        let dates = CalendarEventProjector().occurrenceDates(original, semester: semester, through: date, includingExcluded: true)
         guard dates.last == date else { throw automationError("该日期不是此日程的有效发生日期。") }
         var newID: UUID?
         if scope == .thisOnly {
-            // Detach an edited occurrence; the original recurrence remains untouched.
-            for ex in payload.exceptions where ex.scheduleId == original.id && ex.originalDate == date { payload.tombstones.append(SyncTombstone(entityId: ex.id.uuidString, entityType: "exception")) }
-            payload.exceptions.removeAll { $0.scheduleId == original.id && $0.originalDate == date }
-            payload.exceptions.append(ScheduleException(scheduleId: original.id, originalDate: date, exceptionType: .cancel, reason: "单次删除"))
+            // Exclusions belong to the series, so removing legacy exception records cannot revive it.
+            payload.calendarEvents[i].excludedDates = Array(Set(original.excludedDates + [date])).sorted()
         } else {
             if date == dates.first {
                 payload.calendarEvents.remove(at: i); removeEventExceptions(original.id, from: &payload)
@@ -100,6 +98,7 @@ extension MCPToolHandlers {
             successor.startTime = "\(date)T\(clockForEdit(original.startTime, fallback: "09:00")):00"
             successor.endTime = "\(date)T\(clockForEdit(original.endTime, fallback: "10:00")):00"
             if scope == .thisOnly {
+                successor.excludedDates = []
                 successor.frequency = "none"; successor.endDate = date; successor.customDaysOfWeek = nil; successor.customWeeks = nil; successor.endRepeatType = "never"
             } else if original.endRepeatType == "count" { successor.endRepeatCount = max(1, (original.endRepeatCount ?? 1) - dates.count + 1) }
             successor = try calendarDraft(successor, arguments: arguments, payload: payload)

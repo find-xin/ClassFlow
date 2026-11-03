@@ -14,6 +14,7 @@ import androidx.glance.appwidget.GlanceAppWidgetReceiver
 import androidx.glance.appwidget.SizeMode
 import androidx.glance.appwidget.action.actionStartActivity
 import androidx.glance.appwidget.cornerRadius
+import androidx.glance.appwidget.appWidgetBackground
 import androidx.glance.appwidget.provideContent
 import androidx.glance.layout.*
 import androidx.glance.text.FontWeight
@@ -125,7 +126,8 @@ class NextClassGlanceWidget : GlanceAppWidget() {
                         } catch (_: Throwable) {
                             Color(0xFF4F46E5)
                         },
-                        isSchedule = occ.isSchedule
+                        isSchedule = occ.isSchedule,
+                        occurrenceId = occ.id, week = occ.weekNumber
                     )
                 }
             } else if (rawTodayItems.isNotEmpty()) {
@@ -153,6 +155,7 @@ class NextClassGlanceWidget : GlanceAppWidget() {
             Box(
                 modifier = GlanceModifier
                     .fillMaxSize()
+                    .appWidgetBackground()
                     .cornerRadius(20.dp)
                     .background(cardBg)
                     .clickable(actionStartActivity(Intent(context, MainActivity::class.java)))
@@ -314,7 +317,8 @@ class TodayClassesGlanceWidget : GlanceAppWidget() {
                             } catch (_: Throwable) {
                                 Color(0xFF4F46E5)
                             },
-                            isSchedule = occ.isSchedule
+                            isSchedule = occ.isSchedule,
+                        occurrenceId = occ.id, week = occ.weekNumber
                         )
                     }
                 } else {
@@ -362,6 +366,7 @@ class TodayClassesGlanceWidget : GlanceAppWidget() {
             Box(
                 modifier = GlanceModifier
                     .fillMaxSize()
+                    .appWidgetBackground()
                     .cornerRadius(20.dp)
                     .background(cardBg)
                     .clickable(actionStartActivity(Intent(context, MainActivity::class.java)))
@@ -471,7 +476,9 @@ data class GlanceCardItem(
     val location: String,
     val time: String,
     val accentColor: Color,
-    val isSchedule: Boolean = false
+    val isSchedule: Boolean = false,
+    val occurrenceId: String? = null,
+    val week: Int = 0
 )
 
 @Composable
@@ -481,8 +488,17 @@ private fun GlanceWakeUpItemRow(
     subtextColor: Color,
     isCompact: Boolean = false
 ) {
+    val context = LocalContext.current
+    val target = item.occurrenceId?.let { id ->
+        Intent(context, MainActivity::class.java)
+            .setAction("org.classflow.WIDGET_OCCURRENCE")
+            .setData(android.net.Uri.parse("classflow://widget/" + android.net.Uri.encode(id)))
+            .putExtra("widget_occurrence_id", id)
+            .putExtra("widget_week", item.week)
+    }
     Row(
-        modifier = GlanceModifier.fillMaxWidth(),
+        modifier = if (target == null) GlanceModifier.fillMaxWidth()
+            else GlanceModifier.fillMaxWidth().clickable(actionStartActivity(target)),
         verticalAlignment = Alignment.CenterVertically
     ) {
         // Vertical Theme Color Stripe matching WakeUp
@@ -550,22 +566,9 @@ class WeekTimetableGlanceWidget : GlanceAppWidget() {
         }
 
         provideContent {
-            val size = LocalSize.current
-            val heightDp = size.height.value
-
-            // Adaptive visible section count based on widget stretched height
-            val visibleSections = when {
-                heightDp < 115f -> 4
-                heightDp < 145f -> 6
-                heightDp < 175f -> 8
-                heightDp < 205f -> 10
-                else -> 12
-            }
-
             val containerBg = if (isDark) Color(0xF0181A24) else Color.White
             val headerMonthColor = if (isDark) Color(0xFFF3F4F6) else Color(0xFF1F2937)
             val secNumColor = if (isDark) Color(0xFFE5E7EB) else Color(0xFF1F2937)
-            val secTimeColor = if (isDark) Color(0xFF9CA3AF) else Color(0xFF6B7280)
 
             // Section time definitions from saved sectionTimes or standard fallbacks
             val allSectionTimes = if (widgetData.sectionTimes.isNotEmpty()) {
@@ -586,11 +589,6 @@ class WeekTimetableGlanceWidget : GlanceAppWidget() {
                     "12" to "21:35\n22:20"
                 )
             }
-            val activeSectionTimes = allSectionTimes.take(visibleSections)
-
-            val secNumFontSize = if (visibleSections > 8) 11.sp else 13.sp
-            val secTimeFontSize = if (visibleSections > 8) 6.5.sp else 7.sp
-
             // Dynamically calculate current week's Monday-Sunday dates
             val cal = Calendar.getInstance()
             cal.firstDayOfWeek = Calendar.MONDAY
@@ -617,6 +615,7 @@ class WeekTimetableGlanceWidget : GlanceAppWidget() {
             Box(
                 modifier = GlanceModifier
                     .fillMaxSize()
+                    .appWidgetBackground()
                     .cornerRadius(24.dp)
                     .background(containerBg)
                     .clickable(actionStartActivity(Intent(context, MainActivity::class.java)))
@@ -693,377 +692,25 @@ class WeekTimetableGlanceWidget : GlanceAppWidget() {
 
                     Spacer(modifier = GlanceModifier.height(4.dp))
 
-                    // 2. Timetable Grid: Left section axis + 7 Columns
-                    Row(
-                        modifier = GlanceModifier.fillMaxWidth().defaultWeight()
-                    ) {
-                        // Left Section Axis
-                        Column(
-                            modifier = GlanceModifier.width(36.dp).fillMaxHeight()
-                        ) {
-                            activeSectionTimes.forEach { (secNum, times) ->
-                                Column(
-                                    modifier = GlanceModifier
-                                        .fillMaxWidth()
-                                        .defaultWeight(),
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = secNum,
-                                        style = TextStyle(
-                                            fontSize = secNumFontSize,
-                                            fontWeight = FontWeight.Bold,
-                                            color = ColorProvider(secNumColor)
-                                        )
-                                    )
-                                    Text(
-                                        text = times,
-                                        style = TextStyle(
-                                            fontSize = secTimeFontSize,
-                                            color = ColorProvider(secTimeColor)
-                                        )
-                                    )
-                                }
-                            }
-                        }
-
-                        // 7 Columns matching actual ClassFlow courses
-                        for (day in 1..7) {
-                            val dayCourses = widgetData.items
-                                .filter { (it.weekNumber == widgetData.currentWeek || it.weekNumber == 0) && it.dayOfWeek == day }
-                                .sortedBy { it.startSection }
-                            GlanceDayColumn(
-                                visibleSections = visibleSections,
-                                dayItems = dayCourses,
-                                isDark = isDark,
-                                modifier = GlanceModifier.defaultWeight().fillMaxHeight().padding(horizontal = 1.dp)
-                            )
-                        }
+                    val layout = androidx.compose.runtime.remember(widgetData) {
+                        WidgetWeekLayout.build(widgetData.copy(sectionTimes = allSectionTimes))
                     }
+                    WeekTimelineGrid(context, layout,
+                        width = (LocalSize.current.width.value - 16f).coerceAtLeast(44f),
+                        height = LocalSize.current.height.value - 60f,
+                        axisColor = secNumColor)
                 }
             }
         }
     }
 }
 
-@Composable
-private fun GlanceDayColumn(
-    visibleSections: Int,
-    dayItems: List<WidgetOccurrence>,
-    isDark: Boolean,
-    modifier: GlanceModifier = GlanceModifier
-) {
-    Column(modifier = modifier) {
-        var currentSec = 1
-        while (currentSec <= visibleSections) {
-            val occ = dayItems.firstOrNull { it.startSection == currentSec }
-            if (occ == null) {
-                Spacer(modifier = GlanceModifier.defaultWeight())
-                currentSec++
-            } else {
-                val start = occ.startSection
-                val end = minOf(occ.endSection, visibleSections)
-                val span = maxOf(1, end - start + 1)
-                val theme = resolveThemeForColor(occ.colorHex)
-                val isNonCurrent = !occ.isCurrentWeek
-
-                if (span == 1) {
-                    GlancePastelCard(
-                        title = occ.title,
-                        teacher = occ.teacher ?: "",
-                        classroom = occ.classroom ?: "",
-                        isNonCurrentWeek = isNonCurrent,
-                        colorTheme = theme,
-                        isDark = isDark,
-                        modifier = GlanceModifier.defaultWeight()
-                    )
-                    currentSec++
-                } else if (span == 2) {
-                    GlancePastelCard(
-                        title = occ.title,
-                        colorTheme = theme,
-                        isNonCurrentWeek = isNonCurrent,
-                        isDark = isDark,
-                        isTopHalf = true,
-                        modifier = GlanceModifier.defaultWeight()
-                    )
-                    GlancePastelCard(
-                        teacher = occ.teacher ?: "",
-                        classroom = occ.classroom ?: "",
-                        colorTheme = theme,
-                        isNonCurrentWeek = isNonCurrent,
-                        isDark = isDark,
-                        isBottomHalf = true,
-                        modifier = GlanceModifier.defaultWeight()
-                    )
-                    currentSec += 2
-                } else {
-                    GlancePastelCard(
-                        title = occ.title,
-                        colorTheme = theme,
-                        isNonCurrentWeek = isNonCurrent,
-                        isDark = isDark,
-                        isTopHalf = true,
-                        modifier = GlanceModifier.defaultWeight()
-                    )
-                    for (m in 1 until span - 1) {
-                        GlancePastelCard(
-                            colorTheme = theme,
-                            isNonCurrentWeek = isNonCurrent,
-                            isDark = isDark,
-                            modifier = GlanceModifier.defaultWeight()
-                        )
-                    }
-                    GlancePastelCard(
-                        teacher = occ.teacher ?: "",
-                        classroom = occ.classroom ?: "",
-                        colorTheme = theme,
-                        isNonCurrentWeek = isNonCurrent,
-                        isDark = isDark,
-                        isBottomHalf = true,
-                        modifier = GlanceModifier.defaultWeight()
-                    )
-                    currentSec += span
-                }
-            }
-        }
-    }
-}
-
-private fun resolveThemeForColor(colorHex: String): String {
-    val clean = colorHex.removePrefix("#").trim()
-    val rgb = clean.toLongOrNull(16) ?: return "sky"
-    val r = (rgb shr 16 and 0xFF).toInt()
-    val g = (rgb shr 8 and 0xFF).toInt()
-    val b = (rgb and 0xFF).toInt()
-    return when {
-        g > r && g > b -> "mint"
-        r > g && r > b && g > b -> "peach"
-        r > g && b > g -> "lavender"
-        r > 180 && g < 100 && b < 100 -> "peach"
-        b > r && b > g -> "sky"
-        else -> "sky"
-    }
-}
-
-/**
- * Resolve exact XML Drawable resource for course card:
- * - Top card uses bg_widget_card_*_top (top corners rounded 8dp, bottom corners sharp 0dp)
- * - Bottom card uses bg_widget_card_*_bottom (top corners sharp 0dp, bottom corners rounded 8dp)
- * - Single card uses bg_widget_card_*_single (all 4 corners rounded 8dp)
- * - Zero waist ("葫芦状") indentation because left/right edges are 100% straight vertical lines!
- */
-private fun resolveDrawableRes(
-    colorTheme: String,
-    isNonCurrentWeek: Boolean,
-    isDark: Boolean,
-    isTopHalf: Boolean,
-    isBottomHalf: Boolean
-): Int {
-    val theme = when (colorTheme.lowercase()) {
-        "mint" -> "mint"
-        "peach" -> "peach"
-        "lavender" -> "lavender"
-        else -> "sky"
-    }
-    return when {
-        isTopHalf -> {
-            when {
-                isNonCurrentWeek && isDark -> when (theme) {
-                    "mint" -> R.drawable.bg_widget_card_mint_ghost_top_night
-                    "peach" -> R.drawable.bg_widget_card_peach_ghost_top_night
-                    "lavender" -> R.drawable.bg_widget_card_lavender_ghost_top_night
-                    else -> R.drawable.bg_widget_card_sky_ghost_top_night
-                }
-                isNonCurrentWeek && !isDark -> when (theme) {
-                    "mint" -> R.drawable.bg_widget_card_mint_ghost_top
-                    "peach" -> R.drawable.bg_widget_card_peach_ghost_top
-                    "lavender" -> R.drawable.bg_widget_card_lavender_ghost_top
-                    else -> R.drawable.bg_widget_card_sky_ghost_top
-                }
-                !isNonCurrentWeek && isDark -> when (theme) {
-                    "mint" -> R.drawable.bg_widget_card_mint_top_night
-                    "peach" -> R.drawable.bg_widget_card_peach_top_night
-                    "lavender" -> R.drawable.bg_widget_card_lavender_top_night
-                    else -> R.drawable.bg_widget_card_sky_top_night
-                }
-                else -> when (theme) {
-                    "mint" -> R.drawable.bg_widget_card_mint_top
-                    "peach" -> R.drawable.bg_widget_card_peach_top
-                    "lavender" -> R.drawable.bg_widget_card_lavender_top
-                    else -> R.drawable.bg_widget_card_sky_top
-                }
-            }
-        }
-        isBottomHalf -> {
-            when {
-                isNonCurrentWeek && isDark -> when (theme) {
-                    "mint" -> R.drawable.bg_widget_card_mint_ghost_bottom_night
-                    "peach" -> R.drawable.bg_widget_card_peach_ghost_bottom_night
-                    "lavender" -> R.drawable.bg_widget_card_lavender_ghost_bottom_night
-                    else -> R.drawable.bg_widget_card_sky_ghost_bottom_night
-                }
-                isNonCurrentWeek && !isDark -> when (theme) {
-                    "mint" -> R.drawable.bg_widget_card_mint_ghost_bottom
-                    "peach" -> R.drawable.bg_widget_card_peach_ghost_bottom
-                    "lavender" -> R.drawable.bg_widget_card_lavender_ghost_bottom
-                    else -> R.drawable.bg_widget_card_sky_ghost_bottom
-                }
-                !isNonCurrentWeek && isDark -> when (theme) {
-                    "mint" -> R.drawable.bg_widget_card_mint_bottom_night
-                    "peach" -> R.drawable.bg_widget_card_peach_bottom_night
-                    "lavender" -> R.drawable.bg_widget_card_lavender_bottom_night
-                    else -> R.drawable.bg_widget_card_sky_bottom_night
-                }
-                else -> when (theme) {
-                    "mint" -> R.drawable.bg_widget_card_mint_bottom
-                    "peach" -> R.drawable.bg_widget_card_peach_bottom
-                    "lavender" -> R.drawable.bg_widget_card_lavender_bottom
-                    else -> R.drawable.bg_widget_card_sky_bottom
-                }
-            }
-        }
-        else -> {
-            when {
-                isNonCurrentWeek && isDark -> when (theme) {
-                    "mint" -> R.drawable.bg_widget_card_mint_ghost_single_night
-                    "peach" -> R.drawable.bg_widget_card_peach_ghost_single_night
-                    "lavender" -> R.drawable.bg_widget_card_lavender_ghost_single_night
-                    else -> R.drawable.bg_widget_card_sky_ghost_single_night
-                }
-                isNonCurrentWeek && !isDark -> when (theme) {
-                    "mint" -> R.drawable.bg_widget_card_mint_ghost_single
-                    "peach" -> R.drawable.bg_widget_card_peach_ghost_single
-                    "lavender" -> R.drawable.bg_widget_card_lavender_ghost_single
-                    else -> R.drawable.bg_widget_card_sky_ghost_single
-                }
-                !isNonCurrentWeek && isDark -> when (theme) {
-                    "mint" -> R.drawable.bg_widget_card_mint_single_night
-                    "peach" -> R.drawable.bg_widget_card_peach_single_night
-                    "lavender" -> R.drawable.bg_widget_card_lavender_single_night
-                    else -> R.drawable.bg_widget_card_sky_single_night
-                }
-                else -> when (theme) {
-                    "mint" -> R.drawable.bg_widget_card_mint_single
-                    "peach" -> R.drawable.bg_widget_card_peach_single
-                    "lavender" -> R.drawable.bg_widget_card_lavender_single
-                    else -> R.drawable.bg_widget_card_sky_single
-                }
-            }
-        }
-    }
-}
-
-/**
- * Modern course card matching the app's timetable course view style:
- * - High-contrast solid palette in Dark mode (dark saturated cards with crisp pure white title)
- * - Soft pastel palette in Light mode (pale pastel cards with deep dark title)
- * - Seamless top and bottom halves using precision XML drawables without cornerRadius clipping
- * - Clean vertical stack: Top half dedicated to Title (up to 3 lines, never truncated);
- *   Bottom half dedicated to Teacher and Classroom (up to 2 lines, filling blank space)
- * - Faded/translucent "虚的" appearance for non-current-week courses without ugly "[非本周]" pills
- */
-@Composable
-private fun GlancePastelCard(
-    title: String = "",
-    teacher: String = "",
-    classroom: String = "",
-    isNonCurrentWeek: Boolean = false,
-    colorTheme: String = "mint", // "mint", "peach", "lavender", "sky"
-    accentColor: Color = Color.Unspecified,
-    textColor: Color = Color.Unspecified,
-    isDark: Boolean = false,
-    modifier: GlanceModifier = GlanceModifier,
-    isTopHalf: Boolean = false,
-    isBottomHalf: Boolean = false
-) {
-    val (resolvedTitle, resolvedSub) = if (isDark) {
-        when (colorTheme) {
-            "mint" -> Pair(Color(0xFFFFFFFF), Color(0xFFA7F3D0))
-            "peach" -> Pair(Color(0xFFFFFFFF), Color(0xFFFED7AA))
-            "lavender" -> Pair(Color(0xFFFFFFFF), Color(0xFFC7D2FE))
-            else -> Pair(Color(0xFFFFFFFF), Color(0xFFBAE6FD))
-        }
-    } else {
-        when (colorTheme) {
-            "mint" -> Pair(Color(0xFF14532D), Color(0xFF166534))
-            "peach" -> Pair(Color(0xFF7C2D12), Color(0xFF9A3412))
-            "lavender" -> Pair(Color(0xFF312E81), Color(0xFF4338CA))
-            else -> Pair(Color(0xFF0C4A6E), Color(0xFF0369A1))
-        }
-    }
-
-    val actualTitleColor = if (isNonCurrentWeek) resolvedTitle.copy(alpha = 0.45f) else resolvedTitle
-    val actualSubColor = if (isNonCurrentWeek) resolvedSub.copy(alpha = 0.45f) else resolvedSub
-
-    val bgDrawableRes = resolveDrawableRes(
-        colorTheme = colorTheme,
-        isNonCurrentWeek = isNonCurrentWeek,
-        isDark = isDark,
-        isTopHalf = isTopHalf,
-        isBottomHalf = isBottomHalf
-    )
-
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(
-                start = 1.dp,
-                end = 1.dp,
-                top = if (isBottomHalf) 0.dp else 1.dp,
-                bottom = if (isTopHalf) 0.dp else 1.dp
-            )
-            .background(ImageProvider(bgDrawableRes))
-    ) {
-        Column(
-            modifier = GlanceModifier
-                .fillMaxSize()
-                .padding(
-                    start = 2.dp,
-                    end = 2.dp,
-                    top = if (isTopHalf) 2.dp else 1.dp,
-                    bottom = if (isBottomHalf) 2.dp else 1.dp
-                ),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (title.isNotEmpty()) {
-                Text(
-                    text = title,
-                    style = TextStyle(
-                        fontSize = 8.5.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = ColorProvider(actualTitleColor)
-                    ),
-                    maxLines = 3
-                )
-            }
-            if (teacher.isNotEmpty()) {
-                Text(
-                    text = teacher,
-                    style = TextStyle(
-                        fontSize = 7.5.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = ColorProvider(actualSubColor)
-                    ),
-                    maxLines = 1
-                )
-            }
-            if (classroom.isNotEmpty()) {
-                Text(
-                    text = classroom,
-                    style = TextStyle(
-                        fontSize = 7.5.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = ColorProvider(actualSubColor)
-                    ),
-                    maxLines = 2
-                )
-            }
-        }
-    }
-}
+internal fun widgetOccurrenceIntent(context: Context, occurrence: WidgetOccurrence): Intent =
+    Intent(context, MainActivity::class.java)
+        .setAction("org.classflow.WIDGET_OCCURRENCE")
+        .setData(android.net.Uri.parse("classflow://widget/" + android.net.Uri.encode(occurrence.id)))
+        .putExtra("widget_occurrence_id", occurrence.id)
+        .putExtra("widget_week", occurrence.weekNumber)
 
 // Glance Receivers
 class NextClassWidgetReceiver : GlanceAppWidgetReceiver() {

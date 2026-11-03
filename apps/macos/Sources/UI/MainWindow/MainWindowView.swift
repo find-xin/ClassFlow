@@ -147,7 +147,7 @@ public struct MainWindowView: View {
                             appState.deleteCourse(id: courseId)
                         }
                     } else if let eventId = item.calendarEventId {
-                        appState.deleteCalendarEvent(id: eventId, scope: scope, occurrenceDate: item.date)
+                        appState.deleteCalendarEvent(id: eventId, scope: scope, occurrenceDate: item.recurrenceOriginDate ?? item.date)
                     }
                     appState.selectedOccurrence = nil
                 },

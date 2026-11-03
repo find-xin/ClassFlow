@@ -50,7 +50,8 @@ object CalendarEventProjection {
         }
         val startClock = if (event.timeMode == "sections") sections.firstOrNull { it.section == event.startSection }?.startTime ?: clock(event.startTime, "08:00") else clock(event.startTime, "08:00")
         val endClock = if (event.timeMode == "sections") sections.firstOrNull { it.section == event.endSection }?.endTime ?: clock(event.endTime, "09:00") else clock(event.endTime, "09:00")
-        return origins.flatMap { origin ->
+        val excluded = event.excludedDates.toHashSet()
+        return origins.filterNot { it.toString() in excluded }.flatMap { origin ->
             val exception = exceptions.firstOrNull { it.scheduleId.equals(event.id, true) && it.originalDate == origin.toString() }
             if (exception?.type == ExceptionType.CANCEL && exception.reason == "单次删除") emptyList() else (0..span).mapNotNull { offset ->
                 val current = origin.plusDays(offset)
@@ -60,7 +61,7 @@ object CalendarEventProjection {
                 if (!event.isAllDay && startTime >= endTime) return@mapNotNull null
                 val first = if (event.timeMode == "sections") event.startSection ?: 1 else sections.firstOrNull { it.endTime > startTime }?.section ?: 1
                 val last = if (event.timeMode == "sections") event.endSection ?: first else sections.lastOrNull { it.startTime < endTime }?.section ?: first
-                TimelineItem(id = "event_occ_${event.id}_$current", calendarEventId = event.id, scheduleId = event.id, title = event.title,
+                TimelineItem(id = "event_occ_${event.id}_$current", recurrenceOriginDate = origin.toString(), calendarEventId = event.id, scheduleId = event.id, title = event.title,
                     location = event.location, date = current.toString(), dayOfWeek = current.dayOfWeek.value, startSection = first, endSection = maxOf(first, last),
                     startTime = startTime, endTime = endTime, weekNumber = week, isCurrentWeek = true,
                     status = if (exception?.type == ExceptionType.CANCEL) OccurrenceStatus.CANCELLED else OccurrenceStatus.NORMAL,

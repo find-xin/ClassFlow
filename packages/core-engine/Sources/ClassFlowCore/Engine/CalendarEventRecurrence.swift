@@ -13,8 +13,10 @@ extension CalendarEventProjector {
         let raw = value ?? "none"
         return Self.frequencyAliases[raw] ?? raw
     }
-    public func occurrenceDates(_ event: CalendarEvent, semester: Semester, through: String) -> [String] {
-        occurrenceDates(event, semester: semester, through: through, formatter: formatter, calendar: calendar)
+    public func occurrenceDates(_ event: CalendarEvent, semester: Semester, through: String, includingExcluded: Bool = false) -> [String] {
+        var source = event
+        if includingExcluded { source.excludedDates = [] }
+        return occurrenceDates(source, semester: semester, through: through, formatter: formatter, calendar: calendar)
     }
 
     // A projection batch owns its formatter; no shared mutable formatter or global lock.
@@ -27,7 +29,7 @@ extension CalendarEventProjector {
             first <= last
         else { return [] }
         let frequency = Self.normalizedFrequency(event.frequency)
-        if frequency == "none" { return [start] }
+        if frequency == "none" { return event.excludedDates.contains(start) ? [] : [start] }
         let calculator = WeekCalculator(timeZoneId: timeZone.identifier)
         let baseWeek = calculator.weekIndex(for: start, semesterStartDate: semester.startDate) ?? 1
         let baseDay = (calendar.component(.weekday, from: first) + 5) % 7 + 1
@@ -69,7 +71,8 @@ extension CalendarEventProjector {
             guard let next = calendar.date(byAdding: .day, value: 1, to: date) else { break }
             date = next
         }
-        return result
+        let excluded = Set(event.excludedDates)
+        return result.filter { !excluded.contains($0) }
     }
 
 }

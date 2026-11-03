@@ -389,3 +389,128 @@ Android新增四项独立MCP工具（非Mac28工具移植声明）：get_status�
 [VERIFIED] 新TimetableExtentTests先在旧逻辑下复现9处断言失败；修正后macOS106项全部通过，覆盖23:40/23:59/24:00结束时间、正向时段及映射边界。[UNVERIFIED] 新包尚未安装及执行GUI滚动验收。Android本轮不改，未发布GitHub。最终打包验证见后续记录。
 
 [VERIFIED] build17 DMG/ZIP已生成；App/Widget严格签名、DMG完整性、产物28工具协议通过，dist校验清单更新。未覆盖运行中的安装版，需安装新版查看实际滚动效果；不把旧安装版画面当作新版验收。
+
+### 2026-10-27 Android提醒与小组件（本地构建）
+
+安卓原通知设置只存于Compose内存，缺少日程与课程的后台提醒调度，开启系统通知权限不会产生业务提醒。本轮新增ReminderPlan、ReminderScheduler、ReminderReceiver与系统广播接收器：以本地课程/日程及例外投影生成未来一周提醒，区分无提醒、0分钟及正数提前量，按实体独立投影避免同名事项被合并；保存相关数据后、启动、开机、时区/时间及授权变化时重建，每日补充后续计划。触发时重新读取本地数据核验，防止修改或删除后的旧提醒继续显示。课程提醒设置与提前量存储在本地；权限缺失时提示用户在系统设置启用，精确闹钟不可用时使用系统非精确闹钟，可能延迟。系统限制和省电策略可能影响送达。
+
+小组件条目携带实例ID与周次，启动App后定位并展示原生课程/日程详情；周课表由Glance LazyColumn按整行滚动，时间轴及七天一同移动，拉高可显示更多节次，重叠卡片分别提供点击区域。依赖桌面启动器对可滚动Glance组件的支持。
+
+[UNVERIFIED] 没有已连接的Android设备，尚未验证真实通知送达、重启/休眠/设备省电策略、权限授予状态变化、组件手势和详情点击；不得将本地单元测试或编译结果视为真机验收。Android真机与不同桌面启动器兼容性仍待验收。Super Island仍为[BLOCKED]。本轮不修改用户课表，不发布线上Release。
+
+[VERIFIED] Android本轮最终`testDebugUnitTest :app:assembleRelease`成功：app56项、hyperos-adapter2项，共58项；新增ReminderPlanTest覆盖0/10分钟、无提醒、非上课周、单次取消及同名独立日程。build5预览APK已生成并通过签名校验，证书摘要与build4预览包一致。运行设备列表为空；以上仅为本机编译及自动化验证。产物dist/ClassFlow-Android-1.2.0-build5-preview.apk，未安装或发布。
+
+### 2026-11-02 Android小组件显示与尺寸修订（本地准备）
+
+用户报告HyperOS无法堆叠、周组件漏事项、长事项呈哑铃、颜色和文字难辨。代码确认同名同时间的不同UUID日程、同名课程及重叠时段此前在投影中按名称/位置合并，会丢失日期范围和身份；现只按UUID去重，避免跨系列覆盖。WidgetDataManager在当前学期周次与缓存不一致时重投影；写入时按当前日期计算周次，避免长时间运行后继续显示旧周。没有执行用户业务数据测试或数据迁移。
+
+周组件使用事项原始颜色绘制高对比度黑/白文字；跨节片段只有整体首尾圆角，中段平直，避免逐格圆角造成哑铃；使用小尺寸位图减少RemoteViews开销。Glance根视图标记系统widget背景，Android 12+默认格数声明为2x2、4x2、4x4，4x4允许纵向缩到4x2；同时使用小米文档建议的minWidth/minHeight。新增WidgetProjectionTest覆盖分日期同名系列、重叠同名实例、真实颜色和对比度。
+
+[UNVERIFIED] 本机无连接Android设备；长卡片拼接、显示密度、滚动、点击和深浅模式需在HyperOS真机及实际桌面验证。尺寸和背景声明不代表HyperOS堆叠已验证；小米专属小部件与Android原生组件不同，可能涉及其规范与平台审核，目前未冒充已实现。此前build5的提醒调度也仍需真机验收。详见小米开发者平台小部件技术规范、审核与上传说明。
+
+[VERIFIED] 最终Android testDebugUnitTest与:app:assembleRelease成功：app59项、hyperos-adapter2项，共61项，APK签名验证通过且证书摘要与build5预览版相同。build6预览包及SHA256已生成；没有设备连接，未安装、发布或进行真机验收。新增样式构建和61项自动化不证明HyperOS堆叠或跨段位图实际渲染结果。
+
+### 2026-11-02 HyperOS周小组件空白复现反馈（build7本地准备）
+
+用户在build6真机截图反馈：日期标题可见，周组件节次轴和内容完全空白；2×2 ClassFlow组件无法堆叠到同等外观的小米钱包组件。截图只能确认列表区域未呈现，尚无法判断是Glance LazyColumn/ListView宿主兼容、远程集合、位图还是其它原因，也不能判断两者实际网格规格或桌面内部堆叠判定。
+
+为消除对远程列表集合的依赖，周组件改用普通Glance静态行和实例独立的上一页/下一页状态；根据可用高度计算每页行数，遵守Glance Column最多10子项限制，翻页覆盖全部节次，页面边界处为跨节事项绘制圆角并重复标题。此兼容方案暂用点击翻页代替手势滚动；保留build6的原色/对比度、业务实例点击和build5通知实现。WidgetPaginationTest覆盖缩放、节次覆盖和最大10行。
+
+[UNVERIFIED] 没有连接Android或HyperOS真机；不能声称空白问题或堆叠已在用户设备解决。2×2默认规格已按Android声明，用户钱包组件是否采用小米专属小部件、以及两者能否堆叠仍待实机/官方能力核实。小米官方区分安卓原生组件和需平台规范/审核的小米小部件；不伪造通过审核或宣称堆叠能力。
+
+[VERIFIED] build7最终Android testDebugUnitTest与:app:assembleRelease成功，app60项、hyperos-adapter2项，共62项；APK签名校验成功且证书摘要与build6一致。预览包dist/ClassFlow-Android-1.2.0-build7-preview.apk及SHA256已生成，未安装和发布。没有连接真机，静态行及翻页在HyperOS上的显示和交互仍为[UNVERIFIED]。
+
+### 2026-11-02 Android 周组件恢复滚动（build8 本地预览）
+
+用户明确要求撤销 build7 分页并保留 build5 的上下滚动。周组件恢复 Glance LazyColumn 和完整节次数组，移除分页状态与控件，拉高组件可显示更多行；保留同名系列区分及单项点击。为降低 build6 空白重现风险，长事项按节次使用固定 XML 图形资源绘制连续矩形，颜色采用高对比度近似调色板；build6 空白原因尚未证实，不能断言已根治。删除 build7 专属分页代码及其测试。
+
+[VERIFIED] 本地 :app:testDebugUnitTest 60 项通过，:app:assembleRelease 成功，build8 APK 与 build7 使用同一调试签名。无已连接 Android 设备，未安装或发布。[UNVERIFIED] 实际小米桌面的滚动、绘制、点击、尺寸变化及堆叠均须真机验证。
+
+堆叠调查：现有组件为普通 Android AppWidget，分别声明 2×2、4×2、4×4，并非按小米专属组件规范接入的组件。小米公开文档区分两种组件并要求其专属组件遵守标识、进程和提交审核等规则；所查文档未明确普通与小米组件跨应用堆叠的判定或开放接口。无法仅凭截图确认钱包组件实际网格或堆叠失败原因，也不能声称小米未开放堆叠或专属组件审核能保证堆叠。
+
+### 2026-11-02 HyperOS 真机周组件空白排查
+
+用户连接 Android 17 / HyperOS 4 真机。build8 周组件只显示标题；系统日志曾在周组件更新附近报告 TransactionTooLargeException 和桌面宿主失联，但不足以证明它是唯一根因。尝试固定列表高度及单文本诊断时，桌面仍显示旧空白画面，故不能据此判断列表本身不受支持。重新添加周组件后画面恢复；恢复 LazyColumn 后，用户确认可以滚动至底部。build13 使用卡片外层间距与按空间限制标题行数，真机重新添加后相邻日期色块分离；尝试将 Glance 列表 dividerHeight 设零，但真机跨节细白线仍可见，未解决，标题狭窄时仍会省略。此前安装更新未及时刷新宿主画面，重新添加后才能观察新内容；不能宣称刷新稳定或长期卡顿解决。
+
+[VERIFIED] build13 已通过 USB 覆盖安装；实际组件可见，用户确认前一相同滚动实现可滚动；最终 :app:testDebugUnitTest 60 项及 :app:assembleRelease 通过。build13 产物为本地预览包，未发布。未更改用户课程日程数据。[UNVERIFIED] 跨节白线、长标题完整显示、长期流畅度与再次升级后的刷新可靠性尚未解决或验收。
+
+### 2026-11-02 周组件布局实验回退（build15）
+
+build14 尝试将所有节次放入一个滚动列表项并将标题拆分到多节，真机重新添加后出现空白和严重卡顿；该尝试已撤回，手机已覆盖安装 build15 并重新添加组件，真机截图确认恢复到 build13 的逐节列表外观。build15 不包含标题拆分和单列表项实验。此前 build13 用户确认可滚动，build15 恢复同一实现，但本轮未重新验证滚动及长时间流畅度。[UNVERIFIED] 色块内白线、标题省略以及性能问题仍未修复；不得称为已解决。无需修改课表数据。
+
+### 2026-11-02 周组件拼接实验（build16，尚未完成验收）
+
+建立独立包 org.classflow.widgetlab，使用虚构事项真机对照，未读取用户课表。把连续相同事项在每组最多四节内合并成一个色块后，隔离组件的四节样例不再出现内部横线，标题能换行；不同事项或重叠处保留独立项。正式实现新增 WidgetRunPlanner，并保留实例点击 Intent，61 项安卓应用测试通过；build16 覆盖安装、用户重加正式组件后，真机画面仍显示类似原来的细线及省略文字，重新打开应用后仍如此。原因未确认，不能宣称正式组件修复或流畅性、点击完成验收；跨组、重叠及桌面缓存仍需排查。设备仍保留独立测试应用，用户可自行移除；未发布线上版本。
+
+[VERIFIED] 用户随后在 build16 正式周组件真机确认上下滚动及点击事项详情均正常；这不等于白线、标题显示和性能问题已解决。
+
+### 2026-11-02 周组件连续色块真机验证（build17）
+
+隔离测试中核实：旧测试组件未实际移除，重建新实例后才显示包含重叠事项的最新布局。正式 build17 同样加载成功；连续四节分组内单一事项合为同一色块，事项重叠时仍分段，后续连续块重复完整标题；照片确认长标题可换行、连续部分没有逐节白线。重叠和分组边界仍可见细线，部分短而重叠的标题仍可能省略，无法认定完全消除。合并计算由 WidgetRunPlanner 单元测试覆盖空白、重叠和不同事项边界；本机安卓 app 61 项与 release 构建通过，用户数据未修改。build17 已在手机安装并生成本地预览包，未发布 GitHub。正式 build17 的滚动、点击和长期流畅性仍待单独验收；旧 build16 曾由用户确认滚动、点击正常。独立测试应用仍在手机上，可自行卸载。
+
+[VERIFIED] 用户在 build17 真机复测确认周组件滚动和事项详情点击均正常；不等于长期卡顿问题完成验收。
+
+### 2026-11-02 周组件统一时间轴重做（build18，待真机验收）
+
+用户反馈 build17 仍有细线、科研标题重复、运动颜色混杂，以及相同开始时间显示不同高度。源码确认：四节分组与重叠分段重复创建同一实例标题；按节内事项数量分配垂直高度没有遵循真实起止时间；五色近似调色板改变原始颜色。
+
+新增 WidgetWeekLayout 纯布局模型：以实际开始/结束时间为全周共用锚点（课程缺少显式时间时按配置节次回退），重叠事项横向分栏；每个实例只有一个 Card。列表只在没有卡片跨越的位置切分，不把卡片按节次或固定四节组拆开。WeekTimelineGrid 以单一原色背景和单个标题渲染每张卡片，保留原有实例详情 Intent。移除旧 WidgetRunPlanner、近似调色板及失败尝试留下的 cf_widget 图形和 Glance 列表资源覆盖；未修改业务模型或用户数据。新布局说明见 ANDROID_WIDGET_LAYOUT.md。
+
+[VERIFIED] app 单元测试 71 项通过，release 构建成功，签名证书与此前预览包一致；build18 本地 APK 及 SHA256 已生成。新增测试覆盖实例不分段、同刻跨日对齐、两项/三项重叠、相接不重叠、颜色保留、去重、无效时段及周次、课程节次回退、午夜边界、时间解析和 2000 条密集实例无丢失/复制。
+
+[UNVERIFIED] 独立 org.classflow.widgetlab 已安装新布局及虚构示例，已请求用户重建测试组件，目前手机锁屏、仍是旧组件实例，尚未检查新布局真机画面。正式 org.classflow 仍保持 build17，未覆盖安装 build18；不得宣称细线、标题、配色和实际时间对齐已完成真机验收。未发布 GitHub。
+
+### 2026-11-02 build18 完成目标真机复验
+
+[VERIFIED] 独立测试组件加载新实例后，实际截图确认长卡片完整、内部无拼接线且标题只出现一次；20:30 同时开始而结束时间不同的每日规划/力量训练跨天顶部对齐、原始红绿颜色保持。短卡片初次测试文字被裁，已将时间锚点间最小高度调为26dp并为窄重叠栏优先显示事项名称，复验短卡片文字可见。
+
+[VERIFIED] 正式 org.classflow 已覆盖安装 build18；正式课表上午截图确认科研A标题单次且无内部细线，晚间截图确认实际每日复盘开始位置跨天一致、每个运动事项独立保持原色、卡片连续。用户复测确认滚动与科研详情点击均正常。自23:21到本次核验的目标日志未见 ClassFlow TransactionTooLarge 或 RemoteViews 加载异常；这是有限观察窗口，不是长期无故障保证。app 71 项测试/assembleRelease/签名和diff检查通过，本地 build18 APK 与 SHA256 已同步；未发布GitHub。
+
+临时 org.classflow.widgetlab 测试应用已卸载，仅移除其虚构数据及测试组件；正式应用、课表与同步配置保留。本轮未修改业务持久化数据。[UNVERIFIED] 其他桌面/设备、长时间休眠及高密度重叠界面仍未真机全面验收，极窄或短事项标题仍可能省略并通过详情查看。
+
+### 2026-11-04 macOS / Android 重复日程取消记录迁移与安全清理
+
+本轮仅处理重复 CalendarEvent 的取消维护链路，保留此前周课表组件等未提交修改。未操作用户真实日程、未覆盖安装、未发布 GitHub。
+
+根因：单次删除的事实仅存在于 CANCEL 例外，清掉例外即恢复原始重复规则。新增 CalendarEvent.excludedDates，默认空、排序去重，按原始实例日期排除；先计算重复次数，再过滤排除日期，跨天投影保留 recurrenceOriginDate。新单次删除直接保存日期；MCP 单次编辑产生的副本清空继承的排除日期，未来拆分按未过滤的原始次数计算。
+
+两端新增纯 CalendarCancellationCleanup 预览/迁移计划和原生设置入口，支持批量、只迁移、迁移后清理、重复 CANCEL 去重与幂等重试。仅清理归属唯一重复日程、日期有效、无调动字段且同日没有其他类型的 CANCEL；保护课程时段、RESCHEDULE/MAKEUP/ROOM_CHANGE、未知类型、孤立/冲突例外。保留原 UUID，不拆分大量单独日程。
+
+提交前检查预览是否过期，先做应用私有恢复备份，再将日程、例外和 tombstones 原子写入；备份失败停止，Android 检查 commit 结果并在失败时尝试恢复。Mac 通过既有变更日志发布同步更新/删除，随后刷新 UI、组件和提醒计划。普通编辑、同步及 rebase 合并同 UUID 排除日期，避免旧快照丢字段；同步不再用同名/同起始时间合并不同 UUID 的日程。UUID tombstone 大小写兼容。
+
+顺带修复本功能依赖的备份缺口：两端新 .classflow 导出升级 formatVersion 2，包含并校验 calendarEvents.json，继续读 v1；Android 恢复读取 exceptions，校验错误或缺失组件拒绝导入。ICS 仅导出有效投影，ClassFlow X 属性保留完整原系列，重新导入不误建课程或拆分实例；Mac 课程 ICS 不再推断补齐缺少的周次。外部软件若移除 X 属性，不保证无损系列往返；完整备份仍用 .classflow。参与同步的客户端应全部更新后再做清理。
+
+[VERIFIED] 本轮最终执行：
+- `swift test --package-path packages/core-engine`：77 项通过。
+- `swift test --package-path apps/macos`：112 项通过。
+- `JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home apps/android/gradlew -p apps/android :app:testDebugUnitTest :app:assembleRelease`：app 78 项、0 失败/错误/跳过，Release APK 构建成功。
+- `python3 scripts/test_foundation.py`：5/5 组通过（含 JSON 语法检查）。
+- `python3 scripts/test_mcp_transport.py apps/macos/.build/debug/ClassFlow`：实际可执行文件初始化、28 工具 Schema/注解、ping、错误协议和 EOF 退出通过，没有调用业务写工具。
+- `git diff --check`：通过。
+
+新增自动化验证包含：各重复频率与结束次数、跨天起点、预览不修改、两阶段迁移/清理、重复记录、重复执行、1000 系列/2000 CANCEL 批量、课程和调课保护、未知类型保留、清理备份/过期预览/备份 I/O 失败、重启读取、MCP 日期查询、旧编辑器字段保护、旧快照与并发排除日期并集、备份 v1/v2 与篡改校验、ICS 原系列往返及再次导入不重复。共同 JSON fixture 位于 packages/fixtures/sample_calendar_exclusions.json。
+
+[UNVERIFIED] 尚未进行两端维护界面的人工点击验收、Android 真机磁盘故障注入、真实 BYOC 跨设备端到端、实际系统通知送达。本轮没有为用户执行迁移，没有重新生成 DMG，没有安装或发布新包。Android APK 位于本地常规 Gradle 输出；dist 仍为此前发布/打包基线。完整规则、文件/函数和入口见 docs/RECURRING_EVENT_CLEANUP.md。
+
+### 2026-11-04 重复日程维护修复包构建（macOS build18 / Android build19）
+
+按用户「打包构建」请求保持应用版本 1.2.0，macOS package_macos.sh 的 BUILD_NUMBER 从17升至18，Android versionCode从18升至19。沿用原有业务修复与此前组件改动，本轮没有追加业务功能。旧 macOS build17 DMG/ZIP已按带build编号文件名另存，原Android build18预览包保留。
+
+[VERIFIED] `CLASSFLOW_SKIP_INSTALL=1 bash scripts/package_macos.sh` 退出0：Release主程序、原生WidgetKit扩展、DMG与ZIP生成。主程序与扩展均为1.2.0/build18，codesign严格校验通过（沿用ad-hoc签名，未进行Developer ID公证）；DMG hdiutil完整性校验通过。实际只读挂载DMG，包内主程序哈希与dist一致，挂载App/Widget签名与版本正确；dist App及DMG内实际可执行文件均通过28工具MCP传输测试，没有业务工具写调用。ZIP完整性、包内版本和主程序哈希校验通过。脚本确认跳过安装与组件注册。
+
+[VERIFIED] `JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home apps/android/gradlew -p apps/android :app:testDebugUnitTest :hyperos-adapter:testDebugUnitTest :app:assembleRelease` 成功：app78项、adapter2项，共80项，0失败/错误/跳过。APK包名org.classflow、versionName1.2.0/versionCode19、minSdk26/targetSdk35；apksigner验证通过，签名证书与build18一致（沿用项目现有debug签名配置，不是新建正式发布密钥）。
+
+本轮产物：
+- dist/ClassFlow-1.2.0-macOS-arm64-build18.dmg
+- dist/ClassFlow-1.2.0-macOS-arm64-build18.zip
+- dist/ClassFlow-Android-1.2.0-build19-preview.apk
+
+各产物的.sha256及dist/SHA256SUMS.txt已更新；macOS不带build编号的DMG/ZIP与build18内容相同。`git diff --check`通过。此前核心77项/macOS112项结果属于上一修复轮，本打包轮未重复执行这两组单元测试，不混写成本轮执行。
+
+[UNVERIFIED] 尚未覆盖安装、人工点击维护界面、执行真实取消迁移、验证真实BYOC跨设备及系统通知送达；未推送源码或更新GitHub Release。插件工具Schema未变化，本轮未重打插件附件。请先更新参与同步的两端，再在维护入口预览清理。
+
+### 2026-11-04 MCP 历史取消维护
+
+Mac 桌面执行器及 Android 独立执行器新增只读预览和确认提交，工具分别为 30、6 项。10 分钟单次令牌绑定当前预览，提交沿用原生过期检查、备份和原子保存。确认参数由调用方声明，不是系统级确认。不自动同步。
+[VERIFIED] macOS 113 项、Android app 79 项通过，Mac stdio 30 工具协议通过。测试使用隔离数据，未执行真实清理。
+[UNVERIFIED] 未重新打包、安装或进行 ChatGPT 云端验收；此前安装包不包含新接口。

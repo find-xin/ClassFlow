@@ -179,3 +179,26 @@ list_calendar_events省略date继续返回系列；指定date使用共享投影�
 get_status增加可选notification_status诊断，不改变28工具名称或原请求参数。
 
 通知诊断进一步区分plannedCalendarAlertCount、acceptedCalendarAlertCount与calendarAlertCount；add回调接受不等于系统持续保留，缺失时不得报告所有提醒已成功调度。
+
+### 重复日程永久排除（2026-11-04）
+
+新版 CalendarEvent 的 `excludedDates` 保存原始实例日期，`get_editing_context(kind="events")`
+会返回此字段。Mac 原有 `delete_calendar_event(scope="this_only", occurrence_date=...)`
+直接增加排除日期；查询、提醒和桌面投影共同过滤，不依赖保留 CANCEL 例外。未来范围
+拆分的 count 计算仍包含已排除日期，避免延长系列。编辑单次实例生成的独立副本不继承
+原系列的排除日期。工具数量与参数 Schema 不变。
+
+历史记录迁移使用两端原生设置中的预览/提交维护入口；不能将“删除所有例外”当作清理。
+课程 CANCEL、RESCHEDULE 及冲突例外保留。所有参与设备应更新后再迁移；旧版本自身不
+理解排除日期，不能宣称其显示已兼容。具体机制及验证边界见
+[重复日程维护](RECURRING_EVENT_CLEANUP.md)。
+
+### MCP 接管历史取消维护
+
+新版 Mac 提供 30 项工具，Android 独立执行器提供 6 项。先调用
+`preview_calendar_cancellation_cleanup`，展示受影响系列、日期、数量与保留规则。
+默认迁移并清理；传 `remove_redundant: false` 只迁移。取得用户明确确认后，
+用返回的 `preview_token` 和 `confirmed: true` 调用
+`apply_calendar_cancellation_cleanup`。令牌在当前执行器内有效十分钟、仅能使用一次；
+重新预览会替换令牌，数据变化会拒绝写入。提交复用原生备份和原子维护流程，
+不会自动触发云同步。需要升级应用并刷新 ChatGPT 的工具列表。

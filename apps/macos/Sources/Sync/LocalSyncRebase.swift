@@ -15,7 +15,9 @@ enum LocalSyncRebase {
             var merged = try JSONSerialization.jsonObject(with: encoder.encode(output[index])) as! [String: Any]
             for key in Set(base.keys).union(updated.keys) {
                 let same = (base[key].map { normalized($0, key: key) } as? NSObject)?.isEqual(updated[key].map { normalized($0, key: key) }) ?? (updated[key] == nil)
-                if !same { merged[key] = updated[key] }
+                if key == "excludedDates" {
+                    merged[key] = Array(Set((merged[key] as? [String] ?? []) + (updated[key] as? [String] ?? []))).sorted()
+                } else if !same { merged[key] = updated[key] }
             }
             output[index] = try decoder.decode(T.self, from: JSONSerialization.data(withJSONObject: merged))
         }

@@ -31,6 +31,7 @@ public struct ScheduleException: Codable, Sendable, Identifiable, Equatable, Has
     /// Target room if classroom changed
     public var targetClassroom: String?
     /// Reason / explanation for the adjustment
+    public var unrecognizedType: String? = nil
     public var reason: String?
 
     public init(
@@ -92,15 +93,9 @@ public struct ScheduleException: Codable, Sendable, Identifiable, Equatable, Has
 
         self.originalDate = try container.decode(String.self, forKey: .originalDate)
 
-        if let directType = try? container.decode(ExceptionType.self, forKey: .exceptionType) {
-            self.exceptionType = directType
-        } else if let typeStr = try? container.decode(String.self, forKey: .exceptionType) {
-            self.exceptionType = ExceptionType(rawValue: typeStr.lowercased()) ?? .cancel
-        } else if let typeStr = try? container.decode(String.self, forKey: .type) {
-            self.exceptionType = ExceptionType(rawValue: typeStr.lowercased()) ?? .cancel
-        } else {
-            self.exceptionType = .cancel
-        }
+        let rawType = (try? container.decode(String.self, forKey: .exceptionType)) ?? (try? container.decode(String.self, forKey: .type)) ?? ""
+        self.exceptionType = ExceptionType(rawValue: rawType.lowercased()) ?? .cancel
+        self.unrecognizedType = ExceptionType(rawValue: rawType.lowercased()) == nil ? rawType : nil
 
         self.targetDate = try container.decodeIfPresent(String.self, forKey: .targetDate)
         self.targetDayOfWeek = try container.decodeIfPresent(Int.self, forKey: .targetDayOfWeek)
@@ -115,8 +110,8 @@ public struct ScheduleException: Codable, Sendable, Identifiable, Equatable, Has
         try container.encode(id, forKey: .id)
         try container.encode(scheduleId, forKey: .scheduleId)
         try container.encode(originalDate, forKey: .originalDate)
-        try container.encode(exceptionType, forKey: .exceptionType)
-        try container.encode(exceptionType.rawValue.uppercased(), forKey: .type)
+        try container.encode(unrecognizedType ?? exceptionType.rawValue, forKey: .exceptionType)
+        try container.encode(unrecognizedType ?? exceptionType.rawValue.uppercased(), forKey: .type)
         try container.encodeIfPresent(targetDate, forKey: .targetDate)
         try container.encodeIfPresent(targetDayOfWeek, forKey: .targetDayOfWeek)
         try container.encodeIfPresent(targetStartSection, forKey: .targetStartSection)

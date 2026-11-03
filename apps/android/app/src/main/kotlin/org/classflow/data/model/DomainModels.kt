@@ -69,7 +69,8 @@ data class ScheduleException(
     val targetStartSection: Int? = null,
     val targetEndSection: Int? = null,
     val targetClassroom: String? = null,
-    val reason: String? = null
+    val reason: String? = null,
+    val unrecognizedType: String? = null
 )
 
 enum class OccurrenceStatus {
@@ -81,6 +82,7 @@ enum class OccurrenceStatus {
 
 data class TimelineItem(
     val id: String,
+    val recurrenceOriginDate: String? = null,
     val courseId: String? = null,
     val scheduleId: String? = null,
     val calendarEventId: String? = null,
@@ -156,7 +158,9 @@ data class CalendarEvent(
     val intervalWeeks: Int = 1,
     val endRepeatType: String = "never",
     val endRepeatUntil: String? = null,
-    val endRepeatCount: Int? = null
+    val endRepeatCount: Int? = null,
+    /** Permanent recurrence-origin exclusions, shared with Swift. */
+    val excludedDates: List<String> = emptyList()
 )
 
 data class StudyTask(

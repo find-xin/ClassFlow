@@ -12,8 +12,9 @@ public struct ICSExporter: Sendable {
     public func exportToICS(
         semester: Semester,
         courses: [Course],
-        exceptions: [ScheduleException]
-    ) -> String {
+        exceptions: [ScheduleException],
+        calendarEvents: [CalendarEvent] = []
+    ) throws -> String {
         var lines: [String] = []
 
         lines.append("BEGIN:VCALENDAR")
@@ -23,6 +24,8 @@ public struct ICSExporter: Sendable {
         lines.append("METHOD:PUBLISH")
         lines.append("X-WR-CALNAME:\(escapeICS(semester.name))")
         lines.append("X-WR-TIMEZONE:\(semester.timeZone)")
+        // CalendarEvent is fully Encodable; no optional field is dropped during native round trips.
+        lines += try CalendarEventICSMetadata.lines(events: calendarEvents)
 
         // RFC 5545 VTIMEZONE component for Google Calendar, Apple Calendar, and Outlook
         lines.append("BEGIN:VTIMEZONE")
@@ -38,15 +41,18 @@ public struct ICSExporter: Sendable {
 
         let dtstamp = formatICSDate(Date())
 
+        let eventByID = Dictionary(calendarEvents.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let projector = CalendarEventProjector(timeZone: TimeZone(identifier: semester.timeZone) ?? .current)
         // Iterate through all teaching weeks
         for weekNum in 1...semester.totalWeeks {
-            let occurrences = timelineEngine.generateOccurrences(
+            var occurrences = timelineEngine.generateOccurrences(
                 semester: semester,
                 courses: courses,
                 exceptions: exceptions,
                 forWeek: weekNum
             )
 
+            occurrences += projector.project(events: calendarEvents, semester: semester, week: weekNum, exceptions: exceptions)
             for occ in occurrences {
                 // Skip cancelled occurrences or output CANCELLED status
                 guard occ.status != .cancelled else { continue }
@@ -54,6 +60,7 @@ public struct ICSExporter: Sendable {
 
                 lines.append("BEGIN:VEVENT")
                 lines.append("UID:\(occ.id)@classflow.org")
+                if occ.sourceType == .calendarEvent { lines.append("X-CLASSFLOW-SOURCE:CALENDAR_EVENT") }
                 lines.append("DTSTAMP:\(dtstamp)")
 
                 let dtStart = formatDateTime(date: occ.date, time: startTime)
@@ -82,11 +89,14 @@ public struct ICSExporter: Sendable {
                 lines.append("DESCRIPTION:\(escapeICS(descriptionParts.joined(separator: "\\n")))")
 
                 lines.append("STATUS:CONFIRMED")
-                lines.append("BEGIN:VALARM")
-                lines.append("ACTION:DISPLAY")
-                lines.append("DESCRIPTION:上课提醒: \(escapeICS(occ.title))")
-                lines.append("TRIGGER:-PT15M")
-                lines.append("END:VALARM")
+                let reminder = occ.calendarEventId.flatMap { eventByID[$0]?.alertMinutesBefore } ?? (occ.sourceType == .course ? 15 : nil)
+                if let reminder {
+                    lines.append("BEGIN:VALARM")
+                    lines.append("ACTION:DISPLAY")
+                    lines.append("DESCRIPTION:提醒: \(escapeICS(occ.title))")
+                    lines.append("TRIGGER:-PT\(reminder)M")
+                    lines.append("END:VALARM")
+                }
                 lines.append("END:VEVENT")
             }
         }

@@ -312,7 +312,10 @@ object FullSyncManager {
         val peerTaskArr = peerSnapJson.optJSONArray("pomodoroTasks") ?: peerSnapJson.optJSONArray("studyTasks")
         val peerTasks = if (peerTaskArr != null) org.classflow.data.local.CourseDataManager.deserializeStudyTasks(peerTaskArr.toString()) else emptyList()
 
-        val tombstoneIds = localTombstones.map { it.entityId }.toSet()
+        val tombstoneIds = localTombstones.flatMap { tombstone ->
+            val uuid = runCatching { UUID.fromString(tombstone.entityId).toString() }.getOrNull()
+            if (uuid == null) listOf(tombstone.entityId) else listOf(uuid, uuid.uppercase())
+        }.toSet()
 
         // 2. Purge local entities that match tombstones
         localCourses.removeAll { it.id in tombstoneIds }
@@ -415,18 +418,11 @@ object FullSyncManager {
             val targetSemId = ps.semesterId?.let {
                 semesterIdMapping[it] ?: if (localSemesters.any { s -> s.id == it }) it else defaultSemId
             } ?: defaultSemId
-            val psTitle = ps.title.trim()
-
-            val existingById = localSchedules.indexOfFirst { it.id == ps.id }
-            val existingByTitle = localSchedules.indexOfFirst {
-                (it.semesterId == targetSemId || (it.semesterId.isNullOrBlank() && targetSemId == defaultSemId)) &&
-                it.title.trim() == psTitle && it.startTime == ps.startTime
-            }
-
+            val existingById = localSchedules.indexOfFirst { it.id.equals(ps.id, true) }
             if (existingById >= 0) {
-                localSchedules[existingById] = ps.copy(semesterId = targetSemId)
-            } else if (existingByTitle >= 0) {
-                localSchedules[existingByTitle] = ps.copy(semesterId = targetSemId)
+                val local = localSchedules[existingById]
+                localSchedules[existingById] = ps.copy(semesterId = targetSemId,
+                    excludedDates = (local.excludedDates + ps.excludedDates).distinct().sorted())
             } else {
                 localSchedules.add(ps.copy(semesterId = targetSemId))
                 downloadedCount++

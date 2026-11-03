@@ -1,5 +1,7 @@
 {
   "tools": [
+    {"name": "preview_calendar_cancellation_cleanup", "description": "只读预览。展示日期与数量并取得用户确认后才提交。", "inputSchema": {"type": "object", "properties": {"remove_redundant": {"type": "boolean"}}, "required": [], "additionalProperties": false}, "annotations": {"readOnlyHint": true, "destructiveHint": false, "openWorldHint": false}},
+    {"name": "apply_calendar_cancellation_cleanup", "description": "仅在用户确认后提交有效预览；自动备份并原子保存，不执行云同步。", "inputSchema": {"type": "object", "properties": {"preview_token": {"type": "string"}, "confirmed": {"type": "boolean"}}, "required": ["preview_token", "confirmed"], "additionalProperties": false}, "annotations": {"readOnlyHint": false, "destructiveHint": true, "openWorldHint": false}},
     {
       "name": "get_status",
       "description": "Android 独立执行器状态及实体数量；仅报告本平板，Mac 不参与执行。",

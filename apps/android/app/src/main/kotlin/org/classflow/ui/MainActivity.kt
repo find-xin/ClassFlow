@@ -58,6 +58,7 @@ import java.util.*
 
 class MainActivity : ComponentActivity() {
     private val targetTabState = mutableStateOf<NavigationTab?>(null)
+    private val widgetTargetState = mutableStateOf<Pair<String, Int>?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -65,6 +66,8 @@ class MainActivity : ComponentActivity() {
         setContent {
             MainApp(
                 targetTab = targetTabState.value,
+                widgetTarget = widgetTargetState.value,
+                onWidgetTargetConsumed = { widgetTargetState.value = null },
                 onTargetTabConsumed = { targetTabState.value = null }
             )
         }
@@ -79,6 +82,9 @@ class MainActivity : ComponentActivity() {
     private fun handleIntent(intent: Intent?) {
         // Any launch from widgets or external actions directly opens the timetable tab
         targetTabState.value = NavigationTab.TIMETABLE
+        widgetTargetState.value = intent?.getStringExtra("widget_occurrence_id")?.let {
+            it to intent.getIntExtra("widget_week", 0)
+        }
     }
 }
 
@@ -91,6 +97,8 @@ enum class NavigationTab {
 @Composable
 fun MainApp(
     targetTab: NavigationTab? = null,
+    widgetTarget: Pair<String, Int>? = null,
+    onWidgetTargetConsumed: () -> Unit = {},
     onTargetTabConsumed: () -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -156,6 +164,8 @@ fun MainApp(
                     isDark = isDark,
                     isWallpaperDark = isWallpaperDark,
                     targetTab = targetTab,
+                    widgetTarget = widgetTarget,
+                    onWidgetTargetConsumed = onWidgetTargetConsumed,
                     onTargetTabConsumed = onTargetTabConsumed,
                     onUpdateSettings = { updated ->
                         appSettings = updated
@@ -231,6 +241,8 @@ fun MainScreenHost(
     isDark: Boolean,
     isWallpaperDark: Boolean,
     targetTab: NavigationTab? = null,
+    widgetTarget: Pair<String, Int>? = null,
+    onWidgetTargetConsumed: () -> Unit = {},
     onTargetTabConsumed: () -> Unit = {},
     onUpdateSettings: (AppSettings) -> Unit
 ) {
@@ -384,7 +396,11 @@ fun MainScreenHost(
                         val result = ClassFlowBackupManager.importICS(stream)
                         if (result.courses.isNotEmpty() || result.schedules.isNotEmpty()) {
                             sampleCourses.addAll(result.courses)
-                            sampleSchedules.addAll(result.schedules)
+                            result.schedules.forEach { imported ->
+                                val index = sampleSchedules.indexOfFirst { it.id.equals(imported.id, true) }
+                                if (index >= 0) sampleSchedules[index] = sampleSchedules[index].copy(excludedDates = (sampleSchedules[index].excludedDates + imported.excludedDates).distinct().sorted())
+                                else sampleSchedules.add(imported)
+                            }
                             CourseDataManager.saveCourses(context, sampleCourses)
                             CourseDataManager.saveSchedules(context, sampleSchedules)
                             Toast.makeText(context, "已成功导入 ${result.courses.size} 门课程与 ${result.schedules.size} 项日程！", Toast.LENGTH_SHORT).show()
@@ -394,11 +410,21 @@ fun MainScreenHost(
                     } else {
                         try {
                             val result = ClassFlowBackupManager.importPackageZip(stream)
-                            if (result.courses.isNotEmpty() || result.semesters.isNotEmpty() || result.exceptions.isNotEmpty()) {
+                            if (result.courses.isNotEmpty() || result.semesters.isNotEmpty() || result.exceptions.isNotEmpty() || result.schedules.isNotEmpty()) {
                                 if (result.courses.isNotEmpty()) {
                                     sampleCourses.clear()
                                     sampleCourses.addAll(result.courses)
                                     CourseDataManager.saveCourses(context, sampleCourses)
+                                }
+                                if (result.schedules.isNotEmpty()) {
+                                    val imported = result.schedules.associateBy { it.id.lowercase() }
+                                    val retained = sampleSchedules.map { event -> imported[event.id.lowercase()]?.let { incoming ->
+                                        incoming.copy(excludedDates = (event.excludedDates + incoming.excludedDates).distinct().sorted())
+                                    } ?: event }
+                                    val existing = retained.map { it.id.lowercase() }.toSet()
+                                    sampleSchedules.clear()
+                                    sampleSchedules.addAll(retained + result.schedules.filterNot { it.id.lowercase() in existing })
+                                    CourseDataManager.saveSchedules(context, sampleSchedules)
                                 }
                                 if (result.exceptions.isNotEmpty()) {
                                     sampleExceptions.clear()
@@ -423,7 +449,11 @@ fun MainScreenHost(
                                 val icsResult = ClassFlowBackupManager.importICS(fallbackStream)
                                 if (icsResult.courses.isNotEmpty() || icsResult.schedules.isNotEmpty()) {
                                     sampleCourses.addAll(icsResult.courses)
-                                    sampleSchedules.addAll(icsResult.schedules)
+                                    icsResult.schedules.forEach { imported ->
+                                        val index = sampleSchedules.indexOfFirst { it.id.equals(imported.id, true) }
+                                        if (index >= 0) sampleSchedules[index] = sampleSchedules[index].copy(excludedDates = (sampleSchedules[index].excludedDates + imported.excludedDates).distinct().sorted())
+                                        else sampleSchedules.add(imported)
+                                    }
                                     CourseDataManager.saveCourses(context, sampleCourses)
                                     CourseDataManager.saveSchedules(context, sampleSchedules)
                                     Toast.makeText(context, "已从日历文件导入 ${icsResult.courses.size} 门课程！", Toast.LENGTH_SHORT).show()
@@ -496,6 +526,17 @@ fun MainScreenHost(
             semesterStartDate = currentSemester.startDate,
             exceptions = sampleExceptions.toList()
         )
+    }
+
+    LaunchedEffect(widgetTarget, selectedWeek, currentOccurrences) {
+        val target = widgetTarget ?: return@LaunchedEffect
+        val week = target.second.takeIf { it in 1..totalWeeks } ?: currentWeek
+        if (selectedWeek != week) {
+            selectedWeek = week
+        } else {
+            selectedOccurrence = currentOccurrences.firstOrNull { it.id == target.first }
+            onWidgetTargetConsumed()
+        }
     }
 
     // Reactively project occurrences for the current real-world week (for Agenda and Widgets)
@@ -581,7 +622,7 @@ fun MainScreenHost(
     DisposableEffect(context) {
         val prefs = context.getSharedPreferences("classflow_courses_prefs", android.content.Context.MODE_PRIVATE)
         val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-            if (key == "automation_receipts_json") reloadAllData()
+            if (key == "automation_receipts_json" || key == "automation_maintenance_change") reloadAllData()
         }
         prefs.registerOnSharedPreferenceChangeListener(listener)
         onDispose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
@@ -1152,6 +1193,7 @@ fun MainScreenHost(
                             semesters = semesters.toList(),
                             courses = sampleCourses.toList(),
                             exceptions = sampleExceptions.toList(),
+                            schedules = sampleSchedules.toList(),
                             settings = mapOf(
                                 "themeMode" to appSettings.themeMode,
                                 "showWeekends" to appSettings.showWeekends.toString(),
@@ -1310,15 +1352,12 @@ fun MainScreenHost(
                         when (scope) {
                             EditingScope.THIS_ONLY -> {
                                 if (targetEventId != null) {
-                                    val ex = ScheduleException(
-                                        id = UUID.randomUUID().toString(),
-                                        scheduleId = targetEventId,
-                                        originalDate = occurrence.date,
-                                        type = ExceptionType.CANCEL,
-                                        reason = "单次删除"
-                                    )
-                                    sampleExceptions.add(ex)
-                                    org.classflow.data.local.CourseDataManager.saveExceptions(context, sampleExceptions.toList())
+                                    val index = sampleSchedules.indexOfFirst { it.id == targetEventId }
+                                    if (index >= 0) {
+                                        val event = sampleSchedules[index]
+                                        sampleSchedules[index] = event.copy(excludedDates = (event.excludedDates + (occurrence.recurrenceOriginDate ?: occurrence.date)).distinct().sorted())
+                                        CourseDataManager.saveSchedules(context, sampleSchedules.toList())
+                                    }
                                 }
                             }
                             EditingScope.THIS_AND_FUTURE -> {

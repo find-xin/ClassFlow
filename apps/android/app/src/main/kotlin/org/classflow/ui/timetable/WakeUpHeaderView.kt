@@ -27,6 +27,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -47,7 +48,6 @@ import kotlin.math.roundToInt
  *     (⤴) Export (Export .ics / Full Backup .classflow)
  *     (⋮) More / Settings Drawer
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun WakeUpHeaderView(
     currentWeek: Int,
@@ -116,23 +116,25 @@ fun WakeUpHeaderView(
     }
 
     val desktopToolbar = LocalAdaptiveLayout.current.desktopToolbar
-    FlowRow(
+    Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalArrangement = Arrangement.spacedBy(4.dp)
+            .padding(horizontal = if (desktopToolbar) 16.dp else 8.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
         // 1. Left: Clickable Date & Week Title (exact WakeUp layout Image 1)
         Column(
             modifier = Modifier
+                .weight(1f)
                 .clip(RoundedCornerShape(10.dp))
                 .clickable { showWeekDrawer = true }
                 .padding(horizontal = 4.dp, vertical = 2.dp)
         ) {
             Text(
                 text = currentDateStr,
-                style = MaterialTheme.typography.titleMedium.copy(fontSize = 22.sp),
+                style = MaterialTheme.typography.titleMedium.copy(fontSize = if (desktopToolbar) 22.sp else 18.sp),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 fontWeight = FontWeight.Bold,
                 color = textPrimary
             )
@@ -141,6 +143,9 @@ fun WakeUpHeaderView(
                 Text(
                     text = "第 $selectedWeek 周 周$todayWeekdayShort",
                     style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.5.sp),
+                    modifier = Modifier.weight(1f, fill = false),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                     fontWeight = FontWeight.Medium,
                     color = textSecondary
                 )
@@ -157,7 +162,7 @@ fun WakeUpHeaderView(
         // 2. Center-Right: Week / Day View Toggle & 4 Action Icons
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+            horizontalArrangement = Arrangement.spacedBy(if (desktopToolbar) 6.dp else 2.dp)
         ) {
             if (desktopToolbar) {
                 IconButton(onClick = { onWeekChange(selectedWeek - 1) }, enabled = selectedWeek > 1) {

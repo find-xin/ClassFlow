@@ -135,7 +135,7 @@ public struct CalendarEventProjector: Sendable {
                         startTime: start, endTime: end, weekNumber: week, isCurrentWeek: true,
                         status: exception?.exceptionType == .cancel ? .cancelled : .normal,
                         color: event.color, notes: event.description, isAllDay: event.isAllDay,
-                        isRecurring: frequency != "none"))
+                        isRecurring: frequency != "none", recurrenceOriginDate: occurrence))
             }
         }
         return items

@@ -69,7 +69,7 @@ struct ClassFlowBackupTests {
 
         // Import and verify
         let package = try service.importBackup(from: backupData)
-        #expect(package.manifest.formatVersion == 1)
+        #expect(package.manifest.formatVersion == 2)
         #expect(package.manifest.semestersCount == 1)
         #expect(package.manifest.coursesCount == 1)
         #expect(package.manifest.exceptionsCount == 1)

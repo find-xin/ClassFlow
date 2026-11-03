@@ -57,6 +57,7 @@ public struct ICSImporter: Sendable {
         var currentDTStart = ""
         var currentDTEnd = ""
         var currentRRule: String? = nil
+        var nativeCalendarEvent = false
 
         for line in unfoldedLines {
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -69,8 +70,9 @@ public struct ICSImporter: Sendable {
                 currentDTStart = ""
                 currentDTEnd = ""
                 currentRRule = nil
+                nativeCalendarEvent = false
             } else if trimmed == "END:VEVENT" {
-                if inEvent && !currentSummary.isEmpty && !currentDTStart.isEmpty {
+                if inEvent && !nativeCalendarEvent && !currentSummary.isEmpty && !currentDTStart.isEmpty {
                     if let (dStr, sTime, eTime, dOfWeek) = parseDateTimes(dtStart: currentDTStart, dtEnd: currentDTEnd) {
                         let event = ICSEvent(
                             uid: currentUid,
@@ -88,7 +90,9 @@ public struct ICSImporter: Sendable {
                 }
                 inEvent = false
             } else if inEvent {
-                if trimmed.hasPrefix("UID:") {
+                if trimmed == "X-CLASSFLOW-SOURCE:CALENDAR_EVENT" {
+                    nativeCalendarEvent = true
+                } else if trimmed.hasPrefix("UID:") {
                     currentUid = String(trimmed.dropFirst(4))
                 } else if trimmed.hasPrefix("SUMMARY:") {
                     currentSummary = unescapeICS(String(trimmed.dropFirst(8)))
@@ -138,7 +142,7 @@ public struct ICSImporter: Sendable {
 
             let uniqueWeeks = Array(Set(activeWeeks)).sorted()
             let pattern: WeekPattern
-            if uniqueWeeks.count >= semester.totalWeeks - 2 {
+            if uniqueWeeks == Array(1...max(1, semester.totalWeeks)) {
                 pattern = .all
             } else {
                 pattern = .custom(uniqueWeeks)
@@ -178,7 +182,7 @@ public struct ICSImporter: Sendable {
 
     private func unfoldLines(_ content: String) -> [String] {
         var result: [String] = []
-        let rawLines = content.components(separatedBy: .newlines)
+        let rawLines = content.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n").components(separatedBy: "\n")
 
         for line in rawLines {
             if line.hasPrefix(" ") || line.hasPrefix("\t") {

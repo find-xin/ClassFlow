@@ -779,9 +779,9 @@ public final class MCPServer: Sendable {
         }
         for replacement in completeEditingDefinitions() {
             let name = replacement["name"] as? String ?? ""
-            let readOnly = name == "get_editing_context"
+            let readOnly = name == "get_editing_context" || name == "preview_calendar_cancellation_cleanup"
             var definition = replacement
-            definition["annotations"] = ["readOnlyHint": readOnly, "destructiveHint": ["delete_course", "delete_calendar_event", "manage_course_schedule", "update_course", "update_calendar_event", "reset_focus_timer", "batch_edit_items"].contains(name),
+            definition["annotations"] = ["readOnlyHint": readOnly, "destructiveHint": ["delete_course", "delete_calendar_event", "manage_course_schedule", "update_course", "update_calendar_event", "reset_focus_timer", "batch_edit_items", "apply_calendar_cancellation_cleanup"].contains(name),
                 "idempotentHint": readOnly || name == "reset_focus_timer" || name == "batch_edit_items", "openWorldHint": false]
             if let index = tools.firstIndex(where: { $0["name"] as? String == name }) { tools[index] = definition }
             else { tools.append(definition) }

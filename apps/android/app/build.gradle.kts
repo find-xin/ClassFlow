@@ -13,7 +13,7 @@ android {
         applicationId = "org.classflow"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
+        versionCode = 21
         versionName = "1.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

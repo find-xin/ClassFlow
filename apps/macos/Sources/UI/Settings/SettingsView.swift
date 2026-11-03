@@ -94,6 +94,7 @@ public struct SettingsView: View {
                     case "ai":
                         AISettingsTab(appState: appState)
                     case "calendar":
+                        CalendarCancellationMaintenanceView(appState: appState)
                         CalendarSettingsTab(appState: appState)
                     case "notifications":
                         NotificationSettingsTab(appState: appState)

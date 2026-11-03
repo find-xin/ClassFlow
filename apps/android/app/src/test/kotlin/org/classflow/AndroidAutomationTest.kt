@@ -10,6 +10,11 @@ class AndroidAutomationTest {
     private class Store : AutomationStore {
         var data = JSONObject("""{"semesters":[{"id":"sem","name":"Term","startDate":"2026-09-01","endDate":"2027-01-01","totalWeeks":20,"isCurrent":true}],"sections":[],"courses":[],"events":[],"tasks":[],"exceptions":[],"tombstones":[],"receipts":{}}""")
         var commits = 0
+        override fun applyCleanup(plan: org.classflow.data.local.CalendarCancellationCleanup.Plan) {
+            val codec = org.classflow.data.local.CourseDataManager
+            commit(read().put("events", JSONArray(codec.serializeSchedules(plan.events)))
+                .put("exceptions", JSONArray(codec.serializeExceptions(plan.exceptions))))
+        }
         override fun read() = JSONObject(data.toString())
         override fun commit(snapshot: JSONObject) { data = JSONObject(snapshot.toString()); commits++ }
     }
@@ -54,7 +59,7 @@ class AndroidAutomationTest {
     @Test fun protocolDoesNotAdvertiseMacCapabilities() {
         val executor=executor(Store())
         val response=executor.rpc(JSONObject("""{"jsonrpc":"2.0","id":1,"method":"tools/list"}"""))!!
-        assertEquals(4,response.getJSONObject("result").getJSONArray("tools").length())
+        assertEquals(6,response.getJSONObject("result").getJSONArray("tools").length())
         assertNull(executor.rpc(JSONObject("""{"jsonrpc":"2.0","method":"notifications/initialized"}""")))
     }
     @Test fun syncGateRejectsAutomationDuringSync() {
@@ -62,5 +67,22 @@ class AndroidAutomationTest {
         try { assertThrows(IllegalArgumentException::class.java) { AutomationGate.execute { error("must not execute") } } }
         finally { AutomationGate.endSync() }
         assertEquals(1,AutomationGate.execute { 1 })
+    }
+    @Test fun cancellationPreviewIsReadOnlyAndRequiresConfirmation() {
+        val store = Store()
+        val executor = executor(store)
+        store.data.put("events", JSONArray("""[{"id":"series","title":"Study","frequency":"daily","startDate":"2026-10-22","startTime":"09:00","endTime":"10:00"}]"""))
+        store.data.put("exceptions", JSONArray("""[{"id":"cancel","scheduleId":"series","originalDate":"2026-10-23","type":"CANCEL"}]"""))
+        val preview = executor.call("preview_calendar_cancellation_cleanup", JSONObject())
+        assertEquals(0, store.commits)
+        assertEquals("2026-10-23", preview.getJSONArray("series").getJSONObject(0).getJSONArray("dates").getString(0))
+        val args = JSONObject().put("preview_token", preview.getString("preview_token")).put("confirmed", false)
+        assertThrows(IllegalArgumentException::class.java) { executor.call("apply_calendar_cancellation_cleanup", args) }
+        args.put("confirmed", true)
+        assertEquals(1, executor.call("apply_calendar_cancellation_cleanup", args).getInt("removed_records"))
+        assertThrows(IllegalArgumentException::class.java) { executor.call("apply_calendar_cancellation_cleanup", args) }
+        assertEquals(1, store.commits)
+        assertEquals(0, store.data.getJSONArray("exceptions").length())
+        assertEquals("2026-10-23", store.data.getJSONArray("events").getJSONObject(0).getJSONArray("excludedDates").getString(0))
     }
 }

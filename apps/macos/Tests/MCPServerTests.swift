@@ -13,14 +13,15 @@ struct MCPServerTests {
         return (handlers, db)
     }
 
-    @Test("Verify all 28 MCP tools are defined and registered")
+    @Test("Verify all 30 MCP tools are defined and registered")
     func testToolsListCompleteness() {
         let server = MCPServer()
         let tools = server.defineTools()
-        #expect(tools.count == 28)
+        #expect(tools.count == 30)
 
         let toolNames = Set(tools.compactMap { $0["name"] as? String })
         let expectedNames: Set<String> = [
+            "preview_calendar_cancellation_cleanup", "apply_calendar_cancellation_cleanup",
             "get_editing_context", "manage_course_schedule", "batch_edit_items", "reset_focus_timer",
             "get_status",
             "query_timetable",

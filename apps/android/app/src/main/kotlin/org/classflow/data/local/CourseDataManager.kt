@@ -167,79 +167,12 @@ object CourseDataManager {
         return arr.toString()
     }
 
-    fun consolidateSchedules(schedules: List<CourseSchedule>): List<CourseSchedule> {
-        if (schedules.size <= 1) return schedules
-        val groupedByDay = schedules.groupBy { it.dayOfWeek }
-        val result = mutableListOf<CourseSchedule>()
+    // UUIDs identify distinct courses and time slots; matching labels and times do not.
+    fun consolidateSchedules(schedules: List<CourseSchedule>): List<CourseSchedule> =
+        schedules.distinctBy { it.id.lowercase() }
 
-        for ((_, dayScheds) in groupedByDay) {
-            val pending = dayScheds.sortedWith(compareBy({ it.startSection }, { it.endSection })).toMutableList()
-            var i = 0
-            while (i < pending.size) {
-                var current = pending[i]
-                var mergedAny = false
-                var j = i + 1
-                while (j < pending.size) {
-                    val candidate = pending[j]
-                    val overlaps = maxOf(current.startSection, candidate.startSection) <= minOf(current.endSection, candidate.endSection)
-                    if (overlaps) {
-                        val mergedWeeks = (current.customWeeks + candidate.customWeeks).distinct().sorted()
-                        current = current.copy(
-                            startSection = minOf(current.startSection, candidate.startSection),
-                            endSection = maxOf(current.endSection, candidate.endSection),
-                            classroom = if (current.classroom.isNullOrBlank()) candidate.classroom else current.classroom,
-                            teacher = if (current.teacher.isNullOrBlank()) candidate.teacher else current.teacher,
-                            customWeeks = mergedWeeks
-                        )
-                        pending.removeAt(j)
-                        pending[i] = current
-                        mergedAny = true
-                    } else {
-                        j++
-                    }
-                }
-                if (!mergedAny) {
-                    result.add(current)
-                    i++
-                }
-            }
-        }
-        return result.sortedWith(compareBy({ it.dayOfWeek }, { it.startSection }))
-    }
-
-    fun consolidateCourses(courses: List<Course>): List<Course> {
-        if (courses.isEmpty()) return emptyList()
-        val grouped = LinkedHashMap<String, MutableList<Course>>()
-        for (c in courses) {
-            val key = "${c.semesterId}___${c.name.trim().lowercase()}"
-            grouped.getOrPut(key) { mutableListOf() }.add(c)
-        }
-
-        val result = mutableListOf<Course>()
-        for ((_, group) in grouped) {
-            if (group.size == 1) {
-                val c = group.first()
-                result.add(c.copy(schedules = consolidateSchedules(c.schedules)))
-            } else {
-                val first = group.first()
-                val allSchedules = group.flatMap { it.schedules }
-                val mergedTeacher = group.firstOrNull { !it.teacher.isNullOrBlank() }?.teacher ?: first.teacher
-                val mergedCredit = group.firstOrNull { it.credit != null }?.credit ?: first.credit
-                val mergedNotes = group.mapNotNull { it.notes?.ifBlank { null } }.distinct().joinToString("; ").ifBlank { first.notes }
-                val mergedColor = group.firstOrNull { it.color.isNotBlank() }?.color ?: first.color
-                result.add(
-                    first.copy(
-                        teacher = mergedTeacher,
-                        credit = mergedCredit,
-                        notes = mergedNotes,
-                        color = mergedColor,
-                        schedules = consolidateSchedules(allSchedules)
-                    )
-                )
-            }
-        }
-        return result
-    }
+    fun consolidateCourses(courses: List<Course>): List<Course> =
+        courses.distinctBy { it.id.lowercase() }.map { it.copy(schedules = consolidateSchedules(it.schedules)) }
 
     fun loadCourses(context: Context): List<Course> {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -310,6 +243,7 @@ object CourseDataManager {
                         endSection = if (obj.has("endSection") && !obj.isNull("endSection")) obj.getInt("endSection") else null,
                         customDaysOfWeek = daysList,
                         customWeeks = weeksList,
+                        excludedDates = obj.optJSONArray("excludedDates")?.let { dates -> (0 until dates.length()).map { dates.getString(it) }.distinct().sorted() } ?: emptyList(),
                         endRepeatType = obj.optString("endRepeatType", "never"),
                         endRepeatUntil = obj.optString("endRepeatUntil").ifEmpty { null },
                         endRepeatCount = if (obj.has("endRepeatCount") && !obj.isNull("endRepeatCount")) obj.getInt("endRepeatCount") else null,
@@ -346,6 +280,7 @@ object CourseDataManager {
             obj.put("description", s.description ?: "")
             obj.put("color", s.color)
             obj.put("frequency", s.frequency)
+            obj.put("excludedDates", JSONArray(s.excludedDates.distinct().sorted()))
             if (s.timeMode != null) obj.put("timeMode", s.timeMode)
             if (s.alertMinutes != null) obj.put("alertMinutesBefore", s.alertMinutes)
             if (s.reminderConfigured != null) obj.put("reminderConfigured", s.reminderConfigured)
@@ -368,34 +303,9 @@ object CourseDataManager {
         return arr.toString()
     }
 
-    fun consolidateCalendarEvents(events: List<CalendarEvent>): List<CalendarEvent> {
-        if (events.isEmpty()) return emptyList()
-        if (events.size == 1) return events.toList()
-        val grouped = LinkedHashMap<String, MutableList<CalendarEvent>>()
-        for (e in events) {
-            val key = "${e.semesterId}___${e.title.trim().lowercase()}___${e.frequency}___${e.startTime}"
-            grouped.getOrPut(key) { mutableListOf() }.add(e)
-        }
-        val result = mutableListOf<CalendarEvent>()
-        for ((_, group) in grouped) {
-            if (group.size == 1) {
-                result.add(group.first())
-            } else {
-                val first = group.first()
-                val mergedDays = group.flatMap { it.customDaysOfWeek }.distinct().sorted()
-                val mergedWeeks = group.flatMap { it.customWeeks }.distinct().sorted()
-                result.add(
-                    first.copy(
-                        customDaysOfWeek = mergedDays,
-                        customWeeks = mergedWeeks,
-                        location = group.firstOrNull { !it.location.isNullOrBlank() }?.location ?: first.location,
-                        description = group.firstOrNull { !it.description.isNullOrBlank() }?.description ?: first.description
-                    )
-                )
-            }
-        }
-        return result
-    }
+    // Separate series can share names and times while having different date ranges or alerts.
+    fun consolidateCalendarEvents(events: List<CalendarEvent>): List<CalendarEvent> =
+        events.distinctBy { it.id.lowercase() }
 
     fun loadSchedules(context: Context): List<CalendarEvent> {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -413,10 +323,12 @@ object CourseDataManager {
         return if (tombstones.isEmpty()) consolidated else consolidated.filterNot { it.id in tombstones }
     }
 
+    @Synchronized
     fun saveSchedules(context: Context, schedules: List<CalendarEvent>) {
-        val consolidated = schedules
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        prefs.edit().putString(KEY_SCHEDULES, serializeSchedules(consolidated)).apply()
+        val local = deserializeSchedules(prefs.getString(KEY_SCHEDULES, "[]") ?: "[]").associateBy { it.id.lowercase() }
+        val preserved = schedules.map { incoming -> incoming.copy(excludedDates = (incoming.excludedDates + (local[incoming.id.lowercase()]?.excludedDates ?: emptyList())).distinct().sorted()) }
+        prefs.edit().putString(KEY_SCHEDULES, serializeSchedules(preserved)).apply()
     }
 
     // MARK: - Section Times Persistence & Serialization
@@ -782,7 +694,7 @@ object CourseDataManager {
             val arr = JSONArray(jsonStr)
             for (i in 0 until arr.length()) {
                 val obj = arr.getJSONObject(i)
-                val typeRaw = obj.optString("type").ifEmpty { obj.optString("exceptionType", "CANCEL") }
+                val typeRaw = obj.optString("type").ifEmpty { obj.optString("exceptionType", "") }
                 val type = try {
                     ExceptionType.valueOf(typeRaw.uppercase())
                 } catch (_: Exception) {
@@ -794,6 +706,7 @@ object CourseDataManager {
                         scheduleId = obj.optString("scheduleId"),
                         originalDate = obj.optString("originalDate"),
                         type = type,
+                        unrecognizedType = if (ExceptionType.entries.none { it.name.equals(typeRaw, true) }) typeRaw else null,
                         targetDate = obj.optString("targetDate").ifEmpty { null },
                         targetDayOfWeek = if (obj.has("targetDayOfWeek")) obj.optInt("targetDayOfWeek") else null,
                         targetStartSection = if (obj.has("targetStartSection")) obj.optInt("targetStartSection") else null,
@@ -816,8 +729,8 @@ object CourseDataManager {
             obj.put("id", e.id)
             obj.put("scheduleId", e.scheduleId)
             obj.put("originalDate", e.originalDate)
-            obj.put("type", e.type.name)
-            obj.put("exceptionType", e.type.name.lowercase())
+            obj.put("type", e.unrecognizedType ?: e.type.name)
+            obj.put("exceptionType", e.unrecognizedType ?: e.type.name.lowercase())
             if (e.targetDate != null) obj.put("targetDate", e.targetDate)
             if (e.targetDayOfWeek != null) obj.put("targetDayOfWeek", e.targetDayOfWeek)
             if (e.targetStartSection != null) obj.put("targetStartSection", e.targetStartSection)
@@ -836,9 +749,42 @@ object CourseDataManager {
         return deserializeExceptions(jsonStr)
     }
 
+    @Synchronized
     fun saveExceptions(context: Context, exceptions: List<ScheduleException>) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().putString(KEY_EXCEPTIONS, serializeExceptions(exceptions)).apply()
+    }
+
+    /** Single atomic preferences-file commit: exclusions and exception deletion cannot be separated. */
+    @Synchronized
+    fun applyCalendarCancellationCleanup(context: Context, plan: CalendarCancellationCleanup.Plan) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val rawEvents = prefs.getString(KEY_SCHEDULES, "[]") ?: "[]"
+        val rawExceptions = prefs.getString(KEY_EXCEPTIONS, "[]") ?: "[]"
+        val events = deserializeSchedules(rawEvents)
+        val exceptions = deserializeExceptions(rawExceptions)
+        require(events.size == JSONArray(rawEvents).length() && exceptions.size == JSONArray(rawExceptions).length()) { "本地日程数据无法完整读取，已停止清理。" }
+        val scheduleIds = loadCourses(context).flatMap { it.schedules }.map { it.id }.toSet()
+        require(events == plan.sourceEvents && exceptions == plan.sourceExceptions && scheduleIds == plan.courseScheduleIds) { "数据已变化，请重新预览后再清理。" }
+        val rawTombstones = prefs.getString(KEY_TOMBSTONES, "[]") ?: "[]"
+        val tombstones = deserializeTombstones(rawTombstones)
+        require(tombstones.size == JSONArray(rawTombstones).length()) { "删除记录无法完整读取，已停止清理。" }
+        val directory = java.io.File(context.filesDir, "maintenance-backups").apply { mkdirs() }
+        val backup = android.util.AtomicFile(java.io.File(directory, "calendar-cancellations-${UUID.randomUUID()}.json"))
+        val recovery = JSONObject().put("calendarEvents", JSONArray(rawEvents)).put("exceptions", JSONArray(rawExceptions)).put("tombstones", JSONArray(rawTombstones))
+        val stream = backup.startWrite()
+        try { stream.write(recovery.toString().toByteArray(Charsets.UTF_8)); backup.finishWrite(stream) }
+        catch (error: Exception) { backup.failWrite(stream); throw error }
+        val removed = plan.removed.map { it.id }.toSet()
+        val updatedTombstones = tombstones.filterNot { tombstone -> removed.any { it.equals(tombstone.entityId, true) } } + removed.map { SyncTombstone(entityId = it, entityType = "exception", deletedAt = System.currentTimeMillis()) }
+        val committed = prefs.edit().putString(KEY_SCHEDULES, serializeSchedules(plan.events))
+            .putString(KEY_EXCEPTIONS, serializeExceptions(plan.exceptions))
+            .putString(KEY_TOMBSTONES, serializeTombstones(updatedTombstones)).commit()
+        if (!committed) {
+            val restored = prefs.edit().putString(KEY_SCHEDULES, rawEvents).putString(KEY_EXCEPTIONS, rawExceptions)
+                .putString(KEY_TOMBSTONES, rawTombstones).commit()
+            error(if (restored) "清理未能写入磁盘，已恢复原数据。" else "本地写入失败；已保留备份，请重启后核对数据。")
+        }
     }
 
     // MARK: - Tombstones Persistence & Serialization

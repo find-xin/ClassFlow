@@ -410,7 +410,10 @@ public final class SyncEngine: @unchecked Sendable {
         if !targetSnapshot.semesters.isEmpty {
             semesters = targetSnapshot.semesters
         }
-        calendarEvents = targetSnapshot.calendarEvents
+        let exclusionSources = Dictionary(calendarEvents.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        calendarEvents = targetSnapshot.calendarEvents.map { event in
+            exclusionSources[event.id].map { event.preservingExclusions(from: $0) } ?? event
+        }
         pomodoroTasks = targetSnapshot.pomodoroTasks
         pomodoroRecords = targetSnapshot.pomodoroRecords
         if !targetSnapshot.timetableProfiles.isEmpty {
@@ -493,7 +496,10 @@ public final class SyncEngine: @unchecked Sendable {
         }
         tombstones = Self.garbageCollectTombstones(tombstones)
 
-        let tombstoneIds = Set(tombstones.map { $0.entityId })
+        let tombstoneIds = Set(tombstones.flatMap { tombstone -> [String] in
+            guard let id = UUID(uuidString: tombstone.entityId) else { return [tombstone.entityId] }
+            return [id.uuidString, id.uuidString.lowercased()]
+        })
 
         // 2. Purge local entities marked by tombstones
         courses.removeAll(where: { tombstoneIds.contains($0.id.uuidString) })
@@ -656,19 +662,10 @@ public final class SyncEngine: @unchecked Sendable {
             } else if let pid = pev.semesterId, !semesters.contains(where: { $0.id == pid }), let defaultSem = semesters.first {
                 resolvedSemId = defaultSem.id
             }
-            let pevTitle = pev.title.trimmingCharacters(in: .whitespacesAndNewlines)
 
             if let idx = calendarEvents.firstIndex(where: { $0.id == pev.id }) {
-                var merged = pev.preservingLegacyReminder(from: calendarEvents[idx])
+                var merged = pev.preservingLegacyReminder(from: calendarEvents[idx]).preservingExclusions(from: calendarEvents[idx])
                 merged.semesterId = resolvedSemId
-                calendarEvents[idx] = merged
-            } else if let idx = calendarEvents.firstIndex(where: {
-                $0.semesterId == resolvedSemId && $0.title.trimmingCharacters(in: .whitespacesAndNewlines) == pevTitle && $0.startTime == pev.startTime
-            }) {
-                var merged = calendarEvents[idx]
-                merged.endTime = pev.endTime
-                merged.frequency = pev.frequency
-                merged.location = pev.location ?? merged.location
                 calendarEvents[idx] = merged
             } else {
                 var newEv = pev
@@ -830,7 +827,7 @@ public final class SyncEngine: @unchecked Sendable {
                 if let payload = op.payload,
                    let peerEvent = try? decoder.decode(CalendarEvent.self, from: payload) {
                     if let idx = calendarEvents.firstIndex(where: { $0.id == peerEvent.id }) {
-                        calendarEvents[idx] = peerEvent.preservingLegacyReminder(from: calendarEvents[idx])
+                        calendarEvents[idx] = peerEvent.preservingLegacyReminder(from: calendarEvents[idx]).preservingExclusions(from: calendarEvents[idx])
                     } else {
                         calendarEvents.append(peerEvent)
                     }

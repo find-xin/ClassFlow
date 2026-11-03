@@ -1,6 +1,7 @@
 package org.classflow.automation
 
 import org.classflow.data.local.CourseDataManager
+import org.classflow.data.local.CalendarCancellationCleanup
 import org.classflow.data.local.TimelineProjection
 import org.json.JSONArray
 import org.json.JSONObject
@@ -12,6 +13,7 @@ interface AutomationStore {
     /** Detached snapshot. Invalid storage must throw, never turn into an empty database. */
     fun read(): JSONObject
     /** Commit business data and replay receipts together, or throw. */
+    fun applyCleanup(plan: CalendarCancellationCleanup.Plan): Unit = error("维护存储不可用")
     fun commit(snapshot: JSONObject)
 }
 
@@ -50,10 +52,43 @@ class AndroidAutomation(private val store: AutomationStore, val contract: Automa
     private fun toolError(message: String) = JSONObject().put("isError", true)
         .put("content", JSONArray().put(JSONObject().put("type", "text").put("text", message)))
 
+    private data class CleanupPreview(val token: String, val started: Long, val plan: CalendarCancellationCleanup.Plan)
+    private var cleanupPreview: CleanupPreview? = null
+
     fun call(name: String, args: JSONObject): JSONObject {
         contract.validate(args, contract.schema(name))
         val data = store.read()
         return when (name) {
+            "preview_calendar_cancellation_cleanup" -> {
+                val events = CourseDataManager.deserializeSchedules(data.getJSONArray("events").toString())
+                val exceptions = CourseDataManager.deserializeExceptions(data.getJSONArray("exceptions").toString())
+                val courses = CourseDataManager.deserializeCourses(data.getJSONArray("courses").toString())
+                require(events.size == data.getJSONArray("events").length() && exceptions.size == data.getJSONArray("exceptions").length() &&
+                    courses.size == data.getJSONArray("courses").length()) { "无法完整读取维护数据" }
+                val plan = CalendarCancellationCleanup.preview(events, exceptions, courses.flatMap { it.schedules }.map { it.id }.toSet(),
+                    removeRedundant = args.optBoolean("remove_redundant", true))
+                val token = UUID.randomUUID().toString()
+                cleanupPreview = CleanupPreview(token, System.nanoTime(), plan)
+                val before = events.associateBy { it.id }
+                val removed = plan.removed.groupBy { it.scheduleId.lowercase() }
+                val series = JSONArray(plan.affectedSeries.map { event ->
+                    val dates = (event.excludedDates - before[event.id]?.excludedDates.orEmpty().toSet()) +
+                        removed[event.id.lowercase()].orEmpty().map { it.originalDate }
+                    JSONObject().put("event_id", event.id).put("title", event.title).put("dates", JSONArray(dates.distinct().sorted()))
+                })
+                JSONObject().put("preview_token", token).put("expires_in_seconds", 600).put("series", series)
+                    .put("migrated_dates", plan.migratedDates).put("removed_records", plan.removed.size)
+                    .put("duplicate_records", plan.duplicateRecords).put("skipped_records", plan.skippedRecords)
+                    .put("skip_policy", "保留课程、非重复或无归属、日期无效及存在冲突的取消记录。")
+            }
+            "apply_calendar_cancellation_cleanup" -> {
+                val pending = cleanupPreview
+                require(args.getBoolean("confirmed") && pending != null && args.getString("preview_token") == pending.token &&
+                    System.nanoTime() - pending.started < 600_000_000_000L) { "需要用户确认及有效预览；请重新预览。" }
+                cleanupPreview = null
+                if (pending.plan.migratedDates > 0 || pending.plan.removed.isNotEmpty()) store.applyCleanup(pending.plan)
+                JSONObject().put("applied", true).put("migrated_dates", pending.plan.migratedDates).put("removed_records", pending.plan.removed.size)
+            }
             "get_status" -> JSONObject().put("platform", "android").put("executor", "this_device")
                 .put("today", LocalDate.now().toString()).put("totals", totals(data)).put("tool_count", contract.tools.length())
             "get_editing_context" -> {

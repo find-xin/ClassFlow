@@ -68,6 +68,8 @@ public struct ImportPreviewSheet: View {
                                 statRow(title: "同名冲突课程", value: "\(preview.conflictingCoursesCount) 门 (已存在同名)")
                             }
                             Divider()
+                            statRow(title: "通用日程系列", value: "\(preview.calendarEventsCount) 个（含永久排除日期）")
+                            Divider()
                             statRow(title: "例外规则", value: "\(preview.exceptionsCount) 条调课/停课记录")
                         }
                         .padding(14)
@@ -87,13 +89,13 @@ public struct ImportPreviewSheet: View {
                             strategyCard(
                                 mode: .merge,
                                 title: "合并导入 (推荐)",
-                                subtitle: "保留当前所有课表，仅增量补充新学期与新课程"
+                                subtitle: "保留当前课表，补充新学期、课程和日程，并合并永久排除日期"
                             )
 
                             strategyCard(
                                 mode: .replace,
                                 title: "覆盖导入",
-                                subtitle: "同名冲突学期与课程将被新备份包内容完全覆盖"
+                                subtitle: "使用备份中的学期和课程；v2 备份同时替换通用日程"
                             )
                         }
                     }

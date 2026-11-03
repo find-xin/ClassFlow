@@ -141,8 +141,40 @@ public final class AppState {
         if database.fileURL == LocalDatabase().fileURL { automationReceiver = MCPDesktopCommandReceiver(app: self) }
     }
 
+    private var cancellationPreview: (token: String, deadline: ContinuousClock.Instant, plan: CalendarCancellationCleanup.Plan)?
+
     func executeAutomationTool(name: String, arguments: [String: Any]) async throws -> String {
         let before = try database.loadForAutomation()
+        if name == "preview_calendar_cancellation_cleanup" || name == "apply_calendar_cancellation_cleanup" {
+            let handlers = MCPToolHandlers(database: database, enablesAppIntegration: false)
+            try MCPServer(handlers: handlers).validateEditingArguments(name: name, arguments: arguments)
+            let clock = ContinuousClock()
+            if name == "preview_calendar_cancellation_cleanup" {
+                let remove = arguments["remove_redundant"] as? Bool ?? true
+                let plan = CalendarCancellationCleanup.preview(events: before.calendarEvents, exceptions: before.exceptions,
+                    courseScheduleIDs: Set(before.courses.flatMap { $0.schedules.map(\.id) }), removeRedundant: remove)
+                let token = UUID().uuidString
+                cancellationPreview = (token, clock.now.advanced(by: .seconds(600)), plan)
+                let previous = Dictionary(before.calendarEvents.map { ($0.id, Set($0.excludedDates)) }, uniquingKeysWith: { first, _ in first })
+                let removed = Dictionary(grouping: plan.removed, by: \.scheduleId)
+                let series = plan.affectedSeries.map { event -> [String: Any] in
+                    ["event_id": event.id.uuidString, "title": event.title,
+                     "dates": Set(event.excludedDates).subtracting(previous[event.id] ?? []).union(removed[event.id, default: []].map(\.originalDate)).sorted()]
+                }
+                return try handlers.textJSON(["preview_token": token, "expires_in_seconds": 600, "series": series,
+                    "migrated_dates": plan.migratedDates, "removed_records": plan.removed.count, "duplicate_records": plan.duplicateRecords,
+                    "skipped_records": plan.skippedRecords, "skip_policy": "保留课程、非重复或无归属、日期无效及存在冲突的取消记录。"])
+            }
+            guard arguments["confirmed"] as? Bool == true, let pending = cancellationPreview,
+                  arguments["preview_token"] as? String == pending.token, clock.now < pending.deadline else {
+                throw handlers.automationError("需要用户确认及有效预览；请重新预览。")
+            }
+            cancellationPreview = nil
+            if pending.plan.migratedDates > 0 || !pending.plan.removed.isEmpty {
+                try await applyCalendarCancellationCleanup(pending.plan)
+            }
+            return try handlers.textJSON(["applied": true, "migrated_dates": pending.plan.migratedDates, "removed_records": pending.plan.removed.count])
+        }
         if name == "trigger_cloud_sync" {
             guard let provider = createConfiguredStorageProvider() else {
                 throw NSError(domain: "ClassFlowAutomation", code: 1, userInfo: [NSLocalizedDescriptionKey: "请先在 App 设置中配置云同步凭据。"])
@@ -373,6 +405,8 @@ public final class AppState {
         localExceptions = try LocalSyncRebase.merge(baseline: baseline.exceptions, local: exceptions, remote: localExceptions)
         localSemesters = try LocalSyncRebase.merge(baseline: baseline.semesters, local: semesters, remote: localSemesters)
         localCalendarEvents = try LocalSyncRebase.merge(baseline: baseline.calendarEvents, local: calendarEvents, remote: localCalendarEvents)
+        let exclusionSources = Dictionary(calendarEvents.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        localCalendarEvents = localCalendarEvents.map { event in exclusionSources[event.id].map { event.preservingExclusions(from: $0) } ?? event }
         localPomodoroTasks = try LocalSyncRebase.merge(baseline: baseline.pomodoroTasks, local: pomodoroTasks, remote: localPomodoroTasks)
         localPomodoroRecords = try LocalSyncRebase.merge(baseline: baseline.pomodoroRecords, local: pomodoroRecords, remote: localPomodoroRecords)
         localProfiles = try LocalSyncRebase.merge(baseline: baseline.timetableProfiles, local: timetableProfiles, remote: localProfiles)
@@ -819,8 +853,9 @@ public final class AppState {
 
     public func updateCalendarEvent(_ event: CalendarEvent) {
         if let idx = calendarEvents.firstIndex(where: { $0.id == event.id }) {
-            calendarEvents[idx] = event
-            if let data = try? JSONEncoder().encode(event) {
+            let preserved = event.preservingExclusions(from: calendarEvents[idx])
+            calendarEvents[idx] = preserved
+            if let data = try? JSONEncoder().encode(preserved) {
                 _ = syncEngine.recordOperation(action: "UPDATE", entityType: "calendarEvent", entityId: event.id, payload: data)
             }
             save()
@@ -839,15 +874,10 @@ public final class AppState {
         guard let event = calendarEvents.first(where: { $0.id == id }) else { return }
         switch scope {
         case .thisOnly:
-            let ex = ScheduleException(
-                id: UUID(),
-                scheduleId: event.id,
-                originalDate: occurrenceDate,
-                exceptionType: .cancel,
-                reason: "单次删除"
-            )
-            exceptions.append(ex)
-            save()
+            guard CalendarEventProjector.normalizedFrequency(event.frequency) != "none" else { deleteCalendarEvent(id: id); return }
+            var updated = event
+            updated.excludedDates = Array(Set(event.excludedDates + [occurrenceDate])).sorted()
+            updateCalendarEvent(updated)
         case .thisAndFuture:
             let df = Self.isoDateFormatter
             let startDStr = event.startDate ?? event.startTime.split(separator: "T").first.map(String.init) ?? event.startTime.split(separator: " ").first.map(String.init) ?? occurrenceDate
@@ -1558,18 +1588,22 @@ public final class AppState {
             settings: [
                 "showWeekends": String(settings.showWeekends),
                 "themeMode": settings.themeMode
-            ]
+            ],
+            calendarEvents: calendarEvents
         )
     }
 
     public func exportCurrentSemesterICS() -> String? {
         guard let current = currentSemester else { return nil }
         let currentCourses = courses.filter { $0.semesterId == current.id }
-        return icsExporter.exportToICS(
-            semester: current,
-            courses: currentCourses,
-            exceptions: exceptions
-        )
+        do {
+            return try icsExporter.exportToICS(
+                semester: current,
+                courses: currentCourses,
+                exceptions: exceptions,
+                calendarEvents: calendarEvents.filter { $0.semesterId == current.id || ($0.semesterId == nil && current.id == semesters.first?.id) }
+            )
+        } catch { importErrorMessage = "日历导出失败：\(error.localizedDescription)"; return nil }
     }
 
     public func stageClassFlowImport(from data: Data) {
@@ -1599,12 +1633,19 @@ public final class AppState {
                     courses.append(c)
                 }
             }
-            exceptions.append(contentsOf: package.exceptions)
+            for event in package.calendarEvents {
+                if let index = calendarEvents.firstIndex(where: { $0.id == event.id }) {
+                    calendarEvents[index] = calendarEvents[index].preservingExclusions(from: event)
+                } else { calendarEvents.append(event) }
+            }
+            let existingExceptionIDs = Set(exceptions.map(\.id))
+            exceptions.append(contentsOf: package.exceptions.filter { !existingExceptionIDs.contains($0.id) })
 
         case .replace:
             self.semesters = package.semesters
             self.courses = package.courses
             self.exceptions = package.exceptions
+            if package.manifest.formatVersion >= 2 { self.calendarEvents = package.calendarEvents }
             if let firstSem = semesters.first {
                 self.currentSemesterId = firstSem.id
                 self.selectedWeek = calculateCurrentWeek(for: firstSem)
@@ -1619,8 +1660,19 @@ public final class AppState {
 
     public func importICS(content: String) {
         guard let current = currentSemester else { return }
+        do {
+            for event in try CalendarEventICSMetadata.events(content: content) {
+                if let index = calendarEvents.firstIndex(where: { $0.id == event.id }) {
+                    updateCalendarEvent(calendarEvents[index].preservingExclusions(from: event))
+                } else {
+                    var imported = event; imported.semesterId = current.id
+                    addCalendarEvent(imported)
+                }
+            }
+        } catch { self.importErrorMessage = "日程系列元数据无效，未导入：\(error.localizedDescription)"; return }
         let events = icsImporter.parseICS(content: content)
         let candidateCourses = icsImporter.convertToCourses(events: events, semester: current)
+        save()
         for c in candidateCourses {
             addCourse(c)
         }
@@ -1645,5 +1697,25 @@ public final class AppState {
         } catch {
             self.importErrorMessage = "解析失败: \(error.localizedDescription)"
         }
+    }
+}
+
+extension AppState {
+    public func previewCalendarCancellationCleanup(removeRedundant: Bool = true) -> CalendarCancellationCleanup.Plan {
+        CalendarCancellationCleanup.preview(events: calendarEvents, exceptions: exceptions,
+            courseScheduleIDs: Set(courses.flatMap { $0.schedules.map(\.id) }), removeRedundant: removeRedundant)
+    }
+
+    public func applyCalendarCancellationCleanup(_ plan: CalendarCancellationCleanup.Plan) async throws {
+        let before = try database.loadForAutomation()
+        try database.applyCalendarCancellationCleanup(plan)
+        // Use the same change journal as the desktop executor, then refresh all local consumers.
+        let after = try database.loadForAutomation()
+        recordAutomationChanges(before: before, after: after)
+        var persisted = after
+        persisted.syncSequence = syncEngine.latestSequence
+        try database.save(persisted)
+        load()
+        await scheduleNotifications()
     }
 }

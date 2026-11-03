@@ -10,6 +10,7 @@ public struct BackupManifest: Codable, Sendable, Equatable {
     public var semestersCount: Int
     public var coursesCount: Int
     public var exceptionsCount: Int
+    public var calendarEventsCount: Int?
 
     public init(
         formatVersion: Int = 1,
@@ -18,7 +19,8 @@ public struct BackupManifest: Codable, Sendable, Equatable {
         checksum: String,
         semestersCount: Int,
         coursesCount: Int,
-        exceptionsCount: Int
+        exceptionsCount: Int,
+        calendarEventsCount: Int? = nil
     ) {
         self.formatVersion = formatVersion
         self.appVersion = appVersion
@@ -27,6 +29,7 @@ public struct BackupManifest: Codable, Sendable, Equatable {
         self.semestersCount = semestersCount
         self.coursesCount = coursesCount
         self.exceptionsCount = exceptionsCount
+        self.calendarEventsCount = calendarEventsCount
     }
 }
 
@@ -37,20 +40,34 @@ public struct ClassFlowPackage: Codable, Sendable, Equatable {
     public var courses: [Course]
     public var exceptions: [ScheduleException]
     public var settings: [String: String]
+    public var calendarEvents: [CalendarEvent]
 
     public init(
         manifest: BackupManifest,
         semesters: [Semester],
         courses: [Course],
         exceptions: [ScheduleException],
-        settings: [String: String] = [:]
+        settings: [String: String] = [:],
+        calendarEvents: [CalendarEvent] = []
     ) {
         self.manifest = manifest
         self.semesters = semesters
         self.courses = courses
         self.exceptions = exceptions
         self.settings = settings
+        self.calendarEvents = calendarEvents
     }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        manifest = try container.decode(BackupManifest.self, forKey: .manifest)
+        semesters = try container.decode([Semester].self, forKey: .semesters)
+        courses = try container.decode([Course].self, forKey: .courses)
+        exceptions = try container.decode([ScheduleException].self, forKey: .exceptions)
+        settings = try container.decodeIfPresent([String: String].self, forKey: .settings) ?? [:]
+        calendarEvents = try container.decodeIfPresent([CalendarEvent].self, forKey: .calendarEvents) ?? []
+    }
+
 }
 
 /// Summary report presented to the user prior to committing imported data.
@@ -61,6 +78,7 @@ public struct ImportPreview: Sendable, Equatable {
     public var newCoursesCount: Int
     public var conflictingCoursesCount: Int
     public var exceptionsCount: Int
+    public var calendarEventsCount: Int
 
     public init(
         semestersCount: Int,
@@ -68,7 +86,8 @@ public struct ImportPreview: Sendable, Equatable {
         totalCoursesCount: Int,
         newCoursesCount: Int,
         conflictingCoursesCount: Int,
-        exceptionsCount: Int
+        exceptionsCount: Int,
+        calendarEventsCount: Int = 0
     ) {
         self.semestersCount = semestersCount
         self.semesterNames = semesterNames
@@ -76,6 +95,7 @@ public struct ImportPreview: Sendable, Equatable {
         self.newCoursesCount = newCoursesCount
         self.conflictingCoursesCount = conflictingCoursesCount
         self.exceptionsCount = exceptionsCount
+        self.calendarEventsCount = calendarEventsCount
     }
 }
 
@@ -112,7 +132,8 @@ public struct ClassFlowBackupService: Sendable {
         semesters: [Semester],
         courses: [Course],
         exceptions: [ScheduleException],
-        settings: [String: String] = [:]
+        settings: [String: String] = [:],
+        calendarEvents: [CalendarEvent] = []
     ) throws -> Data {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -121,12 +142,14 @@ public struct ClassFlowBackupService: Sendable {
         let coursesData = try encoder.encode(courses)
         let exceptionsData = try encoder.encode(exceptions)
         let settingsData = try encoder.encode(settings)
+        let calendarEventsData = try encoder.encode(calendarEvents)
 
         // Compute SHA-256 over concatenated payload bytes
         var hasher = SHA256()
         hasher.update(data: semestersData)
         hasher.update(data: coursesData)
         hasher.update(data: exceptionsData)
+        hasher.update(data: calendarEventsData)
         let digest = hasher.finalize()
         let checksumHex = digest.map { String(format: "%02x", $0) }.joined()
 
@@ -134,13 +157,14 @@ public struct ClassFlowBackupService: Sendable {
         let nowStr = df.string(from: Date())
 
         let manifest = BackupManifest(
-            formatVersion: 1,
+            formatVersion: 2,
             appVersion: "1.0.0",
             exportedAt: nowStr,
             checksum: checksumHex,
             semestersCount: semesters.count,
             coursesCount: courses.count,
-            exceptionsCount: exceptions.count
+            exceptionsCount: exceptions.count,
+            calendarEventsCount: calendarEvents.count
         )
         let manifestData = try encoder.encode(manifest)
 
@@ -149,7 +173,8 @@ public struct ClassFlowBackupService: Sendable {
             "semesters.json": semestersData,
             "courses.json": coursesData,
             "exceptions.json": exceptionsData,
-            "settings.json": settingsData
+            "settings.json": settingsData,
+            "calendarEvents.json": calendarEventsData
         ]
 
         return zipArchive.createArchive(files: files)
@@ -173,7 +198,7 @@ public struct ClassFlowBackupService: Sendable {
             throw BackupError.corruptedJSON("manifest.json: \(error.localizedDescription)")
         }
 
-        guard manifest.formatVersion == 1 else {
+        guard [1, 2].contains(manifest.formatVersion) else {
             throw BackupError.incompatibleFormatVersion(manifest.formatVersion)
         }
 
@@ -181,12 +206,15 @@ public struct ClassFlowBackupService: Sendable {
         guard let coursesData = files["courses.json"] else { throw BackupError.missingComponent("courses.json") }
         guard let exceptionsData = files["exceptions.json"] else { throw BackupError.missingComponent("exceptions.json") }
         let settingsData = files["settings.json"] ?? Data("{}".utf8)
+        if manifest.formatVersion == 2 && files["calendarEvents.json"] == nil { throw BackupError.missingComponent("calendarEvents.json") }
+        let calendarEventsData = files["calendarEvents.json"] ?? Data("[]".utf8)
 
         // Verify SHA-256 checksum
         var hasher = SHA256()
         hasher.update(data: semestersData)
         hasher.update(data: coursesData)
         hasher.update(data: exceptionsData)
+        if manifest.formatVersion == 2 { hasher.update(data: calendarEventsData) }
         let actualChecksum = hasher.finalize().map { String(format: "%02x", $0) }.joined()
 
         guard actualChecksum.lowercased() == manifest.checksum.lowercased() else {
@@ -197,13 +225,18 @@ public struct ClassFlowBackupService: Sendable {
         let courses = try decoder.decode([Course].self, from: coursesData)
         let exceptions = try decoder.decode([ScheduleException].self, from: exceptionsData)
         let settings = (try? decoder.decode([String: String].self, from: settingsData)) ?? [:]
+        let calendarEvents = try decoder.decode([CalendarEvent].self, from: calendarEventsData)
+        if manifest.formatVersion == 2 && manifest.calendarEventsCount != calendarEvents.count {
+            throw BackupError.corruptedJSON("calendarEventsCount does not match calendarEvents.json")
+        }
 
         return ClassFlowPackage(
             manifest: manifest,
             semesters: semesters,
             courses: courses,
             exceptions: exceptions,
-            settings: settings
+            settings: settings,
+            calendarEvents: calendarEvents
         )
     }
 
@@ -232,7 +265,8 @@ public struct ClassFlowBackupService: Sendable {
             totalCoursesCount: package.courses.count,
             newCoursesCount: newCount,
             conflictingCoursesCount: conflictCount,
-            exceptionsCount: package.exceptions.count
+            exceptionsCount: package.exceptions.count,
+            calendarEventsCount: package.calendarEvents.count
         )
     }
 }

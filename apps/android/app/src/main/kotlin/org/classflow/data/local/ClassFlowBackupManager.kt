@@ -52,28 +52,14 @@ object ClassFlowBackupManager {
         semesters: List<Semester>,
         courses: List<Course>,
         exceptions: List<ScheduleException> = emptyList(),
-        settings: Map<String, String> = emptyMap()
+        settings: Map<String, String> = emptyMap(),
+        schedules: List<CalendarEvent> = emptyList()
     ): ByteArray {
         val semestersJson = CourseDataManager.serializeSemesters(semesters)
         val coursesJson = CourseDataManager.serializeCourses(courses)
 
         // Exceptions JSON
-        val excArr = JSONArray()
-        for (e in exceptions) {
-            val obj = JSONObject()
-            obj.put("id", e.id)
-            obj.put("scheduleId", e.scheduleId)
-            obj.put("originalDate", e.originalDate)
-            obj.put("type", e.type.name)
-            if (e.targetDate != null) obj.put("targetDate", e.targetDate)
-            if (e.targetDayOfWeek != null) obj.put("targetDayOfWeek", e.targetDayOfWeek)
-            if (e.targetStartSection != null) obj.put("targetStartSection", e.targetStartSection)
-            if (e.targetEndSection != null) obj.put("targetEndSection", e.targetEndSection)
-            if (e.targetClassroom != null) obj.put("targetClassroom", e.targetClassroom)
-            if (e.reason != null) obj.put("reason", e.reason)
-            excArr.put(obj)
-        }
-        val exceptionsJson = excArr.toString()
+        val exceptionsJson = CourseDataManager.serializeExceptions(exceptions)
 
         // Settings JSON
         val setObj = JSONObject()
@@ -84,23 +70,21 @@ object ClassFlowBackupManager {
         val crsBytes = coursesJson.toByteArray(StandardCharsets.UTF_8)
         val excBytes = exceptionsJson.toByteArray(StandardCharsets.UTF_8)
         val setBytes = settingsJson.toByteArray(StandardCharsets.UTF_8)
+        val eventBytes = CourseDataManager.serializeSchedules(schedules).toByteArray(StandardCharsets.UTF_8)
 
         // Concatenate bytes to compute SHA-256 checksum matching ClassFlowBackup.swift
-        val combined = ByteArray(semBytes.size + crsBytes.size + excBytes.size)
-        System.arraycopy(semBytes, 0, combined, 0, semBytes.size)
-        System.arraycopy(crsBytes, 0, combined, semBytes.size, crsBytes.size)
-        System.arraycopy(excBytes, 0, combined, semBytes.size + crsBytes.size, excBytes.size)
-        val checksumHex = sha256Hex(combined)
+        val checksumHex = sha256Hex(semBytes + crsBytes + excBytes + eventBytes)
 
         // Manifest JSON
         val manifestObj = JSONObject()
-        manifestObj.put("formatVersion", 1)
+        manifestObj.put("formatVersion", 2)
         manifestObj.put("appVersion", "1.0.0")
         manifestObj.put("exportedAt", getIso8601Timestamp())
         manifestObj.put("checksum", checksumHex)
         manifestObj.put("semestersCount", semesters.size)
         manifestObj.put("coursesCount", courses.size)
         manifestObj.put("exceptionsCount", exceptions.size)
+        manifestObj.put("calendarEventsCount", schedules.size)
         val manifestBytes = manifestObj.toString(2).toByteArray(StandardCharsets.UTF_8)
 
         val bos = ByteArrayOutputStream()
@@ -116,6 +100,7 @@ object ClassFlowBackupManager {
             writeEntry("courses.json", crsBytes)
             writeEntry("exceptions.json", excBytes)
             writeEntry("settings.json", setBytes)
+            writeEntry("calendarEvents.json", eventBytes)
         }
         return bos.toByteArray()
     }
@@ -138,22 +123,15 @@ object ClassFlowBackupManager {
         val manifestData = entryMap["manifest.json"]
             ?: throw IllegalArgumentException("缺失 manifest.json，非合法 ClassFlow 备份包")
         val manifestObj = JSONObject(String(manifestData, StandardCharsets.UTF_8))
-        val expectedChecksum = manifestObj.optString("checksum")
-
-        val semBytes = entryMap["semesters.json"] ?: ByteArray(0)
-        val crsBytes = entryMap["courses.json"] ?: ByteArray(0)
-        val excBytes = entryMap["exceptions.json"] ?: ByteArray(0)
-
-        if (expectedChecksum.isNotEmpty()) {
-            val combined = ByteArray(semBytes.size + crsBytes.size + excBytes.size)
-            System.arraycopy(semBytes, 0, combined, 0, semBytes.size)
-            System.arraycopy(crsBytes, 0, combined, semBytes.size, crsBytes.size)
-            System.arraycopy(excBytes, 0, combined, semBytes.size + crsBytes.size, excBytes.size)
-            val actualChecksum = sha256Hex(combined)
-            if (!expectedChecksum.equals(actualChecksum, ignoreCase = true)) {
-                // Warning: integrity checksum mismatch
-            }
-        }
+        val version = manifestObj.getInt("formatVersion")
+        require(version in 1..2) { "不支持的备份版本：$version" }
+        val expectedChecksum = manifestObj.getString("checksum")
+        val semBytes = requireNotNull(entryMap["semesters.json"]) { "缺失 semesters.json" }
+        val crsBytes = requireNotNull(entryMap["courses.json"]) { "缺失 courses.json" }
+        val excBytes = requireNotNull(entryMap["exceptions.json"]) { "缺失 exceptions.json" }
+        val eventBytes = if (version == 2) requireNotNull(entryMap["calendarEvents.json"]) { "缺失 calendarEvents.json" } else "[]".toByteArray()
+        val actualChecksum = sha256Hex(semBytes + crsBytes + excBytes + if (version == 2) eventBytes else byteArrayOf())
+        require(expectedChecksum.equals(actualChecksum, ignoreCase = true)) { "备份校验失败，未导入数据" }
 
         val semesters = if (semBytes.isNotEmpty()) {
             CourseDataManager.deserializeSemesters(String(semBytes, StandardCharsets.UTF_8))
@@ -176,9 +154,16 @@ object ClassFlowBackupManager {
             } catch (_: Exception) {}
         }
 
+        val calendarEvents = CourseDataManager.deserializeSchedules(String(eventBytes, StandardCharsets.UTF_8))
+        val exceptions = CourseDataManager.deserializeExceptions(String(excBytes, StandardCharsets.UTF_8))
+        require(calendarEvents.size == JSONArray(String(eventBytes, StandardCharsets.UTF_8)).length() &&
+            exceptions.size == JSONArray(String(excBytes, StandardCharsets.UTF_8)).length()) { "备份业务数据无法完整读取" }
+        require(version != 2 || manifestObj.optInt("calendarEventsCount", -1) == calendarEvents.size) { "日程系列数量不匹配" }
         return ClassFlowImportResult(
             semesters = semesters,
             courses = courses,
+            schedules = calendarEvents,
+            exceptions = exceptions,
             settings = settings
         )
     }
@@ -188,10 +173,11 @@ object ClassFlowBackupManager {
     fun importICS(inputStream: InputStream): ClassFlowImportResult {
         val reader = BufferedReader(InputStreamReader(inputStream, StandardCharsets.UTF_8))
         val lines = reader.readLines()
-        val schedules = mutableListOf<CalendarEvent>()
+        val schedules = CalendarEventICSMetadata.events(lines.joinToString("\n")).toMutableList()
         val courses = mutableListOf<Course>()
 
         var inVEvent = false
+        var nativeCalendarEvent = false
         var summary = ""
         var location: String? = null
         var description: String? = null
@@ -203,6 +189,7 @@ object ClassFlowBackupManager {
             val line = rawLine.trim()
             if (line.equals("BEGIN:VEVENT", ignoreCase = true)) {
                 inVEvent = true
+                nativeCalendarEvent = false
                 summary = ""
                 location = null
                 description = null
@@ -210,7 +197,7 @@ object ClassFlowBackupManager {
                 dtEnd = ""
                 uid = UUID.randomUUID().toString()
             } else if (line.equals("END:VEVENT", ignoreCase = true)) {
-                if (inVEvent && summary.isNotEmpty()) {
+                if (inVEvent && !nativeCalendarEvent && summary.isNotEmpty()) {
                     // Extract start/end time
                     var startTime = "08:00"
                     var endTime = "09:35"
@@ -280,6 +267,7 @@ object ClassFlowBackupManager {
                 inVEvent = false
             } else if (inVEvent) {
                 when {
+                    line == "X-CLASSFLOW-SOURCE:CALENDAR_EVENT" -> nativeCalendarEvent = true
                     line.startsWith("SUMMARY:", ignoreCase = true) -> {
                         summary = line.substring(8).trim()
                     }
@@ -319,18 +307,25 @@ object ClassFlowBackupManager {
         sb.append("VERSION:2.0\r\n")
         sb.append("PRODID:-//ClassFlow//Native Timetable & Calendar//CN\r\n")
         sb.append("CALSCALE:GREGORIAN\r\n")
+        CalendarEventICSMetadata.lines(schedules).forEach { sb.append(it).append("\r\n") }
 
         val dfStamp = SimpleDateFormat("yyyyMMdd'T'HHmmss'Z'", Locale.US)
         dfStamp.timeZone = TimeZone.getTimeZone("UTC")
         val dtStamp = dfStamp.format(Date())
 
+        val eventById = schedules.associateBy { it.id.lowercase() }
         for (item in occurrences) {
+            if (item.status == OccurrenceStatus.CANCELLED) continue
+            val event = item.calendarEventId?.lowercase()?.let { eventById[it] }
+            if (event != null && (item.recurrenceOriginDate ?: item.date) in event.excludedDates) continue
             sb.append("BEGIN:VEVENT\r\n")
+            if (item.calendarEventId != null) sb.append("X-CLASSFLOW-SOURCE:CALENDAR_EVENT\r\n")
             sb.append("UID:${item.id}@classflow.org\r\n")
             sb.append("DTSTAMP:$dtStamp\r\n")
             sb.append("SUMMARY:${item.title}\r\n")
             item.location?.let { sb.append("LOCATION:$it\r\n") }
             val descParts = mutableListOf<String>()
+            item.notes?.let { descParts.add(it) }
             item.teacher?.let { descParts.add("任课教师：$it") }
             if (item.credit != null && item.credit > 0) {
                 val cr = if (item.credit % 1.0 == 0.0) "${item.credit.toInt()} 学分" else "${item.credit} 学分"
@@ -343,23 +338,6 @@ object ClassFlowBackupManager {
             val dateClean = (item.date ?: "2026-10-14").replace("-", "")
             val startClean = (item.startTime ?: "08:00").replace(":", "") + "00"
             val endClean = (item.endTime ?: "09:35").replace(":", "") + "00"
-            sb.append("DTSTART:${dateClean}T$startClean\r\n")
-            sb.append("DTEND:${dateClean}T$endClean\r\n")
-            sb.append("END:VEVENT\r\n")
-        }
-
-        val todayDateClean = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())
-        for (sched in schedules) {
-            sb.append("BEGIN:VEVENT\r\n")
-            sb.append("UID:${sched.id}@classflow.org\r\n")
-            sb.append("DTSTAMP:$dtStamp\r\n")
-            sb.append("SUMMARY:${sched.title}\r\n")
-            sched.location?.let { sb.append("LOCATION:$it\r\n") }
-            sched.description?.let { sb.append("DESCRIPTION:$it\r\n") }
-
-            val dateClean = (sched.startDate ?: todayDateClean).replace("-", "")
-            val startClean = sched.startTime.replace(":", "") + "00"
-            val endClean = sched.endTime.replace(":", "") + "00"
             sb.append("DTSTART:${dateClean}T$startClean\r\n")
             sb.append("DTEND:${dateClean}T$endClean\r\n")
             sb.append("END:VEVENT\r\n")

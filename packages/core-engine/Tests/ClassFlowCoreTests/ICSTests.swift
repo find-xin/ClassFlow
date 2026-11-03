@@ -46,10 +46,10 @@ struct ICSTests {
     }
 
     @Test("Export course occurrences to compliant RFC 5545 iCalendar string")
-    func testExportToICS() {
+    func testExportToICS() throws {
         let (semester, course) = makeTestSemesterAndCourse()
 
-        let icsContent = exporter.exportToICS(
+        let icsContent = try exporter.exportToICS(
             semester: semester,
             courses: [course],
             exceptions: []
@@ -65,10 +65,10 @@ struct ICSTests {
     }
 
     @Test("Parse RFC 5545 iCalendar string and convert to Course candidates")
-    func testImportICS() {
+    func testImportICS() throws {
         let (semester, course) = makeTestSemesterAndCourse()
 
-        let icsContent = exporter.exportToICS(
+        let icsContent = try exporter.exportToICS(
             semester: semester,
             courses: [course],
             exceptions: []

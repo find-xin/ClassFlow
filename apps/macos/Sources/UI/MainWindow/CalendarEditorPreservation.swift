@@ -4,7 +4,7 @@ import ClassFlowCore
 /// Hidden or unchanged editor fields must not be replaced with form defaults.
 enum CalendarEditorPreservation {
     static func apply(original: CalendarEvent, draft: CalendarEvent) -> CalendarEvent {
-        var result = draft
+        var result = draft.preservingExclusions(from: original)
         func equivalentClock(_ lhs: String, _ rhs: String) -> Bool {
             lhs.replacingOccurrences(of: "T", with: " ").prefix(16) == rhs.replacingOccurrences(of: "T", with: " ").prefix(16)
         }

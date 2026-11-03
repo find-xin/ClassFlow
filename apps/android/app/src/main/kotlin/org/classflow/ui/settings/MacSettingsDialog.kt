@@ -82,6 +82,7 @@ fun MacSettingsDialog(
         "chatgpt" to "AI / ChatGPT",
         "notifications" to "通知",
         "backup" to "备份导入",
+        "maintenance" to "日程维护",
         "about" to "关于"
     )
 
@@ -208,6 +209,7 @@ fun MacSettingsDialog(
                             textPrimary = textPrimary,
                             textSecondary = textSecondary
                         )
+                        "maintenance" -> CalendarCancellationMaintenanceView(onSaved = onSyncSuccess)
                         "backup" -> BackupSettingsView(
                             isDark = isDark,
                             cardBg = cardBg,
@@ -806,11 +808,28 @@ private fun NotificationsSettingsView(
     textPrimary: Color,
     textSecondary: Color
 ) {
-    var enableNotifications by remember { mutableStateOf(true) }
-    var leadTime by remember { mutableStateOf("15") }
-    var enableVibrate by remember { mutableStateOf(true) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val reminderPrefs = remember { context.getSharedPreferences("classflow_reminder_state", Context.MODE_PRIVATE) }
+    val notificationPermission = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) Thread { org.classflow.notifications.ReminderScheduler.rebuild(context) }.start()
+    }
+    var enableNotifications by remember { mutableStateOf(reminderPrefs.getBoolean("courses", true)) }
+    var leadTime by remember { mutableStateOf(reminderPrefs.getInt("lead", 15).toString()) }
 
     Text("课前提醒与通知", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = textPrimary)
+    if (android.os.Build.VERSION.SDK_INT >= 33 &&
+        androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+        TextButton(onClick = { notificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS) }) { Text("允许系统通知") }
+    }
+    if (android.os.Build.VERSION.SDK_INT >= 31 && !context.getSystemService(android.app.AlarmManager::class.java).canScheduleExactAlarms()) {
+        Text("精确提醒权限未开启，系统可能延迟提醒。", fontSize = 12.sp, color = textSecondary)
+        TextButton(onClick = {
+            context.startActivity(Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
+                android.net.Uri.parse("package:" + context.packageName)))
+        }) { Text("打开系统提醒权限设置") }
+    }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -827,7 +846,11 @@ private fun NotificationsSettingsView(
                     Text("开启上课提醒", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = textPrimary)
                     Text("上课前通过系统横幅通知提示上课教室", fontSize = 11.sp, color = textSecondary)
                 }
-                Switch(checked = enableNotifications, onCheckedChange = { enableNotifications = it })
+                Switch(checked = enableNotifications, onCheckedChange = {
+                    enableNotifications = it
+                    reminderPrefs.edit().putBoolean("courses", it).apply()
+                    Thread { org.classflow.notifications.ReminderScheduler.rebuild(context) }.start()
+                })
             }
 
             if (enableNotifications) {
@@ -845,7 +868,11 @@ private fun NotificationsSettingsView(
                                 .weight(1f)
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(if (isSel) Color(0xFF4F46E5) else if (isDark) Color(0xFF282B3C) else Color(0xFFF3F4F6))
-                                .clickable { leadTime = min }
+                                .clickable {
+                                    leadTime = min
+                                    reminderPrefs.edit().putInt("lead", min.toInt()).apply()
+                                    Thread { org.classflow.notifications.ReminderScheduler.rebuild(context) }.start()
+                                }
                                 .padding(vertical = 8.dp),
                             contentAlignment = Alignment.Center
                         ) {
@@ -866,8 +893,7 @@ private fun NotificationsSettingsView(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("上课震动提示", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = textPrimary)
-                    Switch(checked = enableVibrate, onCheckedChange = { enableVibrate = it })
+                    Text("日程提醒使用每项日程的提醒设置；声音和振动可在系统通知渠道中配置。", fontSize = 11.sp, color = textSecondary)
                 }
             }
         }

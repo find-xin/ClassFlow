@@ -28,6 +28,7 @@ public struct TimelineItem: Codable, Sendable, Identifiable, Equatable, Hashable
     /// Classroom location or venue
     public var location: String?
     /// Occurrence date string ("YYYY-MM-DD")
+    public var recurrenceOriginDate: String?
     public var date: String
     /// 1 = Monday ... 7 = Sunday
     public var dayOfWeek: Int
@@ -86,7 +87,8 @@ public struct TimelineItem: Codable, Sendable, Identifiable, Equatable, Hashable
         isAllDay: Bool = false,
         hasConflict: Bool = false,
         conflictingItemIds: [String] = [],
-        isRecurring: Bool = false
+        isRecurring: Bool = false,
+        recurrenceOriginDate: String? = nil
     ) {
         self.id = id
         self.sourceType = sourceType
@@ -95,6 +97,7 @@ public struct TimelineItem: Codable, Sendable, Identifiable, Equatable, Hashable
         self.calendarEventId = calendarEventId
         self.title = title
         self.location = location
+        self.recurrenceOriginDate = recurrenceOriginDate
         self.date = date
         self.dayOfWeek = dayOfWeek
         self.startSection = startSection

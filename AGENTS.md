@@ -79,3 +79,11 @@ When reviewing or writing code/docs, maintain explicit status tags:
 - `[VERIFIED]`: Tested and operational on local runtime.
 - `[UNVERIFIED]`: Designed according to public specs but not yet executed on physical target OS.
 - `[BLOCKED]`: Requires external enterprise verification, proprietary developer portal approval, or hardware unavailable in current environment.
+
+## Packaging after changes
+
+By user preference, after verifying any app change, build and verify an installable
+package for each affected platform by default. Use a distinct build number,
+put the artifacts and SHA256 files in `dist/`, and link the packages in the
+handoff. For macOS use `CLASSFLOW_SKIP_INSTALL=1`. Packaging alone does not
+authorize installing or publishing the artifacts.

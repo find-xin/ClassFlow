@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://classflow.org/schemas/calendar_event.schema.json",
+  "title": "CalendarEvent",
+  "type": "object",
+  "required": [
+    "id",
+    "title",
+    "startTime",
+    "endTime"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "calendarId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "semesterId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "title": {
+      "type": "string"
+    },
+    "startTime": {
+      "type": "string"
+    },
+    "endTime": {
+      "type": "string"
+    },
+    "frequency": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "excludedDates": {
+      "type": "array",
+      "description": "Permanent ISO recurrence-origin exclusions. Missing means empty; ordinary saves and synchronization union dates. Apply after recurrence count calculation, before day clipping.",
+      "items": {
+        "type": "string",
+        "format": "date",
+        "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+      },
+      "uniqueItems": true,
+      "default": []
+    }
+  },
+  "additionalProperties": true
+}

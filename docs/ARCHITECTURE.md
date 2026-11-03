@@ -254,3 +254,19 @@ Mac's device-local DatabasePayload.syncPeerSequences persists consumed peer revi
 App restarts and is not part of DeviceSnapshot or explicit business exports. Old databases
 still decode without either field. CalendarEditorPreservation prevents hidden UI defaults
 from rewriting untouched event fields. See MCP_REMAINING_REPAIR_2026-10-23.md.
+
+## Permanent calendar occurrence exclusions (2026-11-04)
+
+`CalendarEvent.excludedDates` is an additive, sorted unique array of recurrence-origin ISO dates.
+Missing means empty. Enumerate recurrence counts first, then exclude origins before multi-day
+clipping. `TimelineItem.recurrenceOriginDate` connects a clipped UI item to its series origin.
+New calendar-only one-off deletion stores an exclusion; course ScheduleException semantics remain
+independent. Legacy CANCEL migration is an explicit preview/apply operation, with conservative
+ownership/conflict guards, a local recovery backup and atomic event/exception/tombstone persistence.
+Ordinary edits and sync merge exclusions by union for the same UUID; titles are not series identity.
+
+Backup format v2 adds checksum-protected `calendarEvents.json`; v1 remains readable. ClassFlow ICS
+exports retain native series in folded X-properties and ordinary filtered VEVENT projections, so
+native round trips preserve UUIDs and exclusions without splitting the stored series. See
+[recurring event maintenance](RECURRING_EVENT_CLEANUP.md) for rollout, interfaces and verification
+boundaries. Local persistence remains JSON; this change does not imply a SQLite/Room migration.

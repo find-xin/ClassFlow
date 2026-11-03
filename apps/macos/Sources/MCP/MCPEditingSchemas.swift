@@ -33,6 +33,8 @@ extension MCPServer {
         task.merge(["task_id": text, "title": text, "new_title": text, "notes": nullable, "course_id": nullable, "priority": ["type": ["string", "integer"]],
             "start_date": nullable, "due_date": nullable, "target_minutes": integer, "estimated_pomodoros": integer]) { _, new in new }
         return [
+            tool("preview_calendar_cancellation_cleanup", "只读预览历史重复日程取消记录迁移。向用户展示日期、数量及保留规则；得到明确确认后才提交。", ["remove_redundant": boolean]),
+            tool("apply_calendar_cancellation_cleanup", "仅在用户确认预览后提交。验证预览未过期，自动备份并原子保存；不执行云同步。", ["preview_token": text, "confirmed": boolean], required: ["preview_token", "confirmed"]),
             tool("get_editing_context", "读取完整学期、作息节次、课程及每个时段 UUID、日程重复与提醒规则、待办全部可编辑字段、异常与当前专注。单条复杂编辑或存在重名时读取以准确定位；已知UUID直接操作，批量统一变更直接用batch_edit_items选择器。不含密钥。kind/offset/limit分页（最大1000）；selection过滤，matching_totals为过滤后总数。", ["kind": ["type": "string", "enum": ["all", "semesters", "courses", "events", "tasks", "exceptions"]], "offset": integer, "limit": ["type": "integer", "minimum": 1, "maximum": 1000], "selection": ["type": "object", "description": "可选，与批量工具相同的筛选条件；kind必须与查询kind一致。仅支持events/courses/tasks。"]]),
             tool("add_course", "新建课程（同名课程追加时段）。支持学分、备注、颜色、每时段教师地点、具体时间或节次、周次矩阵；schedules 创建多个时段。", course, required: ["name"]),
             tool("update_course", "完整编辑课程。course_id 或原 name 定位，new_name 改名。schedules 为完整替换，已有时段须保留 schedule_id；空数组清空时段。单时段修改用 schedule_id。null 清除选填字段。", course),

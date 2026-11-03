@@ -121,7 +121,7 @@ class ClassFlowBackupManagerTest {
         )
 
         val icsText = ClassFlowBackupManager.generateICSCalendar(
-            occurrences = listOf(occurrence),
+            occurrences = listOf(occurrence, TimelineItem(id = "event_occ", calendarEventId = scheduleEvent.id, title = scheduleEvent.title, location = scheduleEvent.location, notes = scheduleEvent.description, date = "2026-10-12", dayOfWeek = 1, startSection = 5, endSection = 6, startTime = "14:00", endTime = "15:30")),
             schedules = listOf(scheduleEvent)
         )
 

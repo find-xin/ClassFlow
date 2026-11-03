@@ -237,47 +237,9 @@ object TimelineProjection {
         }
     }
 
-    fun consolidateOccurrences(occurrences: List<TimelineItem>): List<TimelineItem> {
-        if (occurrences.size <= 1) return occurrences
-        val grouped = occurrences.groupBy { "${it.dayOfWeek}___${it.title.trim().lowercase()}" }
-        val output = mutableListOf<TimelineItem>()
-        for ((_, group) in grouped) {
-            if (group.size == 1) {
-                output.add(group.first())
-            } else {
-                val sorted = group.sortedWith(compareBy({ it.startSection }, { it.endSection })).toMutableList()
-                var i = 0
-                while (i < sorted.size) {
-                    var current = sorted[i]
-                    var mergedAny = false
-                    var j = i + 1
-                    while (j < sorted.size) {
-                        val other = sorted[j]
-                        val overlaps = maxOf(current.startSection, other.startSection) <= minOf(current.endSection, other.endSection)
-                        if (overlaps) {
-                            current = current.copy(
-                                startSection = minOf(current.startSection, other.startSection),
-                                endSection = maxOf(current.endSection, other.endSection),
-                                isCurrentWeek = current.isCurrentWeek || other.isCurrentWeek,
-                                location = if (current.location.isNullOrBlank()) other.location else current.location,
-                                teacher = if (current.teacher.isNullOrBlank()) other.teacher else current.teacher
-                            )
-                            sorted.removeAt(j)
-                            sorted[i] = current
-                            mergedAny = true
-                        } else {
-                            j++
-                        }
-                    }
-                    if (!mergedAny) {
-                        output.add(current)
-                        i++
-                    }
-                }
-            }
-        }
-        return output
-    }
+    // Only remove repeated projections of the same occurrence; titles are not identities.
+    fun consolidateOccurrences(occurrences: List<TimelineItem>): List<TimelineItem> =
+        occurrences.distinctBy { it.id }
 
     fun normalizeFrequency(freq: String?): String {
         if (freq.isNullOrBlank()) return "none"

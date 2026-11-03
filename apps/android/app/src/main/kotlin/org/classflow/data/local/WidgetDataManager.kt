@@ -49,7 +49,11 @@ object WidgetDataManager {
     fun loadWidgetData(context: Context): WidgetData {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val jsonStr = prefs.getString(KEY_WIDGET_DATA, null)
-        if (jsonStr == null) {
+        val cached = jsonStr?.let { parseWidgetDataJson(it) }
+        val liveSemesters = CourseDataManager.loadSemesters(context)
+        val liveSemester = liveSemesters.find { it.isCurrent } ?: liveSemesters.firstOrNull()
+        val realWeek = TimelineProjection.calculateCurrentWeek(liveSemester?.startDate, liveSemester?.totalWeeks ?: 20)
+        if (cached == null || cached.currentWeek != realWeek || cached.semesterName != (liveSemester?.name ?: "ClassFlow")) {
             val semesters = CourseDataManager.loadSemesters(context)
             val currentSem = semesters.find { it.isCurrent } ?: semesters.firstOrNull()
             val courses = CourseDataManager.loadCourses(context)
@@ -89,7 +93,7 @@ object WidgetDataManager {
             val newJson = prefs.getString(KEY_WIDGET_DATA, null) ?: return WidgetData()
             return parseWidgetDataJson(newJson)
         }
-        return parseWidgetDataJson(jsonStr)
+        return cached
     }
 
     private fun parseWidgetDataJson(jsonStr: String): WidgetData {
@@ -158,23 +162,24 @@ object WidgetDataManager {
         totalWeeks: Int = 20,
         exceptions: List<ScheduleException> = emptyList()
     ) {
+        val effectiveWeek = if (semesterStartDate != null) TimelineProjection.calculateCurrentWeek(semesterStartDate, totalWeeks) else currentWeek
         val root = JSONObject()
         root.put("semesterName", semesterName)
-        root.put("currentWeek", currentWeek)
+        root.put("currentWeek", effectiveWeek)
         root.put("isDark", isDark)
         root.put("themeMode", themeMode)
 
         val itemsArr = JSONArray()
         val widgetItems = mutableListOf<WidgetOccurrence>()
 
-        val currentWeekOccs = if (occurrences.isNotEmpty()) {
+        val effectiveWeekOccs = if (occurrences.isNotEmpty() && occurrences.all { it.weekNumber == effectiveWeek }) {
             occurrences
         } else {
             TimelineProjection.projectOccurrences(
                 courses = courses,
                 schedules = schedules,
-                selectedWeek = currentWeek,
-                currentWeek = currentWeek,
+                selectedWeek = effectiveWeek,
+                currentWeek = effectiveWeek,
                 sectionTimes = sectionTimes,
                 totalWeeks = totalWeeks,
                 showNonCurrentWeekCourses = true,
@@ -184,16 +189,16 @@ object WidgetDataManager {
         }
 
         val allProjected = mutableListOf<TimelineItem>()
-        allProjected.addAll(currentWeekOccs)
+        allProjected.addAll(effectiveWeekOccs)
 
         // Also project next week so Sunday -> Monday cross-week queries for "明天" (tomorrow) have complete data
-        val nextWeek = currentWeek + 1
+        val nextWeek = effectiveWeek + 1
         if (nextWeek <= totalWeeks) {
             val nextWeekOccs = TimelineProjection.projectOccurrences(
                 courses = courses,
                 schedules = schedules,
                 selectedWeek = nextWeek,
-                currentWeek = currentWeek,
+                currentWeek = effectiveWeek,
                 sectionTimes = sectionTimes,
                 totalWeeks = totalWeeks,
                 showNonCurrentWeekCourses = true,
